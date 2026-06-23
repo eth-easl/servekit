@@ -1,0 +1,13 @@
+default = "beverin"
+
+[profiles.beverin]
+host = "beverin"
+remote_dir = "/capstor/scratch/cscs/xyao/kimi-k25-vllm"
+
+[profiles.glm-47-flash]
+host = "beverin"
+remote_dir = "/capstor/scratch/cscs/xyao/glm-47-flash-vllm"
+
+[profiles.glm-52-fp8]
+host = "beverin"
+remote_dir = "/capstor/scratch/cscs/xyao/glm-52-fp8-vllm"

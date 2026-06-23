@@ -1,0 +1,81 @@
+# Version control
+.git/
+
+# Python caches
+__pycache__/
+*.py[cod]
+*.pyo
+*.so
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# uv / pip
+uv.lock
+pip-wheel-metadata/
+*.egg-info/
+
+# IDEs and editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Test / lint / type caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# C++ build output
+snapshot/build/
+
+# Recorder / redirect output dirs (written on the cluster, contain large .snap
+# module images — never sync back).
+snapshot/record-synthetic/
+snapshot/record-vllm/
+snapshot/redirect-vllm/
+snapshot/alloc-determinism/
+snapshot/measure-init/
+
+# Logs and Slurm output
+*.log
+slurm-*.out
+
+# Runtime / generated state (kept on the cluster, not synced)
+.local/
+outputs/
+checkpoints/
+logs/
+
+# JIT compile caches + container HOME on shared FS (written by vLLM/OpenTela).
+# MUST be excluded: a `push --delete` without this wipes hundreds of thousands
+# of cache files and the per-job generated scripts written into DEPLOY_DIR.
+cache/
+home/
+
+# Per-job artifacts written into the deploy dir root by the serve scripts
+vllm_subprocess-*.sh
+opentela_launcher-*.sh
+warmup_launcher-*.sh
+vmagent-scrape-*.yaml*
+last_service.env
+
+# Secrets / environment
+.env
+.env.*
+
+# Large models / data (already staged on capstor)
+*.safetensors
+*.bin
+*.pt
+*.pth
+*.ckpt
+models/
+data/
+
+# rcc itself
+.rcc/
