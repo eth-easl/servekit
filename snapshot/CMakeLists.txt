@@ -74,6 +74,36 @@ elseif(SNAPSHOT_BACKEND STREQUAL "CUDA")
     csrc/backends/cuda/cuda_vmm.cpp
   )
   snapshot_configure_cuda(snapshot_core)
+
+  # LD_PRELOAD redirector: serves cudaMalloc from the deterministic fixed-base
+  # VMM region so an unmodified CUDA app's device addresses become reproducible.
+  # Built in the CUDA devel container but LD_PRELOADed into the torch (sglang)
+  # container for the real-engine gate, so it must be self-contained: it makes
+  # cu* driver calls inline (no snapshot_core link, no nvrtc) and links ONLY
+  # libcuda; -static-libstdc++/-static-libgcc removes the C++-runtime ABI
+  # dependency on the torch image. SNAPSHOT_CUDA_INCLUDE_DIR /
+  # SNAPSHOT_CUDA_DRIVER_LIBRARY were resolved by snapshot_configure_cuda above.
+  add_library(snapshot_redirect_cuda SHARED csrc/preload/snapshot_redirect_cuda.cpp)
+  target_include_directories(snapshot_redirect_cuda PRIVATE
+    "${SNAPSHOT_CUDA_INCLUDE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/include")
+  target_link_libraries(snapshot_redirect_cuda PRIVATE
+    "${SNAPSHOT_CUDA_DRIVER_LIBRARY}" ${CMAKE_DL_LIBS})
+  target_link_options(snapshot_redirect_cuda PRIVATE
+    -static-libstdc++ -static-libgcc)
+
+  # Standalone raw-cudaMalloc GPU program to demonstrate transparent redirect.
+  # Uses the CUDA runtime API (cudaMalloc/cudaMemcpy/cudaDeviceSynchronize) in
+  # addition to the driver API, so libcudart must be linked explicitly.
+  find_library(SNAPSHOT_CUDART_LIBRARY
+    NAMES cudart
+    HINTS "$ENV{CUDA_HOME}/lib64" "/usr/local/cuda/lib64" "/usr/lib/x86_64-linux-gnu")
+  if(NOT SNAPSHOT_CUDART_LIBRARY)
+    message(FATAL_ERROR "cuda_redirect_smoke requires libcudart")
+  endif()
+  add_executable(cuda_redirect_smoke csrc/cli/cuda_redirect_smoke.cpp)
+  snapshot_configure_cuda(cuda_redirect_smoke)
+  target_link_libraries(cuda_redirect_smoke PRIVATE snapshot_core
+    "${SNAPSHOT_CUDART_LIBRARY}")
 endif()
 
 add_executable(snapshot
