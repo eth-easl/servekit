@@ -1318,3 +1318,174 @@ N1 only adds files under `snapshot/csrc/backends/cuda/`, the CUDA branch of
 `snapshot/cmake/SnapshotBackend.cmake`, `snapshot/recipe/{snapshot-cuda.toml,
 build_snapshot_cuda.sbatch}`, and this RESULTS section. N2 (CUDA interposers)
 is the next milestone.
+
+---
+
+# `snapshot` — N2: CUDA redirect interposer on bristen (A100 / sm_80)
+
+Validated 2026-06-26 on CSCS bristen A100 nodes (sm_80, driver 550.54.15),
+`-A a-infra02`, `--partition=normal`. Build container:
+`nvidia/cuda:12.6.3-devel-ubuntu24.04` (CUDA 12.6.85). Torch gate container:
+`lmsysorg/sglang@sha256:e216b7dc4ac1938b599b982233ccf7eb2b11dd1f07fc2e00a7b9841052c553be`
+(CUDA 12.9.1, torch 2.9.1+cu129, sm_80 — same digest as the GLM-4.7-Flash
+bristen deploy). Implementation per the approved N2 plan
+(`docs/superpowers/plans/2026-06-26-cuda-redirect-interposer-n2.md`).
+
+## What was built (N2)
+
+- **`snapshot/csrc/preload/snapshot_redirect_cuda.cpp`** — LD_PRELOAD shim that
+  intercepts `cudaMalloc`/`cudaFree`/`cudaMallocAsync`/`cudaFreeAsync`. Default
+  mode: fixed-base VMM via inline driver calls — `cuMemAddressReserve(
+  0x600000000000)` + `cuMemCreate` + `cuMemMap` + one `cuMemSetAccess` over the
+  whole 8 GiB region — then bump-pointer sub-allocation with a size-bucketed
+  free list. Fallback (`SNAPSHOT_REDIRECT_ARENA=1`): plain `cudaMalloc`-arena
+  path (equivalent to the HIP side's `hipMalloc`-arena mode). Exports
+  `snapshot_redirect_region_base()` / `snapshot_redirect_region_size()` for the
+  future N5 record shim (name-compatible with the HIP redirect's exports).
+  Links only `libcuda.so` + `libdl`; built with `-static-libstdc++/-static-libgcc`
+  so no `libstdc++` or `libnvrtc` appear in `DT_NEEDED` — the `.so` loads
+  cleanly into any CUDA container regardless of C++ runtime version.
+
+- **`snapshot/csrc/cli/cuda_redirect_smoke.cpp`** — raw-`cudaMalloc` smoke
+  program (no snapshot allocator). Allocates 4 device buffers, compiles the
+  same synthetic 3-kernel chain (`mul_bias → relu_offset → in_place`) via nvrtc,
+  launches via `cuLaunchKernel` (pointer-array form, avoiding the buffer-size
+  validation pitfall documented in N1), and verifies 1 M-element result
+  bit-identically.
+
+- **Gate sbatch**: `snapshot/recipe/redirect_cuda_smoke.sbatch` — raw-smoke gate
+  (build → ldd check → control run → 2 × preload run → four boolean checks).
+
+- **Torch EDF + gate**: `snapshot/recipe/snapshot-torch-cuda.toml` (pinned
+  sglang container) + `snapshot/recipe/_redirect_torch_smoke.py` +
+  `snapshot/recipe/redirect_cuda_torch.sbatch` — cross-container gate: step 1
+  builds the `.so` in the devel container, step 2 runs the torch smoke with
+  `LD_PRELOAD` in the sglang container, twice, and checks determinism + overhead.
+
+## CMake plan gap fixed in-task
+
+The N2 plan's CMake for `cuda_redirect_smoke` omitted `libcudart`. The smoke
+binary calls `cudaMalloc`/`cudaMemcpy`/`cudaDeviceSynchronize` (CUDA runtime
+API), which `snapshot_configure_cuda` does not pull in (it links only driver +
+nvrtc). The implementer added `find_library(SNAPSHOT_CUDART_LIBRARY cudart ...)
++ target_link_libraries` for the smoke target only. The interposer `.so` itself
+is unaffected — it uses only the driver API inline and remains cudart-free,
+preserving cross-container portability.
+
+## Gate results — raw smoke (bristen, job 72055, node `nid002324`)
+
+```
+--- linkage (expect libcuda only; no libstdc++/libnvrtc DT_NEEDED) ---
+	linux-vdso.so.1
+	libcuda.so.1 => /usr/lib/x86_64-linux-gnu/libcuda.so.1
+	libc.so.6
+	/lib64/ld-linux-x86-64.so.2
+	libm.so.6
+	libdl.so.2
+	libpthread.so.0
+	librt.so.1
+--- control: no preload (driver-chosen addresses) ---
+addrs A=0x7f0195200000 B=0x7f0195600000 C=0x7f0195a00000 OUT=0x7f0199400000
+verify OK (0 mismatches)
+--- run 1: fixed-base redirect ---
+[redirect-cuda] pid=84653 FIXED_VMM base=0x600000000000 size=8GiB fixed_base_honored=1
+addrs A=0x600000000000 B=0x600000400000 C=0x600000800000 OUT=0x600000c00000
+verify OK (0 mismatches)
+--- run 2: fixed-base redirect ---
+[redirect-cuda] pid=84663 FIXED_VMM base=0x600000000000 size=8GiB fixed_base_honored=1
+addrs A=0x600000000000 B=0x600000400000 C=0x600000800000 OUT=0x600000c00000
+verify OK (0 mismatches)
+---
+run1: addrs A=0x600000000000 B=0x600000400000 C=0x600000800000 OUT=0x600000c00000
+run2: addrs A=0x600000000000 B=0x600000400000 C=0x600000800000 OUT=0x600000c00000
+ctrl: addrs A=0x7f0195200000 B=0x7f0195600000 C=0x7f0195a00000 OUT=0x7f0199400000
+REDIRECT_DETERMINISTIC=1
+COMPUTE_OK=1
+CONTROL_DIFFERS=1
+FIXED_BASE_HONORED=1
+```
+
+All four gate conditions satisfied. `ldd` confirms `libstdc++` and `libnvrtc`
+are absent from `libsnapshot_redirect_cuda.so` DT_NEEDED.
+
+## Gate results — torch gate (bristen, job 72057)
+
+Cross-container run: build in `nvidia/cuda:12.6.3-devel`, smoke in the sglang
+container (torch 2.9.1+cu129, CUDA 12.9.1). Total wall time ~27 s including
+container spin-up and two torch cold starts.
+
+```
+--- torch preflight ---
+2.9.1+cu129 12.9
+--- ldd .so under torch container (expect no "not found") ---
+LDD_OK=1
+--- baseline (no preload) timing ---
+[torch-smoke] PTRS a=0x7f3920000000 b=0x7f3920400000 d=0x7f3936000000 e=0x7f3932000000
+[torch-smoke] SUM=3145728.0 EXPECT=3145728.0 COMPUTE=OK
+--- run 1: fixed-base redirect ---
+[redirect-cuda] pid=95977 FIXED_VMM base=0x600000000000 size=8GiB fixed_base_honored=1
+[torch-smoke] PTRS a=0x600000000000 b=0x600000400000 d=0x600001600000 e=0x600003600000
+[torch-smoke] SUM=3145728.0 EXPECT=3145728.0 COMPUTE=OK
+--- run 2: fixed-base redirect ---
+[redirect-cuda] pid=96002 FIXED_VMM base=0x600000000000 size=8GiB fixed_base_honored=1
+[torch-smoke] PTRS a=0x600000000000 b=0x600000400000 d=0x600001600000 e=0x600003600000
+[torch-smoke] SUM=3145728.0 EXPECT=3145728.0 COMPUTE=OK
+--- determinism + overhead ---
+run1: [torch-smoke] PTRS a=0x600000000000 b=0x600000400000 d=0x600001600000 e=0x600003600000
+run2: [torch-smoke] PTRS a=0x600000000000 b=0x600000400000 d=0x600001600000 e=0x600003600000
+TORCH_DETERMINISTIC=1
+TORCH_COMPUTE_OK=1
+BASE_S=2.90012 PRELOAD_S=2.77232 STARTUP_OVERHEAD_S=-0.1278
+STARTUP_OVERHEAD_OK=1
+```
+
+All four gate conditions pass: `LDD_OK=1`, `TORCH_DETERMINISTIC=1`,
+`TORCH_COMPUTE_OK=1`, `STARTUP_OVERHEAD_OK=1`.
+
+The startup overhead measured −0.13 s (preloaded run was marginally faster in
+this single sample). This is within single-sample measurement noise for a ~3 s
+process; it confirms overhead is sub-second and far under the 10 s budget — it
+is not reported as a precise figure.
+
+No GLIBC mismatch: the `.so` compiled against CUDA 12.6 libs loaded cleanly
+into the sglang container built on a newer Ubuntu base (CUDA 12.9.1).
+
+## CUDA ↔ HIP redirect equivalence
+
+| Concern | HIP redirect (beverin) | CUDA redirect (bristen) |
+|---|---|---|
+| Default mode | `fixed_vmm_mode` toggle (`SNAPSHOT_FIXED_VMM=1`) | Fixed-base VMM **is the default** (`cuMemSetAccess` reliable on A100) |
+| Fallback | `hipMalloc`-arena (`SNAPSHOT_REDIRECT_ARENA=1`) | `cudaMalloc`-arena (`SNAPSHOT_REDIRECT_ARENA=1`) |
+| VA reserve | `hipMemAddressReserve(0x600000000000)` | `cuMemAddressReserve(0x600000000000)` |
+| Physical alloc | `hipMemCreate` | `cuMemCreate` |
+| Map / access | `hipMemMap` / `hipMemSetAccess` | `cuMemMap` / `cuMemSetAccess` |
+| Intercepted symbols | `hipMalloc`/`hipFree`/`hipMallocAsync`/`hipFreeAsync` | `cudaMalloc`/`cudaFree`/`cudaMallocAsync`/`cudaFreeAsync` |
+| `.so` linkage | libamdhip64 only | libcuda only (`-static-libstdc++`) |
+| Exported accessors | `snapshot_redirect_region_base/size` | `snapshot_redirect_region_base/size` (name-identical) |
+
+Default polarity is inverted relative to HIP: fixed-base is opt-in on the HIP
+side (AMD's `hipMemSetAccess` was unreliable on some ROCm versions) but is the
+CUDA default (N1 proved `cuMemSetAccess` reliable on A100, and the torch gate
+confirms it works under the real torch CUDA allocator).
+
+## Regression invariant
+
+The HIP backend, core, headers, existing preload interposers, and N1 CUDA backend
+are unchanged. Verified by:
+```
+git diff --stat "$(git merge-base main HEAD)" -- \
+  snapshot/csrc/backends \
+  snapshot/csrc/preload/snapshot_redirect.cpp \
+  snapshot/csrc/preload/snapshot_record.cpp \
+  snapshot/csrc/preload/snapshot_preload.cpp \
+  snapshot/csrc/core snapshot/include \
+  snapshot/csrc/cli/main.cpp snapshot/csrc/cli/workload.cpp \
+  snapshot/csrc/cli/redirect_smoke.cpp
+# output: (empty)
+```
+N2 adds only `snapshot_redirect_cuda.cpp`, `cuda_redirect_smoke.cpp`, the CUDA
+interposer branch of `snapshot/CMakeLists.txt`, and the three recipe files
+(`redirect_cuda_smoke.sbatch`, `redirect_cuda_torch.sbatch`,
+`snapshot-torch-cuda.toml`, `_redirect_torch_smoke.py`) plus this RESULTS
+section. N3 (vLLM-CUDA TP=4 deploy + baseline cold-start measurement) is the
+next milestone.
