@@ -68,5 +68,12 @@ sleep 2
 kill -9 "$SERVER_PID" 2>/dev/null
 pkill -9 -f 'vllm serve' 2>/dev/null
 pkill -9 -f 'VLLM_RPC' 2>/dev/null
-sleep 3
+pkill -9 -f 'from multiprocessing' 2>/dev/null
+# Wait until the CUDA context is fully released by the driver (kill -9 is not instant).
+for i in $(seq 1 30); do
+  free_mib=$(nvidia-smi --query-gpu=memory.free --format=csv,noheader,nounits 2>/dev/null | sort -n | head -1 || echo 0)
+  if [ "${free_mib:-0}" -gt 60000 ]; then
+    echo "[coldstart] GPU freed: min_free=${free_mib}MiB (after ${i}x2s)"; break; fi
+  sleep 2
+done
 echo "[coldstart] MODE=$MODE done=$(date +%T)"
