@@ -23,3 +23,7 @@ remote_dir = "/capstor/scratch/cscs/xyao/glm-47-flash-sglang-xzyao"
 [profiles.bristen-snapshot]
 host = "bristen"
 remote_dir = "/capstor/scratch/cscs/xyao/snapshot-cuda"
+
+[profiles.glm-47-flash-bristen-vllm]
+host = "bristen"
+remote_dir = "/capstor/scratch/cscs/xyao/glm-47-flash-vllm-cuda"
