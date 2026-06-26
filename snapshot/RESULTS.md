@@ -1490,5 +1490,119 @@ N2 adds only `snapshot_redirect_cuda.cpp`, `cuda_redirect_smoke.cpp`, the CUDA
 interposer branch of `snapshot/CMakeLists.txt`, and the four recipe files
 (`redirect_cuda_smoke.sbatch`, `redirect_cuda_torch.sbatch`,
 `snapshot-torch-cuda.toml`, `_redirect_torch_smoke.py`) plus this RESULTS
-section. N3 (vLLM-CUDA TP=4 deploy + baseline cold-start measurement) is the
-next milestone.
+section. N3 (vLLM-CUDA TP=4 deploy + baseline cold-start measurement) is complete;
+N4 (skip-capture cold-start win) is the next milestone.
+
+---
+
+# `snapshot` — N3: vLLM-CUDA cold-start baseline (bristen, A100)
+
+Validated 2026-06-26 on CSCS bristen (`-A a-infra02`, `--partition=normal`),
+4× A100-SXM4-80GB (`sm_80`, driver 550.54.15), x86_64. Container:
+`vllm/vllm-openai@sha256:6d8429e38e3747723ca07ee1b17972e09bb9c51c4032b266f24fb1cc3b22ed8f`
+(resolved from `:latest`, vLLM 0.23.0). The `glm4_moe_lite` architecture fix
+requires transformers ≥ 5.12.1; the image ships 5.12.0, so the EDF overlays
+`pip install transformers==5.12.1` at container start (pip cache on capstor —
+adds <5 s, no vLLM conflict, confirmed in G1).
+
+Model: **GLM-4.7-Flash** (~56 GiB, 48 shards) at
+`/capstor/store/cscs/swissai/infra01/hf_models/models/zai-org/GLM-4.7-Flash`.
+Serving config: **TP=4, gpu-memory-utilization 0.90, max-num-seqs 256,
+max-model-len 131072**, default CUDA graph capture sizes.
+CUDA compile/Triton cache: `/capstor/scratch/cscs/xyao/glm-47-flash-vllm-cuda`
+(separate from beverin's ROCm caches).
+Driver: `snapshot/recipe/vllm_coldstart_cuda.sbatch` + `_vllm_coldstart_cuda.sh`
+(builds on the N2 recipe harness; no LD_PRELOAD, no redirect — the baseline
+runs clean with no interposer contamination).
+
+## Gate results
+
+**G1 — probe + first-run cold-cache (job 72065):**
+transformers overlay 5.12.0 → 5.12.1 succeeded; vLLM 0.23.0 loaded GLM-4.7-Flash
+at TP=4; `PROBE READY at 183s`; completion "The capital of France is → **Paris. The**";
+`PROBE_CORRECT=1`.
+
+The 183s first-run READY is the **cold-cache** figure (first JIT/Triton compile).
+It is reported here for completeness; it is **not** the baseline. The warm-cache
+figure below is the reproducible, cache-independent cold start.
+
+**G2 — warm-cache reproducibility (job 72073):**
+
+| Run | COLD_START_SECONDS |
+|-----|-------------------|
+| graph run #1 | **110 s** |
+| graph run #2 | **110 s** |
+| `--enforce-eager` (no capture) | **78 s** |
+
+Both graph runs are identical at 110 s. The **110 s warm-cache graph** figure is
+the N3 baseline.
+
+## Per-phase breakdown (graph mode, warm cache)
+
+| Phase | Duration | Notes |
+|-------|----------|-------|
+| Weight loading (14.3 GiB, 48 shards) | **20.4 s** | **Non-eliminable** Lustre I/O |
+| Init engine (profile + KV alloc + warmup) | **38.1 s** | compilation 6.4 s |
+| Maximum concurrency | — | 8.19× at 131,072 tokens/request |
+| CUDA graph capture — PIECEWISE (51 graphs) | **~18 s** | tqdm bar |
+| CUDA graph capture — FULL (35 graphs) | **~5 s** | tqdm bar |
+| Residual (NCCL init, tokenizer, API server) | **~29 s** | |
+| **Total READY (warm cache)** | **110 s** | |
+
+Eager-mode breakdown for comparison:
+
+| Phase | Duration |
+|-------|----------|
+| Weight loading | 18.7 s |
+| Init engine (no compile/capture) | 6.9 s |
+| Residual | ~52 s |
+| **Total READY (eager, warm cache)** | **78 s** |
+
+**Eliminable target:** weight loading (~20 s) is non-eliminable I/O. The
+**~32 s capture phase** (graph READY 110 s − eager READY 78 s) is the
+eliminable cost that N4 (skip-capture) and N5 (snapshot/restore) attack.
+
+## G4 — capture-cost characterization (honest framing)
+
+Three cross-checks were attempted; the result is one solid wall-clock measure
+plus a corroborating loop-timing read, with the third method excluded.
+
+**Wall-clock delta (the gold-standard measure):** graph READY − eager READY =
+110 s − 78 s = **~32 s eliminable**. Of that 32 s, the tqdm capture-loop bars
+account for **~23 s** (PIECEWISE 18 s + FULL 5 s); the remaining ~9 s is
+graph-mode init overhead (the graph-vs-eager init-engine difference).
+
+**Per-graph `VLLM_CG_INSTRUMENT` (job 72075):** 86 graphs × 4 TP workers
+instrumented; `PER_GRAPH_CAPTURE_MS_SUM = 31.4 s`. **This 31.4 s is a
+4-TP-worker aggregate-work sum — the workers capture concurrently, so it is NOT
+eliminable wall-clock.** Per-worker graph-recording wall-clock ≈ 7.85 s
+(31.4 s / 4). It confirms the capture mechanism and bounds per-worker recording
+time. Its numeric proximity to 32 s is coincidental — they measure different
+things (serial aggregate vs. wall-clock delta). Do not read them as two
+independent confirmations of the same quantity.
+
+**`VLLM_CG_SKIP_CAPTURE=measure` (Measure 3):** this probe **drifted** on
+vLLM 0.23.0 (capture work moved inside `_warmup_and_capture`; the measure-mode
+no-op yields 0.0 s and crashes inference) and is **excluded** from the baseline.
+
+Net: G4's three intended cross-checks reduce to **one solid wall-clock measure
+(~32 s eager-delta) plus ~23 s tqdm capture-loop corroboration**; the per-graph
+instrumentation confirms mechanism and per-worker cost (~7.85 s); the skip-capture
+probe drifted and is excluded.
+
+## Regression invariant
+
+N3 adds only `deploy/glm-47-flash-bristen-vllm/**` (EDF + probe + README),
+`snapshot/recipe/{_vllm_coldstart_cuda.sh,_vllm_measure_cuda.sh,
+vllm_coldstart_cuda.sbatch}`, the vendor-neutral `snapshot/recipe/cginst/` and
+`cginst_skip/` instrumentation, `.rcc/config.toml` (new rcc profile), and this
+RESULTS section. No C++ source, no HIP/CUDA backend, no N1/N2 recipe files, no
+beverin deploy were modified:
+
+```
+git diff --stat f7318f6 HEAD -- \
+  snapshot/csrc deploy/glm-47-flash-bristen deploy/glm-47-flash-beverin
+# output: (empty)
+```
+
+N4 (skip-capture cold-start win on bristen) is the next milestone.
