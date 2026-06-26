@@ -1539,15 +1539,18 @@ the N3 baseline.
 
 ## Per-phase breakdown (graph mode, warm cache)
 
+Note: vLLM's `init engine … took` line **includes** CUDA-graph capture and
+compilation (capture runs inside model warmup) — capture is a **sub-component of
+init engine, not a separate additive phase**. The rows below are non-overlapping.
+
 | Phase | Duration | Notes |
 |-------|----------|-------|
 | Weight loading (14.3 GiB, 48 shards) | **20.4 s** | **Non-eliminable** Lustre I/O |
-| Init engine (profile + KV alloc + warmup) | **38.1 s** | compilation 6.4 s |
-| Maximum concurrency | — | 8.19× at 131,072 tokens/request |
-| CUDA graph capture — PIECEWISE (51 graphs) | **~18 s** | tqdm bar |
-| CUDA graph capture — FULL (35 graphs) | **~5 s** | tqdm bar |
-| Residual (NCCL init, tokenizer, API server) | **~29 s** | |
-| **Total READY (warm cache)** | **110 s** | |
+| Init engine (profile + KV + capture + warmup) | **38.1 s** | incl. CUDA-graph capture ~23 s (PIECEWISE 51 graphs/~18 s + FULL 35 graphs/~5 s) and compilation 6.4 s |
+| Residual (NCCL init, tokenizer, API server) | **~51 s** | mode-independent bring-up |
+| **Total READY (warm cache)** | **110 s** | 20.4 + 38.1 + 51 |
+
+vLLM also reports Maximum concurrency 8.19× at 131,072 tokens/request (startup log).
 
 Eager-mode breakdown for comparison:
 
@@ -1555,12 +1558,17 @@ Eager-mode breakdown for comparison:
 |-------|----------|
 | Weight loading | 18.7 s |
 | Init engine (no compile/capture) | 6.9 s |
-| Residual | ~52 s |
+| Residual (NCCL init, tokenizer, API server) | ~52 s |
 | **Total READY (eager, warm cache)** | **78 s** |
 
-**Eliminable target:** weight loading (~20 s) is non-eliminable I/O. The
-**~32 s capture phase** (graph READY 110 s − eager READY 78 s) is the
-eliminable cost that N4 (skip-capture) and N5 (snapshot/restore) attack.
+The graph and eager residuals agree (~51 s vs ~52 s) — residual is mode-independent
+(NCCL/tokenizer/API bring-up), which confirms capture lives **inside** init engine
+rather than being an additive phase.
+
+**Eliminable target:** weight loading (~20 s) is non-eliminable I/O. The **~32 s
+capture phase** (graph READY 110 s − eager READY 78 s; the capture loop itself is
+~23 s, the remainder graph-mode compile/warmup overhead) is the eliminable cost
+that N4 (skip-capture) and N5 (snapshot/restore) attack.
 
 ## G4 — capture-cost characterization (honest framing)
 
