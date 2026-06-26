@@ -1442,10 +1442,13 @@ STARTUP_OVERHEAD_OK=1
 All four gate conditions pass: `LDD_OK=1`, `TORCH_DETERMINISTIC=1`,
 `TORCH_COMPUTE_OK=1`, `STARTUP_OVERHEAD_OK=1`.
 
-The startup overhead measured −0.13 s (preloaded run was marginally faster in
-this single sample). This is within single-sample measurement noise for a ~3 s
-process; it confirms overhead is sub-second and far under the 10 s budget — it
-is not reported as a precise figure.
+The startup overhead measured −0.13 s (the preloaded run was marginally faster
+in this single sample; the no-preload baseline runs first, so warm-cache
+ordering biases the comparison). This is within single-sample measurement noise
+for a ~3 s process: it confirms the interposer adds no *catastrophic* startup
+cost — the M3i +271 s class the eager-gate design guards against — far under the
+10 s budget, not a precise sub-second figure. The redirect's only one-time cost
+is the region reserve+create+map+set_access, which is genuinely sub-second.
 
 No GLIBC mismatch: the `.so` compiled against CUDA 12.6 libs loaded cleanly
 into the sglang container built on a newer Ubuntu base (CUDA 12.9.1).
@@ -1484,7 +1487,7 @@ git diff --stat "$(git merge-base main HEAD)" -- \
 # output: (empty)
 ```
 N2 adds only `snapshot_redirect_cuda.cpp`, `cuda_redirect_smoke.cpp`, the CUDA
-interposer branch of `snapshot/CMakeLists.txt`, and the three recipe files
+interposer branch of `snapshot/CMakeLists.txt`, and the four recipe files
 (`redirect_cuda_smoke.sbatch`, `redirect_cuda_torch.sbatch`,
 `snapshot-torch-cuda.toml`, `_redirect_torch_smoke.py`) plus this RESULTS
 section. N3 (vLLM-CUDA TP=4 deploy + baseline cold-start measurement) is the

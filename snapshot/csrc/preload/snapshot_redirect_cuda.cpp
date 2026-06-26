@@ -19,9 +19,12 @@
 //
 // Hooks the CUDA runtime malloc family (cudaMalloc/cudaFree/cudaMallocAsync/
 // cudaFreeAsync) — what torch's caching allocator uses — mirroring the AMD
-// redirect's four hipMalloc-family hooks. A size-bucketed free list keeps the
-// returned addresses reproducible while memory stays bounded under a real
-// engine's repeated alloc/free.
+// redirect's four hipMalloc-family hooks. A size-bucketed free list keeps memory
+// bounded under a real engine's repeated alloc/free; the returned addresses stay
+// reproducible *iff the engine issues an identical alloc/free order across cold
+// starts* — that order is what makes reuse decisions (and therefore the served
+// VAs) reproducible. Validated for the synthetic smoke and a torch init; a full
+// serving engine's order-stability is an open question carried into N5.
 
 #include <cuda.h>
 #include <cuda_runtime_api.h>
@@ -325,6 +328,11 @@ bool release(void* ptr) {
     g_free.emplace(it->second, va);  // keep resident, available for reuse
     g_live.erase(it);
   }
+  // A double-free (va is in the region but no longer in g_live) intentionally
+  // falls through to here and returns true WITHOUT re-adding to g_free:
+  // re-adding an already-freed VA would hand the same address to two future
+  // allocations and corrupt the deterministic reuse order. Silently absorbing
+  // it keeps the host application alive.
   return true;
 }
 
