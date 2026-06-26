@@ -46,6 +46,38 @@ function(snapshot_configure_hip target)
   # so it is compiled by the plain CXX compiler rather than hipcc. The HIP
   # headers then require the platform to be selected explicitly.
   target_compile_definitions(${target} PRIVATE __HIP_PLATFORM_AMD__=1)
+  snapshot_detect_launch_ex()
+  if(SNAPSHOT_HAS_LAUNCH_EX_CACHE)
+    target_compile_definitions(${target} PRIVATE SNAPSHOT_HAS_LAUNCH_EX=1)
+  endif()
+endfunction()
+
+# Detect whether the ROCm headers define hipLaunchConfig_t / HIP_LAUNCH_CONFIG
+# (added in newer HIP; absent from some ROCm 6.3 builds). The recorder guards
+# the hipLaunchKernelExC / hipDrvLaunchKernelEx interposers behind this define.
+include(CheckCXXSourceCompiles)
+function(snapshot_detect_launch_ex)
+  if(DEFINED SNAPSHOT_HAS_LAUNCH_EX_CACHE)
+    return()
+  endif()
+  set(SNAPSHOT_HAS_LAUNCH_EX_CACHE OFF CACHE INTERNAL "")
+  if(SNAPSHOT_HIP_INCLUDE_DIR)
+    set(CMAKE_REQUIRED_INCLUDES "${SNAPSHOT_HIP_INCLUDE_DIR}")
+    set(CMAKE_REQUIRED_DEFINITIONS "-D__HIP_PLATFORM_AMD__=1")
+    check_cxx_source_compiles("
+      #include <hip/hip_runtime_api.h>
+      hipLaunchConfig_t cfg;
+      int main() { (void)cfg; return 0; }
+    " SNAPSHOT_LAUNCH_EX_TEST)
+    if(SNAPSHOT_LAUNCH_EX_TEST)
+      set(SNAPSHOT_HAS_LAUNCH_EX_CACHE ON CACHE INTERNAL "")
+      message(STATUS "Snapshot: hipLaunchConfig_t available (SNAPSHOT_HAS_LAUNCH_EX)")
+    else()
+      message(STATUS "Snapshot: hipLaunchConfig_t absent (guarding launch-ex interposers)")
+    endif()
+    set(CMAKE_REQUIRED_INCLUDES "")
+    set(CMAKE_REQUIRED_DEFINITIONS "")
+  endif()
 endfunction()
 
 function(snapshot_configure_cuda target)
@@ -55,11 +87,18 @@ function(snapshot_configure_cuda target)
   find_library(SNAPSHOT_CUDA_DRIVER_LIBRARY
     NAMES cuda
     HINTS "$ENV{CUDA_HOME}/lib64" "/usr/local/cuda/lib64" "/usr/lib/x86_64-linux-gnu")
+  find_library(SNAPSHOT_NVRTC_LIBRARY
+    NAMES nvrtc
+    HINTS "$ENV{CUDA_HOME}/lib64" "/usr/local/cuda/lib64" "/usr/lib/x86_64-linux-gnu")
 
   if(NOT SNAPSHOT_CUDA_INCLUDE_DIR OR NOT SNAPSHOT_CUDA_DRIVER_LIBRARY)
     message(FATAL_ERROR "SNAPSHOT_BACKEND=CUDA requires cuda.h and libcuda")
   endif()
+  if(NOT SNAPSHOT_NVRTC_LIBRARY)
+    message(FATAL_ERROR "SNAPSHOT_BACKEND=CUDA requires libnvrtc for synthetic kernel compilation")
+  endif()
 
   target_include_directories(${target} PRIVATE "${SNAPSHOT_CUDA_INCLUDE_DIR}")
-  target_link_libraries(${target} PRIVATE "${SNAPSHOT_CUDA_DRIVER_LIBRARY}")
+  target_link_libraries(${target} PRIVATE
+    "${SNAPSHOT_CUDA_DRIVER_LIBRARY}" "${SNAPSHOT_NVRTC_LIBRARY}")
 endfunction()

@@ -4,6 +4,11 @@
 
 namespace snapshot {
 
+// Establishes the device-0 primary CUDA context once (driver API requires
+// explicit cuInit + a current context). Defined in cuda_vmm.cpp; called by every
+// CudaBackend entry point that issues driver calls.
+Status ensure_cuda_context();
+
 class CudaBackend final : public GpuBackend {
  public:
   Vendor vendor() const override { return Vendor::kCuda; }

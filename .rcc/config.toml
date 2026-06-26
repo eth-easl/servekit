@@ -11,3 +11,15 @@ remote_dir = "/capstor/scratch/cscs/xyao/glm-47-flash-vllm"
 [profiles.glm-52-fp8]
 host = "beverin"
 remote_dir = "/capstor/scratch/cscs/xyao/glm-52-fp8-vllm"
+
+[profiles.glm-47-flash-bristen]
+host = "bristen"
+remote_dir = "/capstor/scratch/cscs/xyao/glm-47-flash-sglang"
+
+[profiles.glm-47-flash-bristen-xzyao]
+host = "bristen"
+remote_dir = "/capstor/scratch/cscs/xyao/glm-47-flash-sglang-xzyao"
+
+[profiles.bristen-snapshot]
+host = "bristen"
+remote_dir = "/capstor/scratch/cscs/xyao/snapshot-cuda"

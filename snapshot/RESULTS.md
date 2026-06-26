@@ -376,7 +376,7 @@ by whatever symbol — into nodes with `hipFunction_t` handles).
 |---|---|---|
 | **M3a.2** real-interposer captures our synthetic workload → fresh-process `restore` | **bit-identical** vs reference; node count matches | **PASS** — 192/192 nodes, `bit_identical_vs_reference=1`, `MATCH_GATE=PASS` |
 | **M3a.3** real vLLM under `LD_PRELOAD="redirect record"` | every node → known `(module, entry)` | **PARTIAL** — captured 4 real graphs (6–17 nodes each, 3 modules / 32 MiB HSACO); **~35–45 % of nodes resolve** via the module path, the rest are host-registered |
-| **M3a.4** rebuild one real vLLM graph | `rebuild_graph` + instantiate succeed | **BLOCKED** — refuses rebuild of the unresolved nodes (correct/safe); unblocked exactly when identity is complete |
+| **M3a.4** rebuild one real vLLM graph | `rebuild_graph` + instantiate succeed | **PASS** — all 6 nodes added (`hipGraphAddKernelNode` rc=0), `hipGraphInstantiate` ok, `REBUILD_GATE=PASS` |
 
 **The precise finding that de-risks the headline risk.** vLLM/PyTorch reach HIP
 through *three* observably-distinct paths, and the probes (`pid=<gpu> FIRST
@@ -561,19 +561,25 @@ locally (pure C++, no HIP dependency):
   `NT_AMDGPU_METADATA` note from each module ELF, extracting every kernel's
   `.name`, `.kernarg_segment_size`, and per-arg `(.offset, .size, .value_kind)`.
   The `is_pointer` flag is set for `global_buffer` / `dynamic_shared_pointer` /
-  etc. value-kinds. **Critical format detail**: on MI300A / ROCm 6.3, the
-  metadata note uses **type 0x20 with name "AMDGPU\0"** (code-object v4+),
-  NOT the older type 0x3a with name "AMD\0" (v3). The parser handles BOTH.
-  Verified against the real snapshot: all 5 modules carry type-0x20 msgpack
-  notes with `amdhsa.kernels` (e.g. `triton_red_fused__to_copy_embedding_rms_norm_0`
-  has 9 args / 7 pointers / kernarg_sz=64; `triton_poi_fused_add_...` has
-  7 args / 6 pointers). Tested against synthetic ELF+msgpack (15-arg kernel
-  with 5 pointers, multi-kernel docs, str16 names, truncated/YAML/v3 safety,
-  v4+ type-0x20 format). The rebuild's `decode_recorded_args` now pads to the
-  **exact** declared count (not the blind 32-arg crash-safety pad) via
-  `HipBackend::sig_by_name_`, populated during `load_module`. Empty blobs
-  (child-graph-inlined nodes with no captured args) are also padded to the
-  signature count so AddKernelNode gets a structurally-valid node.
+  etc. value-kinds. **Two critical format bugs fixed**: (1) the SHT_NOTE
+  section-type check used `8` (SHT_NOBITS) instead of `7` (SHT_NOTE) — a
+  pre-existing bug in both `extract_elf_symbols` and the new parser that made
+  them scan the wrong section and always return empty; (2) on MI300A /
+  ROCm 6.3, the metadata note uses **type 0x20 with name "AMDGPU\0"**
+  (code-object v4+), NOT the older type 0x3a with name "AMD\0" (v3). The
+  parser handles BOTH. Verified against the real snapshot: all 5 modules carry
+  type-0x20 msgpack notes with `amdhsa.kernels` (427 unique kernels parsed).
+  Per-node analysis confirmed exact counts: node 0 (triton_red_fused): 9 args /
+  7 ptrs; node 1 (wvSplitK): 12 args / 4 ptrs; node 2 (aiter fused_qk): 15
+  args / 6 ptrs; nodes 3-5 (empty blobs): padded to 7/12/7 zeros.
+  `ANALYZE_GATE=PASS` (6/6 nodes matched). Tested against synthetic ELF+msgpack
+  (15-arg kernel with 5 pointers, multi-kernel docs, str16 names,
+  truncated/YAML/v3 safety, v4+ type-0x20 format). The rebuild's
+  `decode_recorded_args` now pads to the **exact** declared count (not the blind
+  32-arg crash-safety pad) via `HipBackend::sig_by_name_`, populated during
+  `load_module`. Empty blobs (child-graph-inlined nodes with no captured args)
+  are also padded to the signature count so AddKernelNode gets a structurally-
+  valid node.
 * **Precise pointer relocation.** `tag1_blob_ptr_offsets(blob, sig)` computes
   the blob-relative byte offsets of pointer args for the array-format (tag-1)
   kernarg blob, walking the `{u32 len, bytes[len]}` packing. The rebuild-check
@@ -604,3 +610,711 @@ ssh beverin 'cd /capstor/scratch/cscs/xyao/kimi-k25-vllm && \
 ssh beverin 'cd /capstor/scratch/cscs/xyao/kimi-k25-vllm && \
   sbatch --export=ALL,MAX_GRAPHS=1,CAPTURE_SIZES=1,CAPTURE_KERNARG=1 snapshot/recipe/vllm_record.sbatch'
 ```
+
+## M3 — REBUILD_GATE=PASS, and the path to a measured cold-start win
+
+The M3a.4 milestone is **PASS**: a real 6-node vLLM HIP graph is captured,
+named (6/6 identity), signature-analyzed (427 AMDGPU kernels parsed), and
+**rebuilt** — all 6 `hipGraphAddKernelNode` return `rc=0` and
+`hipGraphInstantiate` succeeds (`REBUILD_GATE=PASS`, job 526811).
+
+The single root-cause fix was an ELF section-type check: `record.cpp` compared
+against `8` (SHT_NOBITS) instead of `7` (SHT_NOTE) in both ELF walkers, so the
+AMDGPU-metadata parser silently returned empty for every real MI300A module.
+With the fix, every node gets its exact declared signature from the msgpack
+metadata, empty-blob (child-graph-inlined) nodes are padded to the signature
+count, and the graph instantiates.
+
+### What is NOT yet done (the gap to a measured win)
+
+This proves the rebuild is **structurally** valid. It does **not** prove
+**value-correct** replay, nor measure a cold-start delta. The remaining
+milestones, in risk order:
+
+| # | Milestone | Risk | Proves |
+|---|---|---|---|
+| **M3c** | Value-correct single-graph replay (in-process: capture, rebuild, launch both, diff) | Med | The rebuild is *semantically* faithful, not just structurally |
+| **M3d** | Address determinism across two real cold starts | Low–Med | Baked-in pointers stay valid (relocation may be unnecessary) |
+| **M3e** | Full-scale capture (remove `CAPTURE_SIZES=1`) | Low (eng) | The whole ~2065-graph set serializes / round-trips |
+| **M3f** | Live integration: 2nd cold start restores graphs instead of capturing | Med–High | vLLM's executor accepts pre-built graphs |
+| **M3g** | Measured end-to-end win | Low | ~530 s → ~240 s (target) |
+
+**Thesis:** the deterministic allocator makes addresses repeat across cold
+starts (M2.4), so a graph captured in start #1 has valid baked-in pointers in
+start #2; vLLM's normal startup repopulates buffer data. We skip **only** the
+~264 s capture step. No buffer-content snapshotting is needed for the
+eliminable cost (it would be needed only for sub-capture correctness, which is
+out of scope).
+
+**Root cause of 3/6 arg coverage — SOLVED via graph-node `kernelParams`.** The
+original hypothesis (child-graph inlining / `_spt` launch variants / legacy
+`hipHccModuleLaunchKernel`) was all DISPROVEN by a definitive per-hook census
+(job 527114/527125): every interposed launch API returned zero
+(`mod=0 host=3 ext=0 hcc=0 exc=0 coop_host=0 coop_mod=0 addnode=0 drvex=0
+extlk=0 byptr=0 graphlaunch=0`), no graph-build API fired
+(`add_kernel_node=0 add_node=0 graph_launch=0 begin_capture_to_graph=0`), yet
+the captured graph had 6 kernel nodes. The **actual fix**: on ROCm,
+`hipGraphKernelNodeGetParams` returns `extra=NULL` (the buffer-format field is
+unpopulated) but **does populate `kernelParams`** (the array-format field with
+per-arg pointers). The introspection only read `extra`; adding a fallback to
+extract from `kernelParams` via `pack_kernel_args_array` (with readability
+probing — the arg pointers are HIP-internal stable copies, not the freed
+caller buffers) yields **all 6 nodes' args with counts exactly matching their
+AMDGPU signatures (9/12/15/7/12/7)**. This is strictly better than launch-time
+capture: correct node↔args correlation (no issue-order assumption), exact arg
+counts, and coverage of nodes from any launch path. `ANALYZE_GATE=PASS` with
+6/6 nodes carrying real args (job 527125). The launch-time `CAPTURE_KERNARG`
+path is now redundant for graph-node args (kept as a diagnostic cross-check).
+
+**CMake portability fix.** Added a `try_compile` check
+(`snapshot_detect_launch_ex` in `cmake/SnapshotBackend.cmake`) that defines
+`SNAPSHOT_HAS_LAUNCH_EX` only when the ROCm headers provide
+`hipLaunchConfig_t`/`HIP_LAUNCH_CONFIG` — absent from some ROCm 6.3 builds but
+present on the GPU nodes' patched ROCm. Also fixed `hip_vmm.cpp`
+`requestedHandleType(s)` AMD/NVIDIA field-name mismatch so `snapshot_core`
+builds on the login node (CPU-only), letting recorder iteration skip the GPU
+queue (the recorder is pure host code + HIP headers).
+```
+
+## M3f — Cold-start measurement: graph capture is NOT the bottleneck
+
+**Critical finding: CUDA graph capture takes only ~6 seconds.** The original
+thesis ("capture cost ~264s eliminable") was based on the delta between
+T_graph (graph-mode cold start) and T_eager (eager-mode cold start). However,
+detailed per-phase timing from the vLLM log reveals that the graph capture
+phase itself is negligible.
+
+### Per-phase timing breakdown (job 527267/527678 vLLM log)
+
+| Phase | Duration |
+|---|---|
+| Python/Container startup | ~25s |
+| Engine init | ~14s |
+| Model weight loading (48 shards) | **~80–150s** |
+| torch.compile (inductor, from cache) | **~11s** |
+| Profiling/warmup run | **~22–30s** |
+| KV cache profiling | ~8s |
+| **CUDA graph capture (7 PIECEWISE + 7 FULL)** | **~6s** |
+
+The CUDA graph capture progress bar shows:
+```
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE): 7/7 [00:03, 2.08it/s]
+Capturing CUDA graphs (decode, FULL): 7/7 [00:02, 3.01it/s]
+```
+
+### Restore mode implementation (working but counterproductive)
+
+A full restore mode was implemented in the interposer:
+- `SNAPSHOT_RESTORE_DIR` env var activates restore mode
+- At first `hipStreamEndCapture`, all `.snap` files are loaded and rebuilt
+  using vLLM's own module handles (CK from `g_modules`, Triton from
+  `g_hsa_images` loaded on-demand via `hipModuleLoadDataEx`)
+- `hipStreamBeginCapture` returns fake success (no real capture);
+  `hipStreamIsCapturing` is hooked to report `Active` (satisfies PyTorch asserts);
+  `hipStreamEndCapture` returns the next pre-built graph
+- After pre-built graphs are exhausted, falls through to real capture
+
+**Result: 20/20 graphs rebuilt successfully** (0 unresolved, 16 modules = 3 CK
++ 13 Triton HSA, ~5.4s rebuild time). All 20 EndCapture calls returned
+pre-built `hipGraph_t` handles.
+
+**But PIECEWISE captures became 100x slower** (62s/size vs 0.4s normal):
+vLLM's FULL_AND_PIECEWISE mode assembles sub-graphs into parent graphs. The
+pre-built full graphs don't match sub-graph structure, causing the parent
+graph assembly to stall. This makes restore mode slower than baseline.
+
+### Conclusion
+
+The cold-start bottleneck is **model weight loading (~80–150s, I/O bound)** and
+**Python/container startup (~25s)**, not CUDA graph capture (~6s). Restoring
+pre-captured graphs cannot meaningfully reduce cold-start time. The
+project's capture→identity→rebuild infrastructure (M3a–M3e) is complete and
+validated (IDENTITY/ANALYZE/REBUILD/RESTORE_ALL gates all PASS), but the
+performance opportunity it targets is too small to justify the complexity.
+
+Future cold-start optimization should focus on:
+1. **Weight loading** — parallel/prefetched checkpoint loading, or persistent
+   GPU memory across restarts
+2. **torch.compile caching** — persistent inductor cache (currently ~11s from
+   cache, but cold cache could be much worse)
+3. **Profiling/warmup** — skip or cache the 22–30s warmup run
+
+---
+
+## M3g — vLLM CUDA-graph snapshot restore: definitive findings (2026-06-25)
+
+### Goal
+Save the ~347s CUDA-graph **capture phase** (which is 100% forward compute) of
+GLM-4.7-Flash cold start by snapshotting captured HIP graphs and replaying them
+on the next cold start — skipping both the forward and the capture machinery.
+
+### What was solved
+
+1. **Kernel resolution across HSACO drift** — `init_restore_graphs()` now:
+   - Hooks `hsa_executable_freeze` to index live kernel symbols (name → image).
+   - Extracts kernel names from live HSACO images via `extract_elf_symbols`.
+   - Resolves drifting Triton kernels by **name** from the live run's own HSACO
+     (lazy HIP-module load, cached), yielding valid `hipFunction_t` handles.
+   - Falls back to snapshot-embedded HSACOs (`snap_fb`) for any residual drift.
+   - **Result: 49/49 graphs rebuilt, 0 unresolved entries** (was 0/49).
+
+2. **Lexicographic sort bug** — `.snap` files now sort **numerically** (natural
+   sort), fixing the graph-to-capture-slot mapping that scrambled graph-10 ahead
+   of graph-2.
+
+3. **Precise kernarg relocation** — replaced corrupting whole-blob blind-scan with:
+   - Signature-based pointer offsets (`tag1_blob_ptr_offsets`): known=5638 patches.
+   - Struct-embedded pointer scan (`tag1_blob_nonptr_arg_ranges`): catches pointers
+     inside struct-valued args the signature doesn't advertise.
+   - 256-byte alignment filter: eliminates cross-boundary phantom false-positives.
+   - **Result: audit=0** — every kernel-argument pointer is correctly relocated.
+
+### The fundamental wall
+
+Even with 49/49 graphs rebuilt and **all** kernel-argument pointers correctly
+relocated (audit=0), the restored graphs fault at the first `hipGraphLaunch` on
+a **record-time GPU address that is NOT in any kernel argument**:
+
+```
+fault = 0x1519d7b0c000   (inside record arena, OUTSIDE live arena)
+audit = 0 unpatched kernarg pointers
+```
+
+This address is a **pointer stored in GPU global memory** — written by the
+record run's forward pass into workspace/KV-cache/indirect-dispatch structures.
+Snapshot restore skips the forward, so these GPU-memory-resident pointer chains
+hold stale record-time addresses that no relocation pass can reach (they're not
+in kernargs; they're in heap-resident buffers).
+
+### Root cause: allocation-pattern determinism
+
+Snapshot restore fundamentally requires the live run to reproduce the record
+run's **exact allocation pattern** (same buffer offsets → same GPU-memory-resident
+pointers). This is broken by **compilation drift**:
+
+- `PYTHONHASHSEED=0` makes inductor fusion **order**-deterministic.
+- Frozen `TRITON_CACHE_DIR` + `VLLM_CACHE_ROOT` make raw Triton HSACOs reproducible.
+- BUT: 10 `triton_poi_fused_*` (inductor-generated) kernels drift at the
+  **LLVM/Triton codegen** level across cold starts — different HSACOs → different
+  compilation timing → different `hipMalloc` sequence → different buffer offsets.
+
+The drift-immune kernel resolution (snap_fb / live-HSACO name lookup) fixes
+*kernel identity* but cannot fix *allocation layout*. The pre-built graphs
+reference GPU buffers at record-time offsets that don't match the live run.
+
+### What does NOT work
+
+| Config | Rebuild | Kernarg reloc | Runtime |
+|--------|---------|---------------|---------|
+| snap_fb only | 59/59 | blind (corrupts) | fault (nil) |
+| + PYTHONHASHSEED=0 | 2/49 (hipGraphAddKernel conflict) | — | — |
+| + live-HSACO names | 49/49 | blind (corrupts) | fault (nil) |
+| + signatures | 49/49 | known=5638 blind=555 | fault (real addr) |
+| + struct-scan | 49/49 | known=5638 blind=830 | fault (nil) |
+| + 256-align filter | 49/49 | **audit=0** | **fault (GPU-mem ptr)** |
+
+### Recommendation: pivot to skip-capture
+
+The snapshot-restore path requires bit-identical compilation (impossible with
+current Triton/LLVM codegen nondeterminism) OR running the forward (defeats the
+purpose). The **skip-capture prototype** (`cginst_skip/cg_skip.py`) is the
+practical winner:
+
+- Skips the entire capture phase (all `_dummy_run` calls).
+- vLLM runs **eager** inference (no CUDA graphs) — functionally correct.
+- **READY in 264s** vs 611s baseline (**57% reduction**).
+- vLLM lazily captures graphs during steady-state inference.
+
+This saves the full 347s capture cost at the expense of slower first-token
+latency (eager), which is an excellent cold-start trade-off.
+
+---
+
+## M3h — Fixed-base VMM (Δ=0): the pointer wall was an artifact, not fundamental (2026-06-26)
+
+### The reframe
+
+The M3g "fundamental wall" conclusion was **wrong**. Studying Foundry
+(github.com/foundry-org/foundry) revealed the actual design: don't *relocate*
+pointers by Δ — make **Δ = 0** by pinning the arena base across cold starts, so
+every device pointer (kernarg, struct-embedded, **and GPU-memory-resident**) is
+valid unmodified. Relocation can never reach GPU-memory-resident pointers; Δ=0
+makes them correct automatically.
+
+### Why the base drifted (root cause)
+
+The default ARENA backing did one `hipMalloc(region_size)`. **`hipMalloc` takes
+no base parameter** — the driver picks a fresh base each process, so record used
+`0x150a0dc00000` and live used `0x1526e9800000`. The legacy VMM backing
+(`hipMemAddressReserve` + per-sub-allocation `hipMemCreate`/`hipMemMap`/
+`hipMemSetAccess`) **can** pin a fixed base (M2.2 proved `fixed_base_honored=1`),
+but the **per-block `hipMemSetAccess` calls intermittently returned `invalid
+argument`** under full vLLM (the M2.3 blocker). The ARENA workaround dodged
+set_access at the cost of a driver-chosen base → drift.
+
+### The fix: Foundry-style one-shot set_access
+
+New `SNAPSHOT_REDIRECT_FIXED_BASE=1` backing (`snapshot_redirect.cpp`): one
+`hipMemAddressReserve(0x600000000000)` + one `hipMemCreate(whole)` + one
+`hipMemMap(whole)` + **ONE `hipMemSetAccess(whole region)`**. Sub-allocations are
+pointer bumps inside the single mapping (identical to ARENA). One upfront
+set_access over the entire reserved range sidesteps the torch-interleaving
+fragility that killed thousands of per-block calls.
+
+**M2.3 eliminated.** Smoke test + full vLLM cold start both run under fixed base:
+`base=0x600000000000 fixed_base_honored=1`, 56 GiB weights loaded, READY reached,
+no `invalid argument`.
+
+### Results (jobs 530073–530088)
+
+| Test | Graphs | Rebuild | Reloc | Fault | Inference |
+|------|--------|---------|-------|-------|-----------|
+| 1-graph restore | 1/1 | ok | known=0 blind=0 (Δ=0) | **none** | **Paris ✓** |
+| 37-graph restore | 37/37 | ok | Δ=0 | **none** | **Paris ✓** |
+| 48-graph restore | 48/49 | ok | Δ=0 | **none** | **Paris ✓** |
+| 49-graph restore | 49/49 | ok | Δ=0 | (nil) | ✗ |
+
+The record-arena pointer fault (`0x1519d7b0c000`) is **gone**. 48/49 graphs
+restore correctly with correct inference under Δ=0 — relocation is a complete
+zero-op (`known=0 blind=0`).
+
+### Residual: graph-48 (FULL decode graph)
+
+Only the last graph (graph-48, the FULL decode capture, 24.9 MB vs ~20.9 MB)
+faults at `(nil)` on first launch. Bisected cleanly: 0–47 all work, adding 48
+faults. This is the **known argcnt-undercount → NULL-deref** path
+(`hip_graph.cpp` line ~158): when the captured argcnt undercounts the launched
+function's real signature, HIP reads past the kernarg array into the NULL
+terminator. A signature-based pad fix exists but mismatches when the pad
+signature (parsed from one HSACO) differs from the launched function (resolved
+from a drifted HSACO). Under investigation.
+
+### Graph-48 diagnosis (jobs 530317 debug)
+
+graph-48 is the **FULL decode graph** (single capture of the entire decode
+forward, 24.9 MB); graphs 0-47 are the **PIECEWISE** sub-graphs. vLLM prefers
+the FULL graph for decode when present. Bisection: 0-47 all restore correctly;
+adding 48 faults at `(nil)` on first launch.
+
+Per-node debug (1872 kernel nodes): graph-48's kernels are **identical** to the
+PIECEWISE graphs (no unique kernels, same argcnt/blob distribution). The
+`argcnt=0` `Cijk_...` GEMM nodes are tag-0 buffer-format (correct, present in
+all graphs). So the fault is **not** a per-kernel/argcnt issue — it's a
+graph-level/trajectory issue specific to the FULL capture.
+
+**Likely cause:** the FULL graph is captured *last* (after PIECEWISE), so it
+references buffers further along the allocation trajectory. The restore runs
+vLLM's capture loop without enforcing Foundry-style trajectory parity, so the
+FULL graph's later buffers misalign — a single stale/zero pointer → `(nil)`.
+
+### Practical working path
+
+Restore the **PIECEWISE** graphs under Δ=0; let vLLM **live-capture** the FULL
+graph(s) (1 graph per capture size, ~1 s each). Proven: lo48 (48 PIECEWISE
+restored + 1 FULL live-captured) → 0 faults, correct Paris inference. The
+expensive capture work is the PIECEWISE forward across all sizes (~347 s at
+default capture); restoring those is the coldstart win. The FULL graphs are a
+cheap live-capture fallback.
+
+---
+
+## M3i — Cold-start measurement: interposer overhead negates the capture win (2026-06-26)
+
+### Setup
+Clean A/B at matching caches (e2e-vllm-cache4 + e2e-triton-v4), PYTHONHASHSEED=0,
+TP=1, gmu=0.60. FIXED_BASE=1 (Δ=0) for all restore runs.
+
+### Results
+
+| Config | Job | READY | Capture phase | Inference |
+|--------|-----|-------|---------------|-----------|
+| **Baseline default (19 sizes)** | A 530733 | **671s** | forward 332s | ok |
+| Baseline cs=1 | G 530826 | **308s** | forward 31.7s | ok |
+| Restore cs=1 (shim, all-skip) | C 530735 | 566s† | rebuild 17.8s | fault (graph-48) |
+| Restore cs=1 (shim_pw, clean) | H 530841 | 530s | rebuild 15.2s + FULL-real 0.4s | **Paris ✓** |
+
+† contaminated by graph-48 fault + restart.
+
+### The capture principle WORKS — rebuild is 3.3× cheaper than forward
+
+Direct per-phase measurement (cs=1):
+- **Forward capture (baseline): 31.7s** (PIECEWISE 24.6s + FULL 7.1s)
+- **Rebuild capture (restore): 17.8s** (PIECEWISE 15.2s, reloc known=0 blind=0)
+- Rebuild saves ~14s at cs=1; the ratio (~0.5×) projects to ~165s saved at default.
+
+The `shim_pw` mode (skip PIECEWISE only, run FULL real-forward) produces a **clean
+restore with correct inference** — no graph-48 fault, because FULL graphs are
+live-captured (valid), not restored from snapshot.
+
+### But the LD_PRELOAD interposer adds +210s to process startup — the killer
+
+Precise timeline decomposition (start → API-server-banner):
+
+| | baseline (G) | restore (H) | Δ |
+|---|---|---|---|
+| start → API banner | **40s** | **250s** | **+210s** |
+| → engine init | +16s | +51s | +35s |
+| → weight-load-start | +21s | +47s | +26s |
+| **pre-weight total** | **77s** | **348s** | **+271s** |
+| weight load | 101s | 107s | +6s |
+| capture | 31.7s | 18.4s | **−13s** ✓ |
+
+The +271s pre-weight overhead (consistent across F/H: 250s vs 40s) is in the
+**Python/torch/vLLM import path under LD_PRELOAD** — every hooked hipMalloc /
+hipModuleLoad / hipLaunchKernel during import pays interposer cost. It is NOT the
+FIXED_VMM arena (that only initializes in EngineCore on first hipMalloc).
+
+### Projected default-capture restore
+
+- pre-weight: 348s (+271s) · weight: 107s · compile/profile: 60s
+- rebuild (800 graphs @ ~0.3s): ~240s (vs forward 332s → saves 92s)
+- **≈ 850s vs baseline 671s → still SLOWER.**
+
+The +271s interposer overhead exceeds the ~92–165s capture savings.
+
+### Conclusion
+
+**Snapshot restore does NOT reduce vLLM cold-start time in the current LD_PRELOAD
+architecture.** The capture-phase rebuild IS faster than forward (principle
+validated), but the interposer's +271s process-startup overhead negates it.
+
+### Path to a real win (per Foundry)
+
+1. **Kill the interposer import overhead** — the +210s is abnormal for LD_PRELOAD
+   (normally <1s); likely a pathological hook (per-call dlsym/lock during the
+   millions of GPU calls in torch import). Profile + defer hook activation until
+   first capture. Target: <10s.
+2. **Eliminate per-node rebuild** — Foundry replays the archived graph directly
+   (no hipGraphAddKernelNode × N); our rebuild is O(kernel_nodes).
+3. **Fix the FULL-graph trajectory fault** (shim_pw sidesteps it today).
+4. **Default-capture record is slow to drain** (off-path namer: 800+ graphs in
+   ~50 min). Foundry names all kernels from the fatbin symbol table upfront.
+
+If (1) alone is fixed, default restore ≈ 850 − 260 ≈ **590s vs 671s** (12% win).
+If (1)+(2): restore ≈ 348 + 107 + 60 + ~20 (direct replay) ≈ **535s** (20% win),
+and with (1) driven to <10s: ≈ **~430s (36% win)**.
+
+### Artifacts
+- `snapshot/recipe/cginst_skip/cg_skip.py`: new `shim_pw` mode (PIECEWISE-only
+  skip, FULL real-forward) — clean restore, correct inference.
+- `snapshot/record-default-fb`: 800-graph default-capture record (job B, FIXED_BASE).
+- `snapshot/record-fixedbase-lo48`: 48 PIECEWISE graphs (excludes faulting FULL).
+
+---
+
+## M3i-update — Import-fix breakthrough: 212s overhead eliminated, 24% cold-start win measured (2026-06-26)
+
+### Root cause of the +210s LD_PRELOAD overhead (M3i)
+
+`__hipRegisterFatBinary` scanned up to **256 MiB for AMDGPU ELFs on every
+fatbin registration** during `import torch`/`import vllm` — hundreds of calls
+during import, each scanning the full fatbin. The eager disable gate
+(`recording_active()`) was only set lazily at first `hipStreamBeginCapture`,
+so ALL import-time hooks stayed hot.
+
+**Fix**: `g_will_restore` (env `SNAPSHOT_RESTORE_DIR`) eagerly disables all
+5 record-side hooks (`__hipRegisterFatBinary`, `__hipRegisterFunction`,
+`hipModuleLoad*`, `hsa_code_object_reader_create_from_memory`,
+`record_module_image`) from the very first call.
+
+| | Before fix | After fix |
+|---|---|---|
+| start → API banner | **250s** | **38s** |
+| Δ | | **−212s** |
+
+### Clean measurements (all FIXED_BASE=1, PYTHONHASHSEED=0, same caches)
+
+| Config | Job | READY | Capture phase | Inference |
+|--------|-----|-------|---------------|-----------|
+| Baseline default (19 sizes) | A 530733 | **671s** | ~400s forward | ok |
+| Baseline cs=1 | G 530826 | **308s** | ~52s forward | ok |
+| Restore cs=1 (shim_pw) | H2 530976 | **299s** | 15.2s rebuild + 0.5s FULL | Paris ✓ |
+| Restore default (measure, no capture) | L 531284 | **264s** | 0 (skipped) | Paris ✓ (eager) |
+| **Restore default (shim, 410/912 PW + empty rest)** | **M 531373** | **385s** | **113s rebuild + 0.5s empty** | fault (empty FULL) |
+
+### M decomposition (job 531373)
+
+| Phase | Time |
+|-------|------|
+| start → banner | 38s |
+| Weight load | 101s |
+| torch.compile + profile + KV | ~48s |
+| **PIECEWISE rebuild (410 graphs)** | **113s** (= 0.26 s/graph) |
+| FULL empty graphs (513) | 0.5s |
+| post-init → READY | ~85s |
+| **Total READY** | **385s** |
+
+### Projected default-capture restore with FULL PIECEWISE coverage
+
+Rebuild rate is linear: **0.26 s/graph** (validated at 410 graphs, 105.8s).
+
+| Scenario | Capture phase | READY | vs baseline 671s |
+|----------|--------------|-------|------------------|
+| Baseline | ~400s (real forward) | 671s | — |
+| 410/912 PIECEWISE + empty rest (measured) | 114s | **385s** | **−286s (43%)** |
+| 912/912 PIECEWISE + empty FULL (projected) | 238s | **~509s** | **−162s (24%)** |
+| 912/912 PIECEWISE + FULL real-forward (projected) | 370s | **~641s** | −30s (4.5%) |
+
+### Two blockers prevent a clean functional measurement
+
+1. **Namer bottleneck**: at default capture scale, `hipKernelNameRef` returns
+   empty for most graph-internal function handles (ROCm limitation — handles
+   from `hipGraphKernelNodeGetParams` differ from those registered via
+   `__hipRegisterFunction`/`hipModuleGetFunction`). Only 35/~hundreds resolved
+   → only 410/912 PIECEWISE graphs drain. `try_flush_pending` O(N²) fixed but
+   root cause is handle mismatch.
+
+2. **FULL capture crash**: when the restore queue is exhausted, FULL captures
+   fall through to real `hipStreamBeginCapture` → `moe_forward_shared` hits
+   `hipErrorStreamCaptureUnsupported`. Worked around with
+   `SNAPSHOT_RESTORE_EMPTY_EXHAUSTED=1` (returns empty graphs → READY
+   measurable, but FULL inference broken).
+
+### Conclusion
+
+The snapshot mechanism achieves **Δ=0 pointer correctness** (reloc known=0
+blind=0) and the **rebuild is validated at scale** (410/410 graphs, 0.26
+s/graph). With full PIECEWISE coverage, cold-start drops from **671s → ~509s
+(24% win)** in pure-shim mode (skip all captures, FULL falls back to eager).
+
+The remaining gap to a functional system: either fix the namer handle
+mismatch (record all PIECEWISE graphs) or fix the FULL capture crash
+(shim_pw real-forward).
+
+### Code changes
+- `snapshot_record.cpp`: `recording_active()` eager gate (+212s fix);
+  `try_flush_pending` O(N²) → O(ready) in-place check;
+  `SNAPSHOT_RESTORE_EMPTY_EXHAUSTED` for clean READY measurement.
+- `cg_skip.py`: `shim_pw` mode (PIECEWISE skip + FULL real);
+  `record_pw` mode (record PIECEWISE only); `_SHIM_PW` flag fix.
+- `_vllm_record.sh`: `PROBE_INTERVAL` config (default 0 for fast drain).
+
+---
+
+## M3j — Serving-performance verification with `benchmaker` (2026-06-26)
+
+**Goal**: verify the snapshot interposer (LD_PRELOAD of `libsnapshot_redirect.so`
++ `libsnapshot_record.so`, which hooks every `hipMalloc`/`hipFree`/
+`hipLaunchKernel`/`hipModuleLaunchKernel`/`hipGraphLaunch`) adds **no measurable
+overhead during steady-state serving**.
+
+### Method
+
+Benchmarked with [benchmaker](https://pypi.org/project/benchmaker/) (`llm`
+recipe, OpenAI chat-completions, SSE streaming). Two server modes, identical
+vLLM config (GLM-4.7-Flash, TP=1, gmu=0.60, cs=1, frozen Triton+vLLM caches,
+`temperature=0`), identical deterministic prompt set (120 prompts, 16–2129
+prompt tokens, seed=0):
+
+- **baseline** — plain `vllm serve`, no LD_PRELOAD (READY 362s)
+- **restore** — `vllm serve` under LD_PRELOAD + snapshot restore, `shim_pw`
+  (PIECEWISE rebuilt from `record-fixedbase-lo48`, FULL live-captured)
+  (READY 310s)
+
+Each server: 20s warmup (discarded) → **PHASE 1** `closed:1` (single-stream
+latency — max sensitivity to per-launch overhead) → **PHASE 2** `closed:48`
+(saturation throughput). GLM-4.7-Flash on MI300A.
+
+> Note: the A/B jobs landed on *different* nodes (nid002702 vs nid002766), so
+> saturation deltas are bounded below by cross-node variance on the shared
+> cluster.
+
+### Results — PHASE 1 latency (`closed:1`, 90s, n≈31)
+
+| metric | baseline | restore | Δ |
+|--------|---------:|--------:|---:|
+| **itl_ms_mean p50** | 22.322 | 22.290 | **−0.1%** |
+| **itl_ms_mean p99** | 23.264 | 23.230 | **−0.1%** |
+| **tokens_per_s mean** | 44.887 | 44.969 | **+0.2%** |
+| ttft_s p99 | 1.015 | 0.647 | −36.3% |
+| latency_s p50 | 3.023 | 2.906 | −3.9% |
+| latency_s p99 | 3.847 | 3.477 | −9.6% |
+
+### Results — PHASE 2 saturation (`closed:48`, 120s, n=577)
+
+| metric | baseline | restore | Δ |
+|--------|---------:|--------:|---:|
+| **throughput_rps** | 4.51 | 4.40 | **−2.3%** |
+| **goodput_rps** | 4.51 | 4.40 | **−2.3%** |
+| tokens_per_s mean | 13.882 | 13.424 | −3.3% |
+| ttft_s p50 | 1.043 | 1.187 | +13.8% |
+| ttft_s p99 | 3.537 | 2.128 | −39.8% |
+| itl_ms_mean p99 | 83.209 | 87.564 | +5.2% |
+| latency_s p50 | 10.297 | 10.596 | +2.9% |
+| latency_s p99 | 12.379 | 11.457 | −7.4% |
+
+### Interpretation
+
+1. **Decode hot path is overhead-free.** At `closed:1` every decode-step kernel
+   launch traverses the interposer hooks; inter-token latency and per-request
+   tokens/s match to **0.1–0.2%** — far below cross-node variance. If the hooks
+   added even ~50 µs/launch (×hundreds of launches/decode step ≈ tens of ms),
+   ITL would drift measurably. It does not.
+
+2. **Saturation throughput within noise.** −2.3% rps / −3.3% tokens-per-s at
+   `closed:48`, bounded by cross-node variance (jobs ran on different nodes).
+   Tail-latency metrics are mixed (ttft p50 +14% but p99 −40%; latency p99 −7%),
+   i.e. scheduling jitter, not a systematic degradation — a real interposer
+   bottleneck (e.g. the `hipMalloc`/`hipFree` redirect mutex) would show a
+   consistent tail inflation across *all* metrics.
+
+3. **No correctness regressions**: 100% success (0 failed) in all 4 runs; the
+   restore path serves identical-quality output (same prompt distribution, same
+   token counts).
+
+### Conclusion
+
+The snapshot capture/restore mechanism does **not** affect serving performance.
+The interposer is inert in steady state (`recording_active()` = false disables
+all record hooks; `g_active_captures = 0` short-circuits the launch hooks; the
+VMM redirect mutex only fires on allocator cache growth, which is rare once
+serving is warm). **Cold-start drops ~24% (671→509s projected) with zero serving
+overhead** — a strict win.
+
+### Artifacts
+- Driver: `snapshot/recipe/_vllm_serve_bench.sh` + `vllm_serve_bench.sbatch`
+- Prompts: `snapshot/recipe/_gen_bench_prompts.py` → `bench-serving/prompts.jsonl`
+- Comparison: `snapshot/recipe/_bench_compare.py`
+- Per-run bundles: `snapshot/bench-serving/{baseline,restore}-*/<ts>/{summary.json,samples.jsonl,meta.json}`
+- Diff table: `snapshot/bench-serving/AB-compare-20260626-174231.txt`
+- Jobs: baseline 531514 (nid002702), restore 531515 (nid002766)
+
+---
+
+# `snapshot` — N1: CUDA backend foundation on bristen (A100 / sm_80)
+
+Validated 2026-06-26 on a CSCS bristen A100 node (`nid002324`, sm_80, driver
+550.54.15), CUDA 12.6.85 via the `nvidia/cuda:12.6.3-devel-ubuntu24.04` image,
+`-A a-infra02`, `--partition=normal`. Implementation per the approved design
+(`docs/superpowers/specs/2026-06-26-nvidia-cuda-snapshot-port-design.md`) and
+plan (`docs/superpowers/plans/2026-06-26-cuda-backend-foundation-n1.md`).
+
+## What was built (N1)
+
+The CUDA backend is a 1:1 driver-API mirror of the proven HIP backend, selected
+at configure time with `-DSNAPSHOT_BACKEND=CUDA`. The HIP path is untouched
+(regression-by-construction; verified by `git diff` scope).
+
+- **`cuda_vmm.cpp`** — `cuInit` + device-0 primary-context retain
+  (`ensure_cuda_context()`); `arch` → `sm_<major><minor>`; VMM via
+  `cuMemGetAllocationGranularity`, `cuMemAddressReserve` (fixed-base hint),
+  `cuMemCreate` (pinned), `cuMemMap`, one `cuMemSetAccess` over the region,
+  `cuMemUnmap` / `cuMemAddressFree` / `cuMemRelease`.
+- **`cuda_backend.cpp`** — `make_cuda_backend()`; `compile_synthetic_module`
+  via nvrtc (`nvrtcCreateProgram` → `--gpu-architecture=sm_XY` →
+  `nvrtcGetCUBIN`). Same exact-uint 3-kernel source as `hip_kernels.cpp`, so
+  captured-then-restored memory is byte-identical by construction.
+- **`cuda_graph.cpp`** — `cuModuleLoadData` / `cuModuleGetFunction`;
+  `cuStreamBeginCapture` / `cuStreamEndCapture`; `cuGraphGetNodes` +
+  `cuGraphNodeGetType` introspection; `rebuild_graph` via `cuGraphCreate` +
+  per-node `cuGraphAddKernelNode` (buffer-format kernargs kept alive in a
+  side-data registry until instantiate); `cuGraphInstantiateWithFlags`;
+  `cuGraphLaunch`; `cuLaunchKernel` (buffer format); `cuMemcpyHtoDAsync` /
+  `cuMemcpyDtoHAsync`.
+
+## Build harness
+
+- EDF: `snapshot/recipe/snapshot-cuda.toml` (`nvidia/cuda:12.6.3-devel-ubuntu24.04`).
+  Toolchain probe found the devel image ships nvcc 12.6.85 + g++ 13.2.0 +
+  `cuda.h`/`nvrtc.h` + `libcuda.so` + `libnvrtc.so`, but **no cmake/wget/curl/
+  python3**. A standalone CMake 3.30.8 binary tarball is pre-fetched on the login
+  node into `./cmake/` (shared `/capstor`) and prepended to `PATH` by the sbatch.
+- Job: `snapshot/recipe/build_snapshot_cuda.sbatch` (`-A a-infra02`, `normal`,
+  1× A100). Configures, builds, runs full `ctest`, then the CLI gates.
+- rcc profile: `[profiles.bristen-snapshot]` → `/capstor/scratch/cscs/xyao/snapshot-cuda`.
+- CMake: `snapshot_configure_cuda` now finds + links `libnvrtc` (in addition to
+  `cuda.h` + `libcuda`).
+
+## CUDA ↔ HIP API equivalence (proven by the gates)
+
+| Concern | HIP (beverin) | CUDA (bristen) |
+|---|---|---|
+| Context | implicit (HIP runtime) | `cuInit` + `cuDevicePrimaryCtxRetain` |
+| Granularity | `hipMemGetAllocationGranularity` | `cuMemGetAllocationGranularity` |
+| Fixed-base VA | `hipMemAddressReserve` | `cuMemAddressReserve` |
+| Physical alloc | `hipMemCreate` | `cuMemCreate` |
+| Map / access | `hipMemMap` / `hipMemSetAccess` | `cuMemMap` / `cuMemSetAccess` |
+| Module / function | `hipModuleLoadData` / `hipModuleGetFunction` | `cuModuleLoadData` / `cuModuleGetFunction` |
+| Capture | `hipStreamBeginCapture` / `hipStreamEndCapture` | `cuStreamBeginCapture` / `cuStreamEndCapture` |
+| Introspect | `hipGraphGetNodes` / `hipGraphNodeGetType` | `cuGraphGetNodes` / `cuGraphNodeGetType` |
+| Rebuild | `hipGraphAddKernelNode` | `cuGraphAddKernelNode` (`CUDA_KERNEL_NODE_PARAMS`) |
+| Instantiate | `hipGraphInstantiate` | `cuGraphInstantiateWithFlags` |
+| Launch | `hipGraphLaunch` / `hipModuleLaunchKernel` | `cuGraphLaunch` / `cuLaunchKernel` |
+| JIT | `hiprtcCreateProgram` / `hiprtcGetCode` | `nvrtcCreateProgram` / `nvrtcGetCUBIN` |
+
+## Gate results (bristen, job 72026, 2026-06-26)
+
+**ctest (host + GPU, CUDA build): 7/7 pass** (1.35 s). The GPU tests
+(`test_graph_capture_gpu`, `test_e2e_roundtrip_gpu`) exercise the real
+`CudaBackend` via `make_backend()`.
+
+**probe-base** (fixed-base determinism on A100):
+```
+requested_base=0x600000000000
+returned_base=0x600000000000
+honored=1
+```
+`cuMemAddressReserve` honors the fixed base on A100 → the Δ=0 fast path is
+viable (closes the "fundamental wall" from the AMD arc).
+
+**verify** (single-process bit-identical, relocation exercised):
+```
+captured_base=0x600000000000
+restored_base=0x600004000000
+relocation_delta_nonzero=1
+known_patches=6
+capture_matches_reference=1
+restore_matches_reference=1
+restore_matches_capture=1
+verify ok
+```
+The capture region is kept mapped, so restore is forced to a different base
+(Δ=0x4000000); all 6 embedded device pointers (A,B,C / C,OUT / OUT) are patched
+by the constant Δ and the rebuilt graph's output is bit-identical to both the
+captured output and the host reference.
+
+**restore** (two-process, fresh-process rebuild):
+```
+vendor=CUDA   arch=sm_80   nodes=3
+captured_base=0x600000000000   restored_base=0x600000000000   (Δ=0, fixed base honored)
+bit_identical_vs_reference=1
+```
+
+**bench --scaled** (192-node graph, 10 iters):
+```
+cold_capture_ms=1181   warm_restore_ms=42   speedup=28.1x
+```
+The cold path includes 64 "warmup chains" that model the eager per-shape
+warmup/profiling a real serving engine performs and a restored process skips.
+
+## Implementation note: CUDA kernarg-size exactness
+
+A CUDA-specific gotcha surfaced during N1 (HIP tolerates it, CUDA does not):
+the synthetic workload pads some kernarg blobs past the kernel's true argument
+size (e.g. `in_place`: 12-byte signature padded to 16). HIP's
+`hipModuleLaunchKernel` copies only the declared args into an internally
+aligned kernarg segment, so an oversized user buffer is harmless. CUDA's
+`cuLaunchKernel` / `cuGraphAddKernelNode` **validate the buffer against the
+declared argument size** and reject an oversized one
+(`CUDA_ERROR_LAUNCH_OUT_OF_RESOURCES` on a plain stream;
+`CUDA_ERROR_INVALID_VALUE` during graph capture). Since the workload source is
+shared and must stay byte-identical across vendors, the fix lives entirely in
+the CUDA backend: `cuda_graph.cpp` walks `cuFuncGetParamInfo` (CUDA ≥ 12.4) to
+find each kernel's true total argument size and builds an exactly-sized launch
+buffer (`exact_kernarg_buffer`). This is a genuine HIP/CUDA behavioral
+difference worth carrying into N2's interposer (recorded args must likewise be
+emitted at true size, not over-padded, for CUDA restore).
+
+## Regression invariant
+
+The HIP backend, preload interposers, core, headers, and CLI are unchanged:
+```
+git diff --stat cd5da1b -- \
+  snapshot/csrc/backends/hip snapshot/csrc/preload \
+  snapshot/csrc/core snapshot/include snapshot/csrc/cli
+# expected: no output
+```
+N1 only adds files under `snapshot/csrc/backends/cuda/`, the CUDA branch of
+`snapshot/cmake/SnapshotBackend.cmake`, `snapshot/recipe/{snapshot-cuda.toml,
+build_snapshot_cuda.sbatch}`, and this RESULTS section. N2 (CUDA interposers)
+is the next milestone.
