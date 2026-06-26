@@ -30,17 +30,14 @@ while :; do
   if [ "$elapsed" -gt "$DEADLINE" ]; then echo "[measure] DEADLINE ${DEADLINE}s without ready"; break; fi
   sleep 2
 done
-kill "$SERVER_PID" 2>/dev/null; wait "$SERVER_PID" 2>/dev/null
+kill -9 "$SERVER_PID" 2>/dev/null
 pkill -9 -f 'vllm serve' 2>/dev/null; pkill -9 -f 'from multiprocessing' 2>/dev/null; pkill -9 -f 'VLLM_RPC' 2>/dev/null
-# Wait until CUDA contexts are fully released (kill -9 is not instant for large models).
-for i in $(seq 1 30); do
-  free_mib=$(nvidia-smi --query-gpu=memory.free --format=csv,noheader,nounits 2>/dev/null | sort -n | head -1 || echo 0)
-  if [ "${free_mib:-0}" -gt 60000 ]; then
-    echo "[measure] GPU freed: min_free=${free_mib}MiB (after ${i}x2s)"; break; fi
-  sleep 2
-done
+# Brief pause for host-side CUDA context cleanup (separate srun steps ensure GPU is
+# released at container exit; nvidia-smi is not in the enroot container).
+sleep 5
 echo "=== sub-phase breakdown (${RUN_TAG:-graphs}) ==="
 grep -aE "Model loading took|init engine .* took|Maximum concurrency|Application startup complete" "$FULL" | tail -6
 echo "--- capture wall-clock (sum of PIECEWISE+FULL bars) ---"
-grep -aoE "Capturing CUDA graphs \([^)]*\): 100%[^[]*\[[0-9]{2}:[0-9]{2}" "$FULL" | tail -6
+grep -aoE "Capturing CUDA graphs \([^)]*\): 100%[^[]*\[[0-9]{2}:[0-9]{2}" "$FULL" | \
+  awk '/PIECEWISE/{p=$0} /FULL/{f=$0} END{if(p)print p; if(f)print f}'
 echo "[measure] RESULT tag=${RUN_TAG:-graphs} ready=${ready:-NONE}"
