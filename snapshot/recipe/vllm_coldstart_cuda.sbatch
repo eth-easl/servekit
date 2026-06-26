@@ -63,10 +63,20 @@ srun --environment=glm-47-flash-vllm-cuda bash -lc '
   RUN_TAG=eager EXTRA_ARGS=--enforce-eager bash snapshot/recipe/_vllm_measure_cuda.sh
 '
 
-# G4 cross-check: three independent measures of capture-phase cost.
-# Measure 1 (per-graph sum) and Measure 3 (cg_skip total) run here.
-# Measure 2 (graph − eager delta) comes from the Task-2 runs above.
-# All three should agree within a reasonable margin (~32s expected).
+# G4 cross-check: characterize the eliminable capture-phase cost. The three
+# measures are NOT interchangeable — mind the units:
+# Measure 2 (graph - eager delta, ~32s) is the GOLD STANDARD: end-to-end
+#   eliminable wall-clock, from the Task-2 runs above. The capture loop itself
+#   is ~23s (tqdm bars); the remaining ~9s is other graph-mode init overhead.
+# Measure 1 (per-graph sum, below) sums capture_wall_ms across ALL 4 TP workers,
+#   which capture concurrently -> it is AGGREGATE WORK, not wall-clock. Per-worker
+#   recording wall-clock is ~sum/4 (~7.85s). It confirms the capture MECHANISM
+#   (86 graphs x 4 workers) and bounds per-worker recording; it is NOT directly
+#   comparable to the eager-delta (any close numeric match is coincidental).
+# Measure 3 (cg_skip total, below) DRIFTED on vLLM 0.23.0 (capture moved into
+#   _warmup_and_capture; the measure-mode no-op yields 0s + an inference crash)
+#   and is excluded. So the honest result is ONE wall-clock measure (eager-delta)
+#   plus the tqdm capture-loop corroboration. See RESULTS section N3.
 
 echo "=== instrumented: per-graph capture timing (VLLM_CG_INSTRUMENT) ==="
 srun --environment=glm-47-flash-vllm-cuda bash -lc '
