@@ -1498,7 +1498,7 @@ N4 (skip-capture cold-start win) is the next milestone.
 # `snapshot` — N3: vLLM-CUDA cold-start baseline (bristen, A100)
 
 Validated 2026-06-26 on CSCS bristen (`-A a-infra02`, `--partition=normal`),
-4× A100-SXM4-80GB (`sm_80`, driver 550.54.15), x86_64. Container:
+4× A100-SXM4-80GB (`sm_80`), x86_64. Container:
 `vllm/vllm-openai@sha256:6d8429e38e3747723ca07ee1b17972e09bb9c51c4032b266f24fb1cc3b22ed8f`
 (resolved from `:latest`, vLLM 0.23.0). The `glm4_moe_lite` architecture fix
 requires transformers ≥ 5.12.1; the image ships 5.12.0, so the EDF overlays
@@ -1511,7 +1511,7 @@ Serving config: **TP=4, gpu-memory-utilization 0.90, max-num-seqs 256,
 max-model-len 131072**, default CUDA graph capture sizes.
 CUDA compile/Triton cache: `/capstor/scratch/cscs/xyao/glm-47-flash-vllm-cuda`
 (separate from beverin's ROCm caches).
-Driver: `snapshot/recipe/vllm_coldstart_cuda.sbatch` + `_vllm_coldstart_cuda.sh`
+Harness: `snapshot/recipe/vllm_coldstart_cuda.sbatch` + `_vllm_coldstart_cuda.sh`
 (builds on the N2 recipe harness; no LD_PRELOAD, no redirect — the baseline
 runs clean with no interposer contamination).
 
