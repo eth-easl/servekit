@@ -62,3 +62,36 @@ srun --environment=glm-47-flash-vllm-cuda bash -lc '
   pip install --quiet "transformers=='"${TRANSFORMERS_VERSION}"'"
   RUN_TAG=eager EXTRA_ARGS=--enforce-eager bash snapshot/recipe/_vllm_measure_cuda.sh
 '
+
+# G4 cross-check: three independent measures of capture-phase cost.
+# Measure 1 (per-graph sum) and Measure 3 (cg_skip total) run here.
+# Measure 2 (graph − eager delta) comes from the Task-2 runs above.
+# All three should agree within a reasonable margin (~32s expected).
+
+echo "=== instrumented: per-graph capture timing (VLLM_CG_INSTRUMENT) ==="
+srun --environment=glm-47-flash-vllm-cuda bash -lc '
+  set -euo pipefail
+  cd "${DEPLOY_DIR}"
+  PIP_CACHE_DIR="${DEPLOY_DIR}/cache/pip"
+  pip install --quiet "transformers=='"${TRANSFORMERS_VERSION}"'"
+  mkdir -p "${DEPLOY_DIR}/measure-init"
+  VLLM_CG_INSTRUMENT="${DEPLOY_DIR}/measure-init/cg_per_graph.csv" \
+    MODE=graph bash snapshot/recipe/_vllm_coldstart_cuda.sh
+  echo "--- per-graph capture_wall_ms sum ---"
+  awk -F, "NR>1 && \$6!=\"\" {s+=\$6} END{printf \"PER_GRAPH_CAPTURE_MS_SUM=%.0f\n\", s}" \
+    "${DEPLOY_DIR}/measure-init/cg_per_graph.csv" || true
+  echo "--- cg_per_graph.csv row count ---"
+  awk -F, "NR>1" "${DEPLOY_DIR}/measure-init/cg_per_graph.csv" | wc -l || true
+'
+
+echo "=== instrumented: total capture-phase cost (VLLM_CG_SKIP_CAPTURE=measure) ==="
+srun --environment=glm-47-flash-vllm-cuda bash -lc '
+  set -euo pipefail
+  cd "${DEPLOY_DIR}"
+  PIP_CACHE_DIR="${DEPLOY_DIR}/cache/pip"
+  pip install --quiet "transformers=='"${TRANSFORMERS_VERSION}"'"
+  VLLM_CG_SKIP_CAPTURE=measure MODE=graph bash snapshot/recipe/_vllm_coldstart_cuda.sh
+  echo "--- cg_skip output from vllm log ---"
+  grep -E "CAPTURE_PHASE_S|cg_skip|cginst_skip" \
+    "${DEPLOY_DIR}/logs/vllm_coldstart_graph_${SLURM_JOB_ID:-local}.log" || true
+'
