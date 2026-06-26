@@ -23,9 +23,9 @@ PORT="${PORT:-8000}"
 srun --environment=glm-47-flash-vllm-cuda bash -lc '
   set -euo pipefail
   echo "=== transformers overlay (glm4_moe_lite) ==="
-  python -c "import transformers; print(\"pre:\", transformers.__version__)"
+  python3 -c "import transformers; print(\"pre:\", transformers.__version__)"
   pip install --quiet "transformers=='"${TRANSFORMERS_VERSION}"'" || { echo "TRANSFORMERS_OVERLAY_FAILED"; exit 1; }
-  python -c "import transformers; print(\"post:\", transformers.__version__)"
+  python3 -c "import transformers; print(\"post:\", transformers.__version__)"
   echo "=== launch vllm serve TP=4 ==="
   t0=$(date +%s)
   vllm serve "'"${MODEL}"'" --host 127.0.0.1 --port '"${PORT}"' --served-model-name probe \
