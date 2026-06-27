@@ -9,31 +9,19 @@
 #SBATCH --time=00:20:00
 #SBATCH --output=/capstor/scratch/cscs/xyao/snapshot-cuda/logs/%x-%j.out
 
-# N5a Task 1 gate: build cuda_record_smoke, run twice, confirm CHECKSUM is identical.
-# N5a Task 2 gate: build libsnapshot_record_cuda.so, run smoke under the
-#   interposer in record mode, confirm:
-#     (a) CHECKSUM is unchanged (interposer is transparent)
-#     (b) SUMMARY reports "identity: 2 functions (1 fatbin, 1 module)"
-#         i.e. k_add resolved via __cudaRegisterFunction (fatbin path) AND
-#              k_mul resolved via cuModuleGetFunction (module/nvrtc path).
-# N5a Task 3 gate: build libsnapshot_redirect_cuda.so too, run the smoke under
-#   LD_PRELOAD=redirect:record in record mode TWICE into two separate snap dirs,
-#   confirm:
-#     (a) graph-0000.snap is written with 2 kernel nodes + 1 dep edge
-#         (record SUMMARY: recorded: graphs=1 nodes=2 edges=1 blind=0)
-#     (b) the smoke still prints its normal CHECKSUM
-#     (c) the two .snap files are BYTE-IDENTICAL (cmp) — the decisive Δ=0 proof
-#         that recorded kernarg pointers are fixed-base-deterministic
-#     (d) the redirect engaged and pinned the allocations: it prints
-#         passthrough=0 and fixed_base_honored=1.
-#         The smoke allocates d_a/d_out via the RUNTIME cudaMalloc (see
-#         cuda_record_smoke.cpp), which snapshot_redirect_cuda hooks, so the
-#         redirect serves them from its fixed-base region — that is what makes
-#         the recorded kernarg pointers (and the .snap) byte-identical across
-#         runs. (An earlier revision used driver cuMemAlloc, which the redirect
-#         does NOT hook, leaving it inert and the pointer bytes non-deterministic;
-#         the cudaMalloc switch fixed that and mirrors the PyTorch/vLLM caching
-#         allocator path targeted in N5b.)
+# N5a consolidated record→restore driver.
+# Sequence: build → bare-smoke determinism → record-interposer → Δ=0 record (×2) → restore.
+# Emits: N5A_GATES: G1=PASS G2=PASS G3=PASS G4=PASS
+#
+# Gate map:
+#   G1  bit-identical restored output (CHECKSUM_restore == CHECKSUM_record)
+#   G2  capture genuinely skipped in restore run
+#         (restored=1, fallthrough=0, real_begin=0, suppressed=2)
+#   G3  Δ=0 determinism
+#         (passthrough=0 / fixed_base_honored=1 + byte-identical .snap across two record runs)
+#   G4  both identity paths resolved (blind=0; identity: 2 functions, 1 fatbin, 1 module)
+#
+# See snapshot/RESULTS.md §N5a for full gate narrative.
 
 set -euo pipefail
 
@@ -57,31 +45,37 @@ srun --environment=snapshot-cuda \
       -DSNAPSHOT_BACKEND=CUDA \
       -DCMAKE_CUDA_ARCHITECTURES=80
 
-    # Task 1: build smoke binary.
+    # Build: smoke binary + record interposer + redirect interposer.
     cmake --build snapshot/build-cuda -j"${SLURM_CPUS_PER_TASK:-8}" \
-      --target cuda_record_smoke
-
-    # Task 2 + Task 3: build record interposer + the redirect interposer it
-    # composes with (Task 3 runs the smoke under both .so via LD_PRELOAD).
-    cmake --build snapshot/build-cuda -j"${SLURM_CPUS_PER_TASK:-8}" \
-      --target snapshot_record_cuda snapshot_redirect_cuda
+      --target cuda_record_smoke snapshot_record_cuda snapshot_redirect_cuda
 
     SMOKE="$PWD/snapshot/build-cuda/cuda_record_smoke"
     RECORD_SO="$PWD/snapshot/build-cuda/libsnapshot_record_cuda.so"
     REDIRECT_SO="$PWD/snapshot/build-cuda/libsnapshot_redirect_cuda.so"
     ls -l "$SMOKE" "$RECORD_SO" "$REDIRECT_SO"
 
+    # Persistent log paths — no /tmp (diskless compute nodes + reproducibility).
+    LOG1="${DEPLOY_DIR}/logs/smoke-run1.log"
+    LOG2="${DEPLOY_DIR}/logs/smoke-run2.log"
+    LOG_RECORD="${DEPLOY_DIR}/logs/record-interposer.log"
+
+    # -------------------------------------------------------------------
+    # Bare smoke: two determinism-baseline runs (no interposer).
+    # -------------------------------------------------------------------
     echo "--- run 1 ---"
-    "$SMOKE" | tee /tmp/r1.txt
-    echo "exit $?"
+    "$SMOKE" 2>&1 | tee "${LOG1}"; SMOKE_EXIT1="${PIPESTATUS[0]}"
+    echo "smoke-run1 exit=${SMOKE_EXIT1}"
 
     echo "--- run 2 ---"
-    "$SMOKE" | tee /tmp/r2.txt
-    echo "exit $?"
+    "$SMOKE" 2>&1 | tee "${LOG2}"; SMOKE_EXIT2="${PIPESTATUS[0]}"
+    echo "smoke-run2 exit=${SMOKE_EXIT2}"
 
-    echo "--- determinism check (Task 1 gate) ---"
-    CS1=$(grep "^CHECKSUM" /tmp/r1.txt || echo "MISSING")
-    CS2=$(grep "^CHECKSUM" /tmp/r2.txt || echo "MISSING")
+    [ "${SMOKE_EXIT1}" -eq 0 ] && [ "${SMOKE_EXIT2}" -eq 0 ] || \
+      { echo "SMOKE_BARE_FAIL (run1=${SMOKE_EXIT1} run2=${SMOKE_EXIT2})"; exit 1; }
+
+    echo "--- determinism check ---"
+    CS1=$(grep "^CHECKSUM" "${LOG1}" || echo "MISSING")
+    CS2=$(grep "^CHECKSUM" "${LOG2}" || echo "MISSING")
     echo "run1: $CS1"
     echo "run2: $CS2"
     if [ "$CS1" = "$CS2" ] && [ "$CS1" != "MISSING" ]; then
@@ -91,27 +85,30 @@ srun --environment=snapshot-cuda \
       exit 1
     fi
 
-    # -----------------------------------------------------------------------
-    # Task 2 gate: run smoke under the record interposer.
-    # Capture stdout+stderr together so we can grep both the CHECKSUM and the
-    # [record-cuda] SUMMARY line from the same file.
-    # -----------------------------------------------------------------------
+    # -------------------------------------------------------------------
+    # Record interposer run (G4 identity gate).
+    # Runs with record interposer only (no redirect) to confirm:
+    #   (a) CHECKSUM unchanged — interposer is transparent.
+    #   (b) SUMMARY: identity: 2 functions (1 fatbin, 1 module)
+    #       i.e. k_add resolved via __cudaRegisterFunction (fatbin path) AND
+    #            k_mul resolved via cuModuleGetFunction (module/nvrtc path).
+    # -------------------------------------------------------------------
     SNAP_DIR="${DEPLOY_DIR}/snap-record-smoke"
     mkdir -p "${SNAP_DIR}"
 
-    echo "--- record interposer run (Task 2 gate) ---"
+    echo "--- record interposer run (G4 identity gate) ---"
     LD_PRELOAD="${RECORD_SO}" \
       SNAPSHOT_RECORD_CUDA_MODE=record \
       SNAPSHOT_RECORD_CUDA_DIR="${SNAP_DIR}" \
-      "$SMOKE" 2>&1 | tee /tmp/r_record.txt
+      "$SMOKE" 2>&1 | tee "${LOG_RECORD}"
     RECORD_EXIT="${PIPESTATUS[0]}"
 
     echo "--- identity gate ---"
-    SUMMARY=$(grep "\[record-cuda\].*SUMMARY" /tmp/r_record.txt || echo "SUMMARY_MISSING")
+    SUMMARY=$(grep "\[record-cuda\].*SUMMARY" "${LOG_RECORD}" || echo "SUMMARY_MISSING")
     echo "summary line: ${SUMMARY}"
 
     # Gate (a): smoke still exits clean and prints the same CHECKSUM.
-    CS_RECORD=$(grep "^CHECKSUM" /tmp/r_record.txt || echo "MISSING")
+    CS_RECORD=$(grep "^CHECKSUM" "${LOG_RECORD}" || echo "MISSING")
     echo "checksum under interposer: ${CS_RECORD}"
     if [ "${CS_RECORD}" = "${CS1}" ] && [ "${CS_RECORD}" != "MISSING" ]; then
       echo "CHECKSUM_UNCHANGED=1"
@@ -123,24 +120,27 @@ srun --environment=snapshot-cuda \
     # Gate (b): SUMMARY reports both identities.
     if echo "${SUMMARY}" | grep -qF "identity: 2 functions (1 fatbin, 1 module)"; then
       echo "IDENTITY_GATE=1 (k_add via fatbin + k_mul via module: both resolved)"
+      IDENTITY_OK=1
     else
       echo "IDENTITY_GATE=0 (expected \"identity: 2 functions (1 fatbin, 1 module)\" not found)"
       exit 1
     fi
 
-    if [ "${RECORD_EXIT}" -ne 0 ]; then
-      echo "RECORD_RUN_EXIT=${RECORD_EXIT} (smoke exited non-zero under interposer)"
-      exit 1
-    fi
+    [ "${RECORD_EXIT}" -eq 0 ] || \
+      { echo "RECORD_RUN_EXIT=${RECORD_EXIT} (smoke exited non-zero under interposer)"; exit 1; }
 
-    echo "Task 2 gate PASSED"
+    echo "Identity gate PASSED"
 
-    # -----------------------------------------------------------------------
-    # Task 3 gate: record the captured graph to .snap under redirect+record,
+    # -------------------------------------------------------------------
+    # G3 gate: record the captured graph to .snap under redirect+record,
     # twice into two separate dirs, then prove byte-identical (Δ=0).
-    # Use persistent paths under ${DEPLOY_DIR} (not /tmp) and PIPESTATUS.
-    # -----------------------------------------------------------------------
-    echo "--- Task 3: capture/record + Δ=0 ---"
+    # The smoke allocates d_a/d_out via the RUNTIME cudaMalloc (see
+    # cuda_record_smoke.cpp), which snapshot_redirect_cuda hooks, so the
+    # redirect serves them from its fixed-base region — that is what makes
+    # the recorded kernarg pointers (and the .snap) byte-identical across
+    # runs.
+    # -------------------------------------------------------------------
+    echo "--- G3: capture/record + Δ=0 ---"
     T3_DIR1="${DEPLOY_DIR}/snap-record-t3/run1"
     T3_DIR2="${DEPLOY_DIR}/snap-record-t3/run2"
     T3_LOG1="${DEPLOY_DIR}/snap-record-t3/r1.log"
@@ -199,11 +199,9 @@ srun --environment=snapshot-cuda \
       exit 1
     fi
 
-    # (d) redirect ENGAGED gate: the smoke now allocs via runtime cudaMalloc, so
-    # the redirect must initialize and pin those allocations — confirm its output
-    # is PRESENT with passthrough=0 (all allocs served from the fixed region) and
-    # fixed_base_honored=1 (region reserved at the requested base 0x600000000000).
-    # (Reported BEFORE the decisive cmp so the log always carries this evidence.)
+    # (d) redirect ENGAGED gate: confirm passthrough=0 (all allocs served from the
+    # fixed region) and fixed_base_honored=1 (region reserved at the requested base
+    # 0x600000000000).
     REDIR_SUMMARY=$(grep "\[redirect-cuda\].*SUMMARY" "${T3_LOG1}" || echo "ABSENT")
     REDIR_FIXED=$(grep "\[redirect-cuda\].*fixed_base_honored" "${T3_LOG1}" || echo "ABSENT")
     echo "redirect summary: ${REDIR_SUMMARY}"
@@ -231,24 +229,25 @@ srun --environment=snapshot-cuda \
       exit 1
     fi
 
-    echo "Task 3 gate PASSED"
+    echo "G3 gate PASSED"
 
-    # -----------------------------------------------------------------------
-    # Task 4 gate: BIT-IDENTICAL RESTORE (run #2).
+    # -------------------------------------------------------------------
+    # G1/G2/G3/G4 gate: BIT-IDENTICAL RESTORE (restore run).
     #
     # Replay the graph recorded into T3_DIR1 (graph-0000.snap) WITHOUT real
     # capture: LD_PRELOAD=redirect:record, MODE=restore, same fixed-base env,
     # same .snap dir. The restore shim fakes begin-capture, suppresses the two
     # kernel launches (so nothing runs eagerly), and rebuilds+returns the graph
     # at end-capture; the smoke then instantiates+launches the rebuilt graph as
-    # its SOLE execution. Asserts:
-    #   G1  restore CHECKSUM == record CHECKSUM (both == CS1)
-    #   G2  SUMMARY restored=1 fallthrough=0 real_begin=0 (no real capture)
-    #   G3  redirect SUMMARY passthrough=0 + fixed_base_honored=1 (Δ=0 in run #2)
-    #   G4  SUMMARY blind=0 (both kernels reverse-resolved)
-    #   SUPP SUMMARY suppressed=2 (k_add + k_mul intercepted → single execution)
-    # -----------------------------------------------------------------------
-    echo "--- Task 4: bit-identical restore ---"
+    # its SOLE execution.
+    #
+    # Gate fields asserted:
+    #   G1  CHECKSUM_restore == CHECKSUM_record (bit-identical output)
+    #   G2  restored=1  fallthrough=0  real_begin=0  suppressed=2
+    #   G3  redirect passthrough=0 + fixed_base_honored=1 (Δ=0 in restore run)
+    #   G4  blind=0 (both kernels reverse-resolved) + IDENTITY_OK from above
+    # -------------------------------------------------------------------
+    echo "--- G1/G2/G3/G4: bit-identical restore ---"
     T4_LOG="${DEPLOY_DIR}/snap-record-t3/restore.log"
     ls -l "${SNAP1}"  # the .snap we restore from (recorded by T3 run 1)
 
@@ -259,10 +258,8 @@ srun --environment=snapshot-cuda \
       "$SMOKE" 2>&1 | tee "${T4_LOG}"
     T4_EXIT="${PIPESTATUS[0]}"
 
-    if [ "${T4_EXIT}" -ne 0 ]; then
-      echo "T4_RUN_EXIT=${T4_EXIT} (smoke exited non-zero in restore mode)"
-      exit 1
-    fi
+    [ "${T4_EXIT}" -eq 0 ] || \
+      { echo "T4_RUN_EXIT=${T4_EXIT} (smoke exited non-zero in restore mode)"; exit 1; }
 
     REST_SUMMARY=$(grep "\[record-cuda\].*SUMMARY" "${T4_LOG}" || echo "REST_SUMMARY_MISSING")
     echo "restore summary: ${REST_SUMMARY}"
@@ -277,21 +274,20 @@ srun --environment=snapshot-cuda \
       exit 1
     fi
 
-    # G2: exactly one graph restored, no fall-through, no real begin-capture.
-    if echo "${REST_SUMMARY}" | grep -qE "restored=1 fallthrough=0 "; then
-      echo "G2_RESTORED_ONE_NO_FALLTHROUGH=1"
-    else
-      echo "G2_RESTORED_ONE_NO_FALLTHROUGH=0 (expected restored=1 fallthrough=0)"
-      exit 1
-    fi
-    if echo "${REST_SUMMARY}" | grep -qE "real_begin=0( |$)"; then
-      echo "G2_NO_REAL_BEGIN_CAPTURE=1 (real capture count is 0)"
-    else
-      echo "G2_NO_REAL_BEGIN_CAPTURE=0 (real begin-capture was called)"
-      exit 1
-    fi
+    # G2: exactly one graph restored, no fall-through, no real begin-capture,
+    # both launches suppressed. Each field checked independently so column
+    # reordering in the SUMMARY line cannot silently break the gate.
+    echo "${REST_SUMMARY}" | grep -q "restored=1" || \
+      { echo "G2_FAIL: missing restored=1 in: ${REST_SUMMARY}"; exit 1; }
+    echo "${REST_SUMMARY}" | grep -q "fallthrough=0" || \
+      { echo "G2_FAIL: missing fallthrough=0 in: ${REST_SUMMARY}"; exit 1; }
+    echo "${REST_SUMMARY}" | grep -qE "real_begin=0( |$)" || \
+      { echo "G2_FAIL: missing real_begin=0 in: ${REST_SUMMARY}"; exit 1; }
+    echo "${REST_SUMMARY}" | grep -qE "suppressed=2( |$)" || \
+      { echo "G2_FAIL: missing suppressed=2 in: ${REST_SUMMARY}"; exit 1; }
+    echo "G2_NO_REAL_CAPTURE=1 (restored=1 fallthrough=0 real_begin=0 suppressed=2)"
 
-    # G3: redirect still pinned the fixed base in run #2 (Δ=0 holds).
+    # G3: redirect still pinned the fixed base in the restore run (Δ=0 holds).
     REST_REDIR=$(grep "\[redirect-cuda\].*SUMMARY" "${T4_LOG}" || echo "ABSENT")
     REST_FIXED=$(grep "\[redirect-cuda\].*fixed_base_honored" "${T4_LOG}" || echo "ABSENT")
     echo "restore redirect summary: ${REST_REDIR}"
@@ -300,27 +296,26 @@ srun --environment=snapshot-cuda \
        echo "${REST_FIXED}" | grep -qF "fixed_base_honored=1"; then
       echo "G3_REDIRECT_FIXED_BASE=1 (passthrough=0, fixed_base_honored=1)"
     else
-      echo "G3_REDIRECT_FIXED_BASE=0 (redirect did not pin the fixed base in run #2)"
+      echo "G3_REDIRECT_FIXED_BASE=0 (redirect did not pin the fixed base in restore run)"
       exit 1
     fi
 
-    # G4: both kernels reverse-resolved (no blind nodes).
-    if echo "${REST_SUMMARY}" | grep -qE "blind=0 restored=1"; then
-      echo "G4_NO_BLIND=1 (k_add + k_mul both resolved at restore)"
-    else
-      echo "G4_NO_BLIND=0 (a node was blind — reverse resolution failed)"
-      exit 1
-    fi
+    # G4: both kernels reverse-resolved (no blind nodes); combined with the
+    # identity gate above (IDENTITY_OK=1) this confirms both resolution paths.
+    echo "${REST_SUMMARY}" | grep -q "blind=0" || \
+      { echo "G4_FAIL: missing blind=0 in: ${REST_SUMMARY}"; exit 1; }
+    [ "${IDENTITY_OK:-0}" -eq 1 ] || \
+      { echo "G4_FAIL: IDENTITY_OK not set (identity gate did not pass)"; exit 1; }
+    echo "G4_NO_BLIND=1 (k_add + k_mul both resolved at restore; 2 functions 1 fatbin 1 module)"
 
-    # SUPPRESSION PROOF: both launches intercepted → no eager execution → G1 genuine.
-    if echo "${REST_SUMMARY}" | grep -qE "suppressed=2( |$)"; then
-      echo "SUPPRESS_BOTH_LAUNCHES=1 (k_add via cudaLaunchKernel + k_mul via cuLaunchKernel)"
-    else
-      echo "SUPPRESS_BOTH_LAUNCHES=0 (expected suppressed=2 — a kernel ran eagerly)"
-      exit 1
-    fi
+    echo "Restore gate PASSED"
 
-    echo "Task 4 gate PASSED"
+    # -------------------------------------------------------------------
+    # Consolidated gate summary.
+    # All gates passed (set -e + exit 1 above would have aborted otherwise).
+    # -------------------------------------------------------------------
+    echo ""
+    echo "N5A_GATES: G1=PASS G2=PASS G3=PASS G4=PASS"
   '
 
 echo "cuda-record-smoke finished: $(date --iso-8601=seconds)"

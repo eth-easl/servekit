@@ -1614,3 +1614,145 @@ git diff --stat f7318f6 HEAD -- \
 ```
 
 N4 (skip-capture cold-start win on bristen) is the next milestone.
+
+---
+
+# `snapshot` — N5a: Record/restore mechanism on bristen (A100 / sm_80)
+
+Validated 2026-06-27 on CSCS bristen A100 node (`nid002284`, sm_80, driver
+550.54.15), CUDA 12.6.85 via the `nvidia/cuda:12.6.3-devel-ubuntu24.04` image,
+`-A a-infra02`, `--partition=normal`. Build and gate per
+`snapshot/recipe/cuda_record_smoke.sbatch` (N5a consolidated driver). Job 72090.
+
+This is a **mechanism proof on the two-kernel CLI synthetic workload** — not yet
+a vLLM cold-start win. The A/B/C production cold-start measurement is N5b.
+
+## What was built (N5a)
+
+- **`snapshot/csrc/cli/cuda_record_smoke.cpp`** — two-kernel CLI smoke:
+  `k_add` compiled into the binary as a static CUDA fatbin (`__global__` function
+  registered via `__cudaRegisterFunction`); `k_mul` compiled at runtime via nvrtc
+  and loaded via `cuModuleGetFunction`. Both captured in a CUDA graph
+  (`cuStream{Begin,End}Capture`), instantiated, and launched. Output verified by
+  host-side checksum. Exercises both kernel-identity paths simultaneously.
+
+- **`snapshot/csrc/preload/snapshot_record_cuda.cpp`** — LD_PRELOAD record/restore
+  interposer, composing with `snapshot_redirect_cuda` (N2) for Δ=0 addressing:
+  - **Identity registry** (Task 2): hooks `__cudaRegisterFunction` (fatbin path)
+    and `cuModuleGetFunction` (module/nvrtc path) at process startup; builds a
+    `(kind, name, module_hash)` → `CUfunction` reverse map with zero eager
+    overhead. Both paths are exercised by the two-kernel smoke.
+  - **Capture/record** (Task 3): hooks `cuStreamBeginCapture` /
+    `cuStreamEndCapture` to intercept the real capture; walks `cuGraphGetNodes`
+    at end-capture and serializes each kernel node as a `NodeRecord` containing
+    verbatim kernarg bytes (buffer-format) plus an `extra` count for
+    pointer-array (`extra`-buffer) calls. Writes `graph-NNNN.snap` under
+    `SNAPSHOT_RECORD_CUDA_DIR`.
+  - **Restore shim** (Task 4): in `MODE=restore`, at `cuStreamBeginCapture`
+    returns `CU_STREAM_CAPTURE_STATUS_CAPTURING` without a real capture;
+    suppresses all `cudaLaunchKernel` / `cuLaunchKernel` calls in-window (so no
+    eager execution occurs); at `cuStreamEndCapture` loads the `.snap`,
+    reverse-resolves each `CUfunction` via the identity map, and calls the N1
+    `rebuild_graph` path to produce a real `CUgraph`. The rebuilt graph is the
+    sole executor.
+
+- **`snapshot/recipe/cuda_record_smoke.sbatch`** (N5a consolidated driver):
+  single job running the full build → bare-smoke determinism → record-interposer
+  → Δ=0 record (×2) → restore gate sequence, emitting
+  `N5A_GATES: G1=PASS G2=PASS G3=PASS G4=PASS`.
+
+## Gate results (bristen, job 72090, 2026-06-27, node `nid002284`)
+
+**Build:** `cuda_record_smoke` + `libsnapshot_record_cuda.so` +
+`libsnapshot_redirect_cuda.so` — all built clean in the devel container.
+
+**G1 — bit-identical restored output:**
+```
+restore checksum: CHECKSUM=aa44e26d (record was CHECKSUM=aa44e26d)
+G1_RESTORE_BIT_IDENTICAL=1
+```
+The restore shim suppressed both in-window kernel launches (`suppressed=2`: the
+runtime `cudaLaunchKernel` for `k_add` + the driver `cuLaunchKernel` for `k_mul`),
+so the rebuilt-from-`.snap` graph was the sole executor. This makes G1 a
+**genuine single-execution proof** — the matching checksum cannot be explained by
+eager execution bleeding through.
+
+**G2 — capture genuinely skipped:**
+```
+[record-cuda] SUMMARY mode=restore ... recorded: graphs=0 nodes=0 edges=0 blind=0
+  restored=1 fallthrough=0 suppressed=2 real_begin=0
+G2_NO_REAL_CAPTURE=1 (restored=1 fallthrough=0 real_begin=0 suppressed=2)
+```
+`real_begin=0`: `cuStreamBeginCapture` was never called for real. `fallthrough=0`:
+no restore fell through to the native path. `restored=1`: exactly one graph
+rebuilt and returned. `suppressed=2`: both kernel launches in-window intercepted.
+
+**G3 — Δ=0 determinism (redirect engaged in both runs, .snap byte-identical):**
+```
+[redirect-cuda] FIXED_VMM base=0x600000000000 size=8GiB fixed_base_honored=1
+[redirect-cuda] SUMMARY mode=fixed_vmm ... served=2 passthrough=0(0MiB)
+REDIR_PASSTHROUGH_ZERO=1   REDIR_FIXED_BASE_HONORED=1
+SNAP_BYTE_IDENTICAL=1 (Δ=0: recorded kernarg pointers are deterministic)
+G3_REDIRECT_FIXED_BASE=1 (passthrough=0, fixed_base_honored=1)
+```
+Both record runs and the restore run show `passthrough=0(0MiB)` (all 2 device
+allocations served from the fixed 8 GiB VMM region at `0x600000000000`) and
+`fixed_base_honored=1`. The two `graph-0000.snap` files (229 bytes each) are
+byte-identical (`cmp` clean).
+
+**G4 — both identity paths resolved:**
+```
+IDENTITY_GATE=1 (k_add via fatbin + k_mul via module: both resolved)
+identity: 2 functions (1 fatbin, 1 module)
+G4_NO_BLIND=1 (k_add + k_mul both resolved at restore; 2 functions 1 fatbin 1 module)
+```
+`blind=0` in the restore SUMMARY: every node in the `.snap` was reverse-resolved
+to a live `CUfunction` before rebuild. Both the `__cudaRegisterFunction` (fatbin)
+and `cuModuleGetFunction` (module/nvrtc) identity paths exercised.
+
+**Consolidated gate line:**
+```
+N5A_GATES: G1=PASS G2=PASS G3=PASS G4=PASS
+```
+
+## Regression invariant (G5 — additive)
+
+N5a adds only new `*_cuda` files (`cuda_record_smoke.cpp`,
+`snapshot_record_cuda.cpp`) and additive CMake targets. No HIP backend, core,
+headers, CLI source, N1 CUDA backend, or N2 redirect interposer byte was
+modified:
+
+```
+git diff --stat "$(git merge-base main HEAD)" HEAD -- \
+  snapshot/csrc/backends/hip snapshot/csrc/preload/snapshot_record.cpp \
+  snapshot/csrc/preload/snapshot_redirect.cpp snapshot/csrc/core \
+  snapshot/csrc/backends/cuda snapshot/csrc/preload/snapshot_redirect_cuda.cpp
+# output: (empty)
+```
+
+The HIP build was last confirmed green at the N2 gate. N5a changed zero
+HIP/core/N1/N2 source bytes; the empty diff above is the additivity proof. A
+fresh HIP rebuild was not re-run this session (no AMD node available on bristen).
+
+## N5b carry-forwards
+
+- `cudaStream{Begin,End}Capture` shims hook the driver API only; the runtime
+  wrappers (`cudaStreamBeginCapture` / `cudaStreamEndCapture`) are not yet
+  shimmed. Deduplicate-by-`CUgraph` in the restore map will be needed when vLLM
+  issues multiple begin/end pairs across TP workers (N5b).
+- `extra`-buffer kernarg blobs (pointer-array form) are stored verbatim but not
+  parsed; pointer slots inside them are not patched. Δ=0 makes this safe for N5a
+  (the pointers in the `.snap` ARE the correct restore-time addresses). A
+  pointer-slot parser is needed if N5b ever runs without the redirect (i.e. Δ≠0).
+- Reverse-resolution scans the identity map in O(n) per node; for 86-graph ×
+  2-node vLLM capture this is ~172 probes. Acceptable now; a prebuilt
+  `CUfunction` → `NodeIdentity` map is the N5b cleanup.
+- Rebuilt graphs and their `NodeConfig` objects live for the process lifetime.
+  Fine for 1 graph; unbounded growth matters at vLLM scale (N5b GC pass).
+- The cubin `.nv.info` parser (to extract argument sizes from fatbins without
+  `cuFuncGetParamInfo`) remains deferred. Δ=0 makes it unnecessary: the restore
+  process re-launches with the same binary and calls `cuFuncGetParamInfo`
+  directly. Required only if restoring across binary versions.
+
+N5b (vLLM-CUDA TP=4 record/restore + A/B/C cold-start measurement on bristen)
+is next.
