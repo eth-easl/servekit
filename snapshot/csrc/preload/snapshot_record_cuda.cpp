@@ -67,6 +67,7 @@
 #include <cuda_runtime_api.h>
 
 #include <dlfcn.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 // RTLD_DEFAULT (GNU extension) is exposed under the same _GNU_SOURCE guard as
@@ -184,6 +185,13 @@ struct ModuleKernelId {
   std::uint64_t module_hash = 0;
 };
 std::map<CUfunction, ModuleKernelId> g_module_identity;
+// Peak (high-water) size of g_module_identity. The cuModuleUnload hook (Task 3)
+// evicts entries to bound growth from Triton re-JIT and drop stale handles, so
+// g_module_identity.size() at process exit UNDERcounts. The record walk runs at
+// cuStreamEndCapture (before any cuModuleUnload), so resolution is unaffected;
+// this peak lets the exit SUMMARY report how many module kernels were actually
+// identified during the run.
+std::size_t g_module_identity_peak = 0;
 
 // N5b Task 3: prebuilt reverse-identity maps for O(log n) resolution at
 // rebuild time (the N5a path scanned g_module_identity / g_hostfun_table in
@@ -336,6 +344,13 @@ ModuleGetFunctionFn real_cuModuleGetFunction() {
   return fn;
 }
 
+// SNAPSHOT_STR expands its argument through the preprocessor before stringizing
+// so a dlsym(RTLD_NEXT, ...) name tracks whatever symbol cuda.h binds the API
+// to (several CUDA 12 entry points are macro-remapped to versioned symbols).
+// Defined here, before the first Task-3 use (cuModuleLoadDataEx / Unload).
+#define SNAPSHOT_STR2(x) #x
+#define SNAPSHOT_STR(x) SNAPSHOT_STR2(x)
+
 // N5b Task 3: the extended module-load form (some nvrtc/Triton paths use
 // cuModuleLoadDataEx instead of cuModuleLoadData) and module unload (eviction).
 using ModuleLoadDataExFn = CUresult (*)(CUmodule*, const void*, unsigned int,
@@ -361,8 +376,6 @@ ModuleUnloadFn real_cuModuleUnload() {
 // so the dlsym name matches whatever symbol cuda.h binds `cuStreamEndCapture`
 // to (it is unversioned today, but this stays correct if a future header
 // macro-remaps it — and is exactly the name our exported override defines).
-#define SNAPSHOT_STR2(x) #x
-#define SNAPSHOT_STR(x) SNAPSHOT_STR2(x)
 using StreamEndCaptureFn = CUresult (*)(CUstream, CUgraph*);
 StreamEndCaptureFn real_cuStreamEndCapture() {
   static const auto fn = reinterpret_cast<StreamEndCaptureFn>(
@@ -443,7 +456,7 @@ CudaStreamIsCapturingFn real_cudaStreamIsCapturing() {
 
 using CudaStreamGetCaptureInfoFn = cudaError_t (*)(
     cudaStream_t, cudaStreamCaptureStatus*, unsigned long long*,
-    const cudaGraphCaptureInfo**, unsigned long long*);
+    cudaGraph_t*, const cudaGraphNode_t**, size_t*);
 CudaStreamGetCaptureInfoFn real_cudaStreamGetCaptureInfo() {
   static const auto fn = reinterpret_cast<CudaStreamGetCaptureInfoFn>(
       dlsym(RTLD_NEXT, SNAPSHOT_STR(cudaStreamGetCaptureInfo)));
@@ -506,11 +519,13 @@ std::vector<std::uint8_t> pack_extra_kernarg(void** extra) {
   const void* buffer_ptr = nullptr;
   std::size_t  buffer_sz  = 0;
   for (std::size_t i = 0; extra[i] != CU_LAUNCH_PARAM_END; i += 2) {
-    const auto tag = reinterpret_cast<std::uintptr_t>(extra[i]);
-    if (tag == static_cast<std::uintptr_t>(CU_LAUNCH_PARAM_BUFFER_POINTER)) {
+    // CU_LAUNCH_PARAM_{END,BUFFER_POINTER,BUFFER_SIZE} are ((void*)0xNN)
+    // sentinels in cuda.h, so compare the tag as a void* directly (a
+    // static_cast<uintptr_t> would be an invalid void*->integer conversion).
+    void* tag = extra[i];
+    if (tag == CU_LAUNCH_PARAM_BUFFER_POINTER) {
       buffer_ptr = extra[i + 1];
-    } else if (tag ==
-               static_cast<std::uintptr_t>(CU_LAUNCH_PARAM_BUFFER_SIZE)) {
+    } else if (tag == CU_LAUNCH_PARAM_BUFFER_SIZE) {
       buffer_sz = *static_cast<const std::size_t*>(extra[i + 1]);
     }
   }
@@ -676,6 +691,18 @@ void record_captured_graph(CUgraph graph) {
   char path[1280];
   std::snprintf(path, sizeof(path), "%s/graph-%04llu.snap", g_snap_dir(),
                 static_cast<unsigned long long>(idx));
+  // Ensure the (possibly per-rank, e.g. rank%r -> rank2/) snapshot dir exists
+  // before writing — the vLLM recipe points SNAPSHOT_RECORD_CUDA_DIR at a
+  // per-rank path it does NOT pre-create. POSIX mkdir -p walk (no <filesystem>
+  // dependency, keeps the .so self-contained for the vLLM image).
+  {
+    std::string d;
+    for (const char* c = g_snap_dir(); *c; ++c) {
+      d += *c;
+      if (*c == '/') ::mkdir(d.c_str(), 0777);  // EEXIST is harmless
+    }
+    if (!d.empty()) ::mkdir(d.c_str(), 0777);
+  }
   const bool ok = snapshot_cuda::serialize_graph(rec, path);
 
   if (ok) {
@@ -768,6 +795,68 @@ CUfunction resolve_function(const snapshot_cuda::RecordedNode& nd) {
 // topological). Pass 1 creates every node (kernel / memcpy / memset) with NO
 // deps; pass 2 wires the edges, so any node ordering works. The kernarg / struct
 // blobs are replayed verbatim via the driver `extra` buffer-pointer config
+// Memset rebuild workaround (N5b Task 2, found on CUDA 12.6 / bristen A100):
+// cuGraphAddMemsetNode REJECTS the redirect's cuMemMap'd (fixed-VMM) dst
+// pointers (rc=1 invalid value), even though cudaMemsetAsync and kernel
+// launches accept them and the runtime created the memset node fine during
+// capture. cuGraphAddMemcpyNode is NOT affected. Workaround: rebuild the memset
+// as a CHILD GRAPH NODE by capturing the equivalent runtime cudaMemsetAsync
+// (the runtime capture path creates the node without the broken validator).
+// `parent_subgraphs` keeps the captured sub-graphs alive for the process
+// lifetime (cuGraphAddChildGraphNode copies the topology, but the sub-graph
+// handle is retained defensively).
+//
+// Semantics: maps the recorded CUDA_MEMSET_NODE_PARAMS to a runtime byte-fill.
+// Correct when the memset value has uniform bytes (value=0, or any 0xXYXYXYXY
+// pattern) — which covers every practical vLLM memset (zero-fill). For an
+// elementSize>1 value with non-uniform bytes (a true multi-byte-element fill
+// the runtime byte-memset cannot represent) this returns non-zero and the
+// caller marks the node BLIND.
+CUresult add_memset_via_child(CUgraph parent, CUgraphNode* node_out,
+                              const snapshot_cuda::RecordedNode& nd,
+                              std::vector<cudaGraph_t>& parent_subgraphs) {
+  if (nd.blob.size() != sizeof(CUDA_MEMSET_NODE_PARAMS))
+      return static_cast<CUresult>(1);
+  const CUDA_MEMSET_NODE_PARAMS& p =
+      *reinterpret_cast<const CUDA_MEMSET_NODE_PARAMS*>(nd.blob.data());
+  // Uniform-byte check: the value, replicated to elementSize bytes, must equal
+  // the recorded value (else a byte-fill is not equivalent).
+  unsigned int v32 = p.value;
+  unsigned char vbyte = static_cast<unsigned char>(v32 & 0xFFu);
+  unsigned int built = 0;
+  for (unsigned b = 0; b < p.elementSize; ++b)
+      built |= (static_cast<unsigned>(vbyte) << (8 * b));
+  if (p.elementSize > 1 && built != v32) return static_cast<CUresult>(1);
+
+  CUstream tmp = nullptr;
+  if (cuStreamCreate(&tmp, CU_STREAM_NON_BLOCKING) != CUDA_SUCCESS)
+      return static_cast<CUresult>(1);
+  cudaStream_t rs = reinterpret_cast<cudaStream_t>(tmp);
+  // Call the REAL runtime begin/end directly (bypass our restore shim): this is
+  // an internal helper capture, NOT a restore window. Going through our hook
+  // would see an empty restore queue (the main graph is already popped) and
+  // fall through to real anyway — but it would also bump g_fallthrough /
+  // g_real_begin_capture, corrupting the G2 counters.
+  if (real_cudaStreamBeginCapture()(rs, cudaStreamCaptureModeRelaxed) != cudaSuccess) {
+      cuStreamDestroy(tmp); return static_cast<CUresult>(1);
+  }
+  if (p.height <= 1) {
+      cudaMemsetAsync(reinterpret_cast<void*>(p.dst), vbyte,
+                      p.width * p.elementSize, rs);
+  } else {
+      cudaMemset2DAsync(reinterpret_cast<void*>(p.dst), p.pitch, vbyte,
+                        p.width * p.elementSize, p.height, rs);
+  }
+  cudaGraph_t sub = nullptr;
+  cudaError_t er = real_cudaStreamEndCapture()(rs, &sub);
+  cuStreamDestroy(tmp);
+  if (er != cudaSuccess || sub == nullptr) return static_cast<CUresult>(1);
+  CUresult rc = cuGraphAddChildGraphNode(node_out, parent, nullptr, 0,
+                                         reinterpret_cast<CUgraph>(sub));
+  parent_subgraphs.push_back(sub);  // keep alive defensively
+  return rc;
+}
+
 // (kernels) or the verbatim params struct (memcpy/memset) — exactly N1's launch
 // mechanism, extended to non-kernel nodes. On any failure the partial graph is
 // destroyed and false is returned. Must be called WITHOUT g_mu held
@@ -782,6 +871,10 @@ bool rebuild_graph(const snapshot_cuda::RecordedGraph& rec, CUgraph* out) {
   // Current context — cuGraphAddMemcpyNode / cuGraphAddMemsetNode require it.
   CUcontext ctx = nullptr;
   static_cast<void>(cuCtxGetCurrent(&ctx));  // best-effort; null → primary ctx
+
+  // Memset nodes are rebuilt as child sub-graphs (cuMemMap-dst workaround);
+  // keep the captured sub-graph handles alive for the process lifetime.
+  std::vector<cudaGraph_t> subgraphs;
 
   // Pass 1: create all nodes with NO deps, tag-dispatched (kernel / memcpy /
   // memset / blind). Create-then-link so any cuGraphGetNodes ordering works.
@@ -870,8 +963,32 @@ bool rebuild_graph(const snapshot_cuda::RecordedGraph& rec, CUgraph* out) {
       }
       CUDA_MEMSET_NODE_PARAMS params =
           *reinterpret_cast<const CUDA_MEMSET_NODE_PARAMS*>(nd.blob.data());
-      rc   = cuGraphAddMemsetNode(&node, g, nullptr, 0, &params, ctx);
-      what = "cuGraphAddMemsetNode";
+      if (std::getenv("SNAPSHOT_RESTORE_MEMSET_DBG")) {
+        std::fprintf(stderr,
+                     "[record-cuda] memset node %zu: dst=%p pitch=%zu "
+                     "value=%u elementSize=%u width=%zu height=%zu ctx=%p\n",
+                     i, (void*)params.dst, params.pitch, params.value,
+                     params.elementSize, params.width, params.height,
+                     (void*)ctx);
+      }
+      // cuGraphAddMemsetNode rejects cuMemMap'd (fixed-VMM) dst pointers on CUDA
+      // 12.6 — rebuild via a runtime-captured child sub-graph instead (see
+      // add_memset_via_child). Falls back to BLIND only if the value has
+      // non-uniform bytes (not representable as a runtime byte-fill).
+      rc = add_memset_via_child(g, &node, nd, subgraphs);
+      if (rc != CUDA_SUCCESS) {
+        std::lock_guard<std::mutex> lock(g_mu);
+        ++g_blind;
+        std::fprintf(stderr,
+                     "[record-cuda] pid=%d restore: BLIND memset node %zu "
+                     "(child-capture workaround failed rc=%d; "
+                     "value=%u elementSize=%u)\n",
+                     static_cast<int>(getpid()), i, (int)rc,
+                     params.value, params.elementSize);
+        static_cast<void>(cuGraphDestroy(g));
+        return false;
+      }
+      what = "cuGraphAddMemsetNode(child-workaround)";
     } else {
       // Blind node (unsupported type recorded as blind, or unresolved).
       std::lock_guard<std::mutex> lock(g_mu);
@@ -944,7 +1061,9 @@ bool restore_next_graph(CUgraph* out) {
 struct RecordSummary {
   ~RecordSummary() {
     const std::size_t fatbin_count = g_hostfun_table.size();
-    const std::size_t module_count = g_module_identity.size();
+    // Peak, not current size: cuModuleUnload eviction would otherwise undercount
+    // at exit (the smoke unloads its nvrtc module before the SUMMARY destructor).
+    const std::size_t module_count = g_module_identity_peak;
     std::fprintf(stderr,
                  "[record-cuda] pid=%d SUMMARY mode=%s dir=%s "
                  "identity: %zu functions (%zu fatbin, %zu module) "
@@ -1103,6 +1222,9 @@ CUresult cuModuleGetFunction(CUfunction* f, CUmodule mod, const char* name) {
     const std::uint64_t mhash =
         (hit != g_module_hashes.end()) ? hit->second : 0ULL;
     g_module_identity[*f] = {name, mhash};
+    if (g_module_identity.size() > g_module_identity_peak) {
+      g_module_identity_peak = g_module_identity.size();
+    }
     // N5b Task 3: prebuilt reverse index + module→function set (for resolve +
     // cuModuleUnload eviction).
     g_func_by_key[{name, mhash}] = *f;
@@ -1378,8 +1500,9 @@ cudaError_t cudaStreamIsCapturing(cudaStream_t stream,
 cudaError_t cudaStreamGetCaptureInfo(cudaStream_t stream,
                                      cudaStreamCaptureStatus* captureStatus,
                                      unsigned long long* graphId,
-                                     const cudaGraphCaptureInfo** captureInfo,
-                                     unsigned long long* elapsedTimeMs) {
+                                     cudaGraph_t* graphOut,
+                                     const cudaGraphNode_t** dependenciesOut,
+                                     size_t* numDependenciesOut) {
   if (g_mode() == Mode::kRestore &&
       g_shim_active.load(std::memory_order_acquire) > 0) {
     std::lock_guard<std::mutex> lock(g_mu);
@@ -1389,7 +1512,8 @@ cudaError_t cudaStreamGetCaptureInfo(cudaStream_t stream,
     }
   }
   return real_cudaStreamGetCaptureInfo()(stream, captureStatus, graphId,
-                                         captureInfo, elapsedTimeMs);
+                                         graphOut, dependenciesOut,
+                                         numDependenciesOut);
 }
 
 // ---------------------------------------------------------------------------

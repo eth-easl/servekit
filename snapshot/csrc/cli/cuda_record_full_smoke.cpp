@@ -186,13 +186,23 @@ int main() {
                      cudaMemcpyDeviceToDevice, s));
   // (4) KERNEL node (extra-buffer form): d_out *= 2 → out = 2(a+1). This is the
   //     launch the N5a kernelParams-only path would have marked blind.
+  //
+  //     BUFFER_SIZE MUST be the kernel's declared kernarg size (from
+  //     cuFuncGetParamInfo = 12 bytes: int* @0 + int @8), NOT sizeof(KArg)=16
+  //     (the struct is 8-byte-aligned so it pads to 16). cuLaunchKernel rejects
+  //     a BUFFER_SIZE that exceeds the kernel's kernarg segment (rc=701).
   {
     struct KArg { int* o; int n; } karg;
     karg.o = reinterpret_cast<int*>(d_out);
     karg.n = kN;
-    std::size_t ksize = sizeof(karg);
+    std::size_t exact = 0;
+    for (std::size_t i = 0;; ++i) {
+      std::size_t off = 0, sz = 0;
+      if (cuFuncGetParamInfo(f_mul, i, &off, &sz) != CUDA_SUCCESS) break;
+      if (off + sz > exact) exact = off + sz;
+    }
     void* extra[5] = {CU_LAUNCH_PARAM_BUFFER_POINTER, &karg,
-                      CU_LAUNCH_PARAM_BUFFER_SIZE, &ksize,
+                      CU_LAUNCH_PARAM_BUFFER_SIZE, &exact,
                       CU_LAUNCH_PARAM_END};
     DK(cuLaunchKernel(f_mul, static_cast<unsigned>(kGrid), 1u, 1u,
                       static_cast<unsigned>(kBlock), 1u, 1u,
