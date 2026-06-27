@@ -53,9 +53,24 @@ def _log(msg):
 
 
 def _rank():
-    # Per-worker rank, read the same way the C-interposer reads it for the
-    # SNAPSHOT_RECORD_CUDA_DIR %r token (first set wins). Used to resolve a %r
-    # token in the meta path so each TP worker writes its own rankN.json.
+    # N5b (vLLM TP=4): resolve the per-worker rank, matching the C interposer's
+    # g_snap_dir priority. vLLM does NOT isolate workers via device-remapping —
+    # all see CUDA_VISIBLE_DEVICES="0,1,2,3" and each pins itself via
+    # cudaSetDevice(local_rank). srun's SLURM_PROCID=0 is inherited by all 4
+    # workers, so env vars are wrong. The authoritative rank is: (1) a single-
+    # device CUDA_VISIBLE_DEVICES, else (2) the current device index
+    # (torch.cuda.current_device() — correct because cudaSetDevice(rank) ran
+    # before capture; resolved lazily at first _write), else (3) env vars.
+    cvd = os.environ.get("CUDA_VISIBLE_DEVICES", "")
+    ids = [t for t in cvd.replace(",", " ").split() if t.strip().isdigit()]
+    if len(ids) == 1:
+        return ids[0]
+    if len(ids) > 1:
+        try:
+            import torch
+            return str(torch.cuda.current_device())
+        except Exception:
+            pass
     for name in ("RANK", "LOCAL_RANK", "VLLM_DP_RANK", "SLURM_PROCID"):
         v = os.environ.get(name)
         if v:
@@ -223,8 +238,11 @@ def _install():
     _orig_call = CUDAGraphWrapper.__call__
     _orig_wrt = cgmod.weak_ref_tensors
 
-    RECORD_PATH = _resolve_rank_path(os.environ.get("VLLM_CG_RECORD_META"))
-    RESTORE_PATH = _resolve_rank_path(os.environ.get("VLLM_CG_RESTORE_META"))
+    # N5b: pass the RAW (unresolved) %r path to _install_record / _install_lazy
+    # so the rank is resolved LAZILY at first capture (when cudaSetDevice(rank)
+    # has run), not at import (when device is 0 for all workers).
+    RECORD_PATH = os.environ.get("VLLM_CG_RECORD_META")
+    RESTORE_PATH = os.environ.get("VLLM_CG_RESTORE_META")
 
     # --- weak_ref_tensors: tolerate non-tensor (wrapped/dummy) values ---
     def _safe_wrt(x):
@@ -246,15 +264,20 @@ def _install():
 # --------------------------------------------------------------------------
 # RECORD mode
 # --------------------------------------------------------------------------
-def _install_record(CUDAGraphWrapper, _orig_call, path):
-    state = {"n": 0}  # region_base read lazily at capture time (redirect inits
-                       # on first cudaMalloc, which is after Python startup)
+def _install_record(CUDAGraphWrapper, _orig_call, raw_path):
+    state = {"n": 0, "path": None}  # region_base + rank path resolved lazily
+                       # at first capture (redirect inits on first cudaMalloc,
+                       # and vLLM calls cudaSetDevice(rank) before capture —
+                       # both happen AFTER Python import, so resolving at import
+                       # would see device 0 for all workers).
 
     def _write(entries):
         # Flush on EVERY capture: the harness kills the server with SIGKILL
         # (kill -9), which bypasses atexit, so a final flush would be lost.
         try:
-            with open(path, "w") as f:
+            if state["path"] is None:
+                state["path"] = _resolve_rank_path(raw_path)
+            with open(state["path"], "w") as f:
                 _json_dump = json.dump(
                     {"region_base": _region_base(), "entries": entries}, f
                 )
@@ -296,25 +319,32 @@ def _install_record(CUDAGraphWrapper, _orig_call, path):
         return out
 
     CUDAGraphWrapper.__call__ = _call
-    _log(f"RECORD mode -> {path} (incremental flush, SIGKILL-safe)")
+    _log(f"RECORD mode -> {raw_path} (rank resolved lazily at first capture, "
+         f"incremental flush, SIGKILL-safe)")
 
 
 # --------------------------------------------------------------------------
 # RESTORE (lazy) mode: skip forward, reconstruct entry.output
 # --------------------------------------------------------------------------
-def _install_lazy(CUDAGraphWrapper, _orig_call, GPUModelRunner, path):
+def _install_lazy(CUDAGraphWrapper, _orig_call, GPUModelRunner, raw_path):
     import torch
 
-    with open(path) as f:
-        meta = json.load(f)
-    snap_base = meta["region_base"]
-    entries_by_idx = {e["idx"]: e for e in meta["entries"]}
-    n_expected = len(meta["entries"])
+    # Meta is read LAZILY at first capture: the rank (%r) is resolved then
+    # (cudaSetDevice(rank) has run), and the redirect region_base is also only
+    # valid then. At Python import time neither is ready.
+    state = {"idx": 0, "skipped": 0, "live_base": None, "logged": False,
+             "meta": None, "snap_base": 0, "entries_by_idx": {}, "n_expected": 0}
 
-    # live_base is read lazily at first capture: the redirect inits on the
-    # first cudaMalloc (during model load), which is AFTER this install runs
-    # at Python startup, so _region_base() is 0 here.
-    state = {"idx": 0, "skipped": 0, "live_base": None, "logged": False}
+    def _ensure_meta():
+        if state["meta"] is not None:
+            return
+        p = _resolve_rank_path(raw_path)
+        with open(p) as f:
+            meta = json.load(f)
+        state["meta"] = meta
+        state["snap_base"] = meta["region_base"]
+        state["entries_by_idx"] = {e["idx"]: e for e in meta["entries"]}
+        state["n_expected"] = len(meta["entries"])
 
     def _call(self, *args, **kwargs):
         # Dispatch exactly like the original __call__, but override the CAPTURE
@@ -351,7 +381,8 @@ def _install_lazy(CUDAGraphWrapper, _orig_call, GPUModelRunner, path):
         entry = entries[bd]
 
         cudagraph = torch.cuda.CUDAGraph()
-        meta_e = entries_by_idx.get(state["idx"])
+        _ensure_meta()
+        meta_e = state["entries_by_idx"].get(state["idx"])
         # Empty graph context: the C-interposer fakes begin/end, attaching the
         # next pre-built graph from the .snap at EndCapture.
         with torch.cuda.graph(
@@ -365,9 +396,9 @@ def _install_lazy(CUDAGraphWrapper, _orig_call, GPUModelRunner, path):
             state["live_base"] = _region_base()
             if not state["logged"]:
                 state["logged"] = True
-                delta = state["live_base"] - snap_base
+                delta = state["live_base"] - state["snap_base"]
                 _log(
-                    f"RESTORE lazy: snap_base=0x{snap_base:x} "
+                    f"RESTORE lazy: snap_base=0x{state['snap_base']:x} "
                     f"live_base=0x{state['live_base']:x} delta=0x{delta:x}"
                     + (" (Δ=0, pointers valid unmodified)" if delta == 0 else "")
                 )
@@ -381,9 +412,9 @@ def _install_lazy(CUDAGraphWrapper, _orig_call, GPUModelRunner, path):
         entry.cudagraph = cudagraph
         state["idx"] += 1
         state["skipped"] += 1
-        if state["idx"] == n_expected:
+        if state["idx"] == state["n_expected"]:
             _log(
-                f"RESTORE lazy: all {n_expected} entries reconstructed "
+                f"RESTORE lazy: all {state['n_expected']} entries reconstructed "
                 f"(skipped {state['skipped']} forwards)"
             )
         return out

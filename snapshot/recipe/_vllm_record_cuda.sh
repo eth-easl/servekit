@@ -83,7 +83,14 @@ echo "N5B_${MODE^^}_READY_AT=${READY_AT:-NONE}"
 RESP=$(curl -sS "http://127.0.0.1:${PORT}/v1/completions" -H 'Content-Type: application/json' \
   -d '{"model":"cs","prompt":"The capital of France is","max_tokens":8,"temperature":0}' 2>/dev/null || true)
 echo "[n5b-${MODE}] completion: ${RESP}"
-echo "${RESP}" | grep -qi "paris" && echo "N5B_${MODE^^}_INFERENCE=ok" || echo "N5B_${MODE^^}_INFERENCE=failed"
+echo "${RESP}" | grep -qi "paris" && INF="ok" || INF="failed"
+echo "N5B_${MODE^^}_INFERENCE=${INF}"
+# Robust gate signal: write to a status file (stdout may be SIGKILL-truncated,
+# and the gate greps this file instead of parsing the serve log).
+if [ -n "${STATUS_FILE:-}" ]; then
+  echo "N5B_${MODE^^}_INFERENCE=${INF}" > "${STATUS_FILE}"
+  echo "N5B_${MODE^^}_READY_AT=${READY_AT:-NONE}" >> "${STATUS_FILE}"
+fi
 
 # Fixed-prompt-set probe (Task 7 token-identical reference). The record run
 # (transparent graph-mode serving) is the baseline; the restore run reproduces

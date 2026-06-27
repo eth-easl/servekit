@@ -129,15 +129,56 @@ const char* g_snap_dir() {
     std::string s = e;
     const std::size_t p = s.find("%r");
     if (p == std::string::npos) return s;
-    const char* rank_envs[] = {"RANK", "LOCAL_RANK", "VLLM_DP_RANK",
-                               "SLURM_PROCID"};
-    const char* r = nullptr;
-    for (const char* name : rank_envs) {
-      if (const char* v = std::getenv(name)) {
-        if (*v) { r = v; break; }
+    std::string rank;
+    // N5b (vLLM TP=4): vLLM's set_cuda_visible_devices restricts each TP worker
+    // process to exactly ONE physical GPU and remaps it to device 0, so
+    // cuCtxGetDevice returns 0 for ALL workers. CUDA_VISIBLE_DEVICES (a single
+    // physical GPU id per worker) is the authoritative, deterministic rank.
+    // It MUST be checked BEFORE the rank env vars: srun sets SLURM_PROCID=0 for
+    // the single serve task, which all 4 spawned workers inherit, so the env
+    // vars would route every worker to rank0.
+    rank.clear();
+    if (const char* cvd = std::getenv("CUDA_VISIBLE_DEVICES")) {
+      std::string s2(cvd);
+      std::string first;
+      int count = 0;
+      for (std::size_t i = 0; i < s2.size();) {
+        while (i < s2.size() && !((unsigned char)s2[i] >= '0' && s2[i] <= '9')) ++i;
+        if (i >= s2.size()) break;
+        std::string num;
+        while (i < s2.size() && (unsigned char)s2[i] >= '0' && s2[i] <= '9') { num += s2[i]; ++i; }
+        if (count == 0) first = num;
+        ++count;
+      }
+      if (count == 1 && !first.empty()) rank = first;
+    }
+    if (rank.empty()) {
+      // N5b (vLLM TP=4): CUDA_VISIBLE_DEVICES lists multiple GPUs (vLLM does
+      // NOT isolate workers via device-remapping — all see 0,1,2,3 and each
+      // pins itself via cudaSetDevice(local_rank)). The rank env vars are also
+      // wrong here (srun's SLURM_PROCID=0 is inherited by all 4 workers). The
+      // authoritative per-worker rank is the CURRENT device index: vLLM calls
+      // cudaSetDevice(rank) before capture, so cuCtxGetDevice == rank at the
+      // first record_captured_graph call. Must NOT fall through to SLURM_PROCID.
+      CUdevice dev = -1;
+      if (cuCtxGetDevice(&dev) == CUDA_SUCCESS) rank = std::to_string(dev);
+    }
+    if (rank.empty()) {
+      const char* rank_envs[] = {"RANK", "LOCAL_RANK", "VLLM_DP_RANK",
+                                 "SLURM_PROCID"};
+      for (const char* name : rank_envs) {
+        if (const char* v = std::getenv(name)) {
+          if (*v) { rank = v; break; }
+        }
       }
     }
-    const std::string rank = r ? r : "0";
+    if (rank.empty()) rank = "0";
+    std::fprintf(stderr, "[record-cuda] pid=%d rank-resolve: "
+                 "CUDA_VISIBLE_DEVICES=\"%s\" -> rank=%s\n",
+                 static_cast<int>(getpid()),
+                 std::getenv("CUDA_VISIBLE_DEVICES")
+                     ? std::getenv("CUDA_VISIBLE_DEVICES") : "(unset)",
+                 rank.c_str());
     std::string out;
     out.reserve(s.size() + rank.size());
     for (std::size_t i = 0; i < s.size(); ++i) {

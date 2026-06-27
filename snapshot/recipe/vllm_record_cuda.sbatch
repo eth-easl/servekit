@@ -37,8 +37,8 @@ srun --environment=glm-47-flash-vllm-cuda bash -lc '
   pip install --quiet "transformers=='"${TRANSFORMERS_VERSION}"'"
   python3 -c "import transformers; print(\"transformers:\", transformers.__version__)"
 
-  RECORD_SO="${SNAP_CUDA_DIR}/snapshot/build-cuda/libsnapshot_record_cuda.so"
-  REDIRECT_SO="${SNAP_CUDA_DIR}/snapshot/build-cuda/libsnapshot_redirect_cuda.so"
+  RECORD_SO="${SNAP_CUDA_DIR}/snapshot/build-vllm/libsnapshot_record_cuda.so"
+  REDIRECT_SO="${SNAP_CUDA_DIR}/snapshot/build-vllm/libsnapshot_redirect_cuda.so"
 
   # --- Task 5 Step 1: cross-container glibc gate (ldd must find everything) ---
   echo "--- ldd check inside vllm image (must be empty) ---"
@@ -52,40 +52,41 @@ srun --environment=glm-47-flash-vllm-cuda bash -lc '
 
   # --- record serve ---
   PROBE_OUT="${DEPLOY_DIR}/meta-n5b/record.probe" \
+  STATUS_FILE="${DEPLOY_DIR}/meta-n5b/record.status" \
     MODE=record bash snapshot/recipe/_vllm_record_cuda.sh
   LOG="${DEPLOY_DIR}/logs/vllm_record_cuda_${SLURM_JOB_ID:-local}.log"
 
   # --- Task 5 engagement gates (per-rank redirect engaged) ---
-  # 4 TP workers → 4 [redirect-cuda] SUMMARY lines, all with fixed_base_honored=1.
+  # The redirect/record atexit SUMMARY lines are LOST when the launcher SIGKILLs
+  # vLLM after the probe, so gate on DURING-RUN signals instead: the FIXED_VMM
+  # line (printed at region reserve) and the per-graph `graph=` walk lines
+  # (printed at each cuStreamEndCapture, with their own blind= count).
   REDIR_FIXED=$(grep -c "fixed_base_honored=1" "${LOG}" || true)
-  REDIR_SUMMARY=$(grep -c "\[redirect-cuda\].*SUMMARY" "${LOG}" || true)
-  REC_SUMMARY=$(grep -c "\[record-cuda\].*SUMMARY" "${LOG}" || true)
+  GRAPHS_WALKED=$(grep -cE "\[record-cuda\] pid=[0-9]+ graph=[0-9]+ nodes=" "${LOG}" || true)
   echo "REDIRECT_fixed_base_honored_count=${REDIR_FIXED}"
-  echo "REDIRECT_summary_count=${REDIR_SUMMARY}"
-  echo "RECORD_summary_count=${REC_SUMMARY}"
+  echo "RECORD_graphs_walked=${GRAPHS_WALKED}"
   TP_N="${TP:-4}"
-  [ "${REDIR_SUMMARY}" -ge "${TP_N}" ] || { echo "N5B_RECORD_GATE: FAIL (<${TP_N} redirect summaries; got ${REDIR_SUMMARY})"; exit 1; }
   [ "${REDIR_FIXED}"   -ge "${TP_N}" ] || { echo "N5B_RECORD_GATE: FAIL (<${TP_N} fixed_base_honored=1; got ${REDIR_FIXED})"; exit 1; }
-  [ "${REC_SUMMARY}"   -ge "${TP_N}" ] || { echo "N5B_RECORD_GATE: FAIL (<${TP_N} record summaries; got ${REC_SUMMARY})"; exit 1; }
-  grep -q "N5B_RECORD_INFERENCE=ok" "${LOG}" || { echo "N5B_RECORD_GATE: FAIL (record-mode inference did not return Paris)"; exit 1; }
+  [ "${GRAPHS_WALKED}" -ge "${TP_N}" ] || { echo "N5B_RECORD_GATE: FAIL (<${TP_N} graphs walked; got ${GRAPHS_WALKED})"; exit 1; }
+  grep -q "N5B_RECORD_INFERENCE=ok" "${DEPLOY_DIR}/meta-n5b/record.status" 2>/dev/null || { echo "N5B_RECORD_GATE: FAIL (record-mode inference did not return Paris)"; exit 1; }
 
   # --- Task 6 (G2): record-completeness gate ---
-  # Every rank recorded >=1 graph, blind=0 across all ranks, and each rank wrote
-  # an entry.output meta JSON with >=1 entries (covering CAPTURE_SIZES). Only
-  # processes that actually capture write .snap / meta files, so non-capturing
-  # helper processes (main/RPC) contribute graphs=0 and never create a rank dir.
+  # blind=0 across all walked graphs, and per-rank .snap + entry.output meta.
+  # blind/graphs totals come from the during-run `graph=` walk lines (robust to
+  # SIGKILL). Per-rank dirs are routed by device index (vLLM workers are not
+  # given LOCAL_RANK in their env).
   SNAP_ROOT="${SNAP_ROOT:-${DEPLOY_DIR}/snap-n5b}"
   META_ROOT="${META_ROOT:-${DEPLOY_DIR}/meta-n5b}"
-  BLIND_TOTAL=$(grep -oE "blind=[0-9]+" "${LOG}" | awk -F= "{s+=\$2} END{print s+0}")
-  GRAPH_TOTAL=$(grep -oE "recorded: graphs=[0-9]+" "${LOG}" | awk -F= "{s+=\$2} END{print s+0}")
-  echo "recorded_graphs_total=${GRAPH_TOTAL} blind_total=${BLIND_TOTAL}"
-  [ "${GRAPH_TOTAL}" -ge "${TP_N}" ] || { echo "N5B_RECORD_GATE: FAIL (graphs total ${GRAPH_TOTAL} < ${TP_N})"; exit 1; }
+  BLIND_TOTAL=$(grep -oE "graph=[0-9]+ nodes=[0-9]+ edges=[0-9]+ blind=[0-9]+" "${LOG}" | grep -oE "blind=[0-9]+" | awk -F= "{s+=\$2} END{print s+0}")
+  echo "recorded_graphs_walked=${GRAPHS_WALKED} blind_total=${BLIND_TOTAL}"
   [ "${BLIND_TOTAL}" -eq 0 ] || { echo "N5B_RECORD_GATE: FAIL (blind total ${BLIND_TOTAL} > 0)"; exit 1; }
   COMPLETE=1
   for r in $(seq 0 $((TP_N-1))); do
     NSNAP=$(ls "${SNAP_ROOT}/rank${r}"/graph-*.snap 2>/dev/null | wc -l)
     if [ -s "${META_ROOT}/rank${r}.json" ]; then
-      NENT=$(python3 -c "import json,sys; print(len(json.load(open(sys.argv[1])).get('entries',[])))" "${META_ROOT}/rank${r}.json" 2>/dev/null || echo 0)
+      # Count entry records (robust to python3/ACL issues inside the container;
+      # each entry serializes with an "idx" field).
+      NENT=$(grep -o '\"idx\"' "${META_ROOT}/rank${r}.json" 2>/dev/null | wc -l)
     else
       NENT=0
     fi
