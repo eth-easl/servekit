@@ -104,6 +104,18 @@ elseif(SNAPSHOT_BACKEND STREQUAL "CUDA")
   snapshot_configure_cuda(cuda_redirect_smoke)
   target_link_libraries(cuda_redirect_smoke PRIVATE snapshot_core
     "${SNAPSHOT_CUDART_LIBRARY}")
+
+  # N5a Task 1: CLI smoke for record/restore (CUDA).
+  # The static k_add kernel lives in the same TU — nvcc compiles it and emits
+  # __cudaRegisterFunction so Task 2's interposer can identify the function by
+  # mangled name.  k_mul is compiled at runtime by nvrtc.
+  # enable_language(CUDA) activates the nvcc driver for this source file;
+  # it is guarded so a re-configure with BACKEND=HIP doesn't trip over it.
+  enable_language(CUDA)
+  add_executable(cuda_record_smoke csrc/cli/cuda_record_smoke.cpp)
+  set_source_files_properties(csrc/cli/cuda_record_smoke.cpp PROPERTIES LANGUAGE CUDA)
+  snapshot_configure_cuda(cuda_record_smoke)
+  target_link_libraries(cuda_record_smoke PRIVATE "${SNAPSHOT_CUDART_LIBRARY}")
 endif()
 
 add_executable(snapshot
