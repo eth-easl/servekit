@@ -58,7 +58,8 @@ srun --environment=glm-47-flash-vllm-cuda bash -lc '
   echo "LDD_CLEAN=1"
 
   # --- record serve ---
-  MODE=record bash snapshot/recipe/_vllm_record_cuda.sh
+  PROBE_OUT="${DEPLOY_DIR}/meta-n5b/record.probe" \
+    MODE=record bash snapshot/recipe/_vllm_record_cuda.sh
   LOG="${DEPLOY_DIR}/logs/vllm_record_cuda_${SLURM_JOB_ID:-local}.log"
 
   # --- Task 5 engagement gates (per-rank redirect engaged) ---

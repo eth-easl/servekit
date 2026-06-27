@@ -67,7 +67,8 @@ srun --environment=glm-47-flash-vllm-cuda bash -lc '
   echo "N5B_RESTORE_INPUTS_PRESENT=1"
 
   # --- restore serve ---
-  MODE=restore bash snapshot/recipe/_vllm_restore_cuda.sh
+  PROBE_OUT="${DEPLOY_DIR}/meta-n5b/restore.probe" \
+    MODE=restore bash snapshot/recipe/_vllm_restore_cuda.sh
   LOG="${DEPLOY_DIR}/logs/vllm_restore_cuda_${SLURM_JOB_ID:-local}.log"
 
   # --- Task 5/7 engagement gates (per rank) ---
@@ -85,7 +86,41 @@ srun --environment=glm-47-flash-vllm-cuda bash -lc '
   [ "${REDIR_FIXED}" -ge "${TP_N}" ] || { echo "N5B_RESTORE_GATE: FAIL (<${TP_N} fixed_base_honored=1 in restore; got ${REDIR_FIXED})"; exit 1; }
   grep -q "N5B_RESTORE_INFERENCE=ok" "${LOG}" || { echo "N5B_RESTORE_GATE: FAIL (restore-mode inference did not return Paris)"; exit 1; }
 
-  echo "N5B_RESTORE_GATE: PASS (restored>=1/fallthrough=0 per rank, Δ=0, inference ok)"
+  # --- Task 7 (G4): token-identical serving vs the record-run reference. ---
+  # The record run (transparent graph-mode serving under the interposer) saved
+  # meta-n5b/record.probe; the restore run saved meta-n5b/restore.probe. The
+  # rebuilt graphs must serve byte-identical completions on the fixed prompt set.
+  REC_PROBE="${DEPLOY_DIR}/meta-n5b/record.probe"
+  RST_PROBE="${DEPLOY_DIR}/meta-n5b/restore.probe"
+  if [ ! -s "${REC_PROBE}" ] || [ ! -s "${RST_PROBE}" ]; then
+    echo "N5B_RESTORE_GATE: FAIL (probe set missing: record=$(wc -l < "${REC_PROBE}" 2>/dev/null || echo 0) restore=$(wc -l < "${RST_PROBE}" 2>/dev/null || echo 0))"
+    exit 1
+  fi
+  if diff -u "${REC_PROBE}" "${RST_PROBE}" > "${DEPLOY_DIR}/meta-n5b/probe.diff"; then
+    TOKEN_IDENTICAL=1
+  else
+    TOKEN_IDENTICAL=0
+    echo "--- probe diff (record vs restore) ---"; cat "${DEPLOY_DIR}/meta-n5b/probe.diff"
+  fi
+  # blind=0 across all ranks (the FULL + PIECEWISE graphs all rebuilt).
+  BLIND_TOTAL=$(grep -oE "blind=[0-9]+" "${LOG}" | awk -F= "{s+=\$2} END{print s+0}")
+  echo "restore blind_total=${BLIND_TOTAL} token_identical=${TOKEN_IDENTICAL}"
+  [ "${TOKEN_IDENTICAL}" -eq 1 ] || { echo "N5B_RESTORE_GATE: FAIL (token-identical)"; exit 1; }
+  [ "${BLIND_TOTAL}"   -eq 0 ] || { echo "N5B_RESTORE_GATE: FAIL (blind total ${BLIND_TOTAL} > 0 in restore)"; exit 1; }
+
+  # --- Task 7 (G3): FULL-rebuild decision. ---
+  # The default strategy records BOTH FULL + PIECEWISE graphs and rebuilds them
+  # all from snapshot (the path AMD could not take). If this gate passes
+  # (token_identical=1, blind=0, fallthrough=0, no FULL-mode hang/wrong-token),
+  # CUDA FULL-graph rebuild works → full_rebuild=1. IF it fails on the cluster
+  # in a way isolated to FULL-mode graphs (hang / wrong tokens on FULL sizes),
+  # the fallback is PIECEWISE-from-snapshot + live-capture-FULL: set the record
+  # run to cg_skip-style record_pw (skip FULL capture recording) and the restore
+  # to shim_pw (real forward for FULL, rebuild PIECEWISE). That branch is a
+  # cluster-iteration decision; record full_rebuild accordingly here.
+  echo "N5B_RESTORE: full_rebuild=1 token_identical=1 fallthrough=0 blind=0"
+
+  echo "N5B_RESTORE_GATE: PASS (FULL+PIECEWISE rebuilt from snapshot, token-identical, Δ=0 per rank)"
 '
 
 echo "vllm-restore-cuda-n5b finished: $(date --iso-8601=seconds)"

@@ -77,6 +77,15 @@ RESP=$(curl -sS "http://127.0.0.1:${PORT}/v1/completions" -H 'Content-Type: appl
 echo "[n5b-${MODE}] completion: ${RESP}"
 echo "${RESP}" | grep -qi "paris" && echo "N5B_${MODE^^}_INFERENCE=ok" || echo "N5B_${MODE^^}_INFERENCE=failed"
 
+# Fixed-prompt-set probe (Task 7 token-identical reference). The record run
+# (transparent graph-mode serving) is the baseline; the restore run reproduces
+# it. Save to PROBE_OUT if set.
+if [ -n "${PROBE_OUT:-}" ]; then
+  python3 "${SNAP_CUDA_DIR}/snapshot/recipe/_n5b_probe.py" \
+    "http://127.0.0.1:${PORT}/v1/completions" > "${PROBE_OUT}" 2>/dev/null || true
+  echo "[n5b-${MODE}] probe set -> ${PROBE_OUT} ($(wc -l < "${PROBE_OUT}" 2>/dev/null) prompts)"
+fi
+
 # Capture-phase presence in the log (honest accounting — Task 8 cross-check).
 echo "--- capture bars (${MODE}) ---"
 grep -aoE "Capturing CUDA graphs \([^)]*\): 100%[^[]*\[[0-9]{2}:[0-9]{2}" "$LOG" || true
