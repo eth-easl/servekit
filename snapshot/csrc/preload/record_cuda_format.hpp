@@ -197,6 +197,10 @@ inline bool deserialize_graph(const char* path, RecordedGraph* out) {
   if (std::memcmp(magic, kSnapMagic, sizeof(magic)) != 0) return false;
   if (r.u32() != kSnapVersion) return false;
   const std::uint32_t node_count = r.u32();
+  // Cap the reserve so a corrupt/hostile file cannot request a huge up-front
+  // allocation. A captured graph with >1M kernel nodes is implausible for the
+  // workloads this targets; reject rather than reserve gigabytes.
+  if (node_count > (1u << 20)) return false;
   out->nodes.reserve(node_count);
   for (std::uint32_t i = 0; i < node_count && r.ok; ++i) {
     RecordedNode nd;

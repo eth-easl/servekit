@@ -13,10 +13,22 @@
 // kernarg blob is byte-identical across runs (Δ=0) — Task 4 restores it
 // verbatim, no cubin/PTX parser, no pointer relocation.
 //
-// SCOPE (N5a): interpose ONLY the driver cuStreamEndCapture (the CLI smoke uses
-// the driver path exclusively). The runtime cudaStreamEndCapture — and the
-// double-walk dedupe-by-CUgraph it would need — is deferred to N5b. Only KERNEL
-// nodes are recorded; a kernel node whose kernargs use the `extra`
+// Task 4 (this revision) adds the RESTORE path. In restore mode the same .so
+// loads the recorded `.snap`s into an ordered queue and SHIMS the capture APIs:
+// cuStreamBeginCapture fakes begin-capture (no real driver capture → G2),
+// cuStreamEndCapture pops the queue and REBUILDS the graph (verbatim kernarg
+// replay via cuGraphAddKernelNode, robust create-then-link), and BOTH launch
+// entry points (runtime cudaLaunchKernel + driver cuLaunchKernel) SUPPRESS the
+// launches issued inside the shim window so kernels never run eagerly — the
+// rebuilt graph is the sole execution (suppressed=2 proves it; see the launch-
+// suppression block). Recorded identities are reverse-resolved to live
+// CUfunctions (g_module_identity for nvrtc kernels, g_hostfun_table +
+// cudaGetFuncBySymbol for fatbin kernels); any unresolved node is BLIND (G4=0).
+//
+// SCOPE (N5a): the driver capture/launch path is interposed (the CLI smoke uses
+// it exclusively). The runtime cudaStreamEndCapture — and the double-walk
+// dedupe-by-CUgraph it would need — is deferred to N5b. Only KERNEL nodes are
+// recorded; a kernel node whose kernargs use the `extra`
 // (CU_LAUNCH_PARAM_BUFFER_POINTER) path or whose identity cannot be resolved is
 // marked BLIND and counted (it is not restorable verbatim) — N5b territory.
 //
@@ -28,7 +40,7 @@
 //   [record-cuda] pid=<N> SUMMARY mode=<mode> dir=<dir>
 //       identity: <total> functions (<fatbin> fatbin, <module> module)
 //       recorded: graphs=<G> nodes=<N> edges=<E> blind=<B>
-//       restored=<N> fallthrough=<N>
+//       restored=<N> fallthrough=<M> suppressed=<S> real_begin=<R>
 //
 // Patterns mirrored from snapshot_redirect_cuda.cpp (N2):
 //   dlsym(RTLD_NEXT, ...) lazy real-symbol resolution, static-local singleton
@@ -44,12 +56,15 @@
 #include <dlfcn.h>
 #include <unistd.h>
 
+#include <atomic>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <map>
+#include <memory>
 #include <mutex>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -123,10 +138,9 @@ struct ModuleKernelId {
 };
 std::map<CUfunction, ModuleKernelId> g_module_identity;
 
-// Record counters (Task 3) + restore/fallthrough placeholders (Task 4).
-std::uint64_t g_recorded    = 0;  // total kernel nodes serialized (legacy token)
-std::uint64_t g_restored    = 0;
-std::uint64_t g_fallthrough = 0;
+// Record + restore counters.
+std::uint64_t g_restored    = 0;  // graphs rebuilt+returned by the restore shim
+std::uint64_t g_fallthrough = 0;  // capture windows that fell through to real capture
 
 // Task 3 record detail.
 std::uint64_t g_graph_index     = 0;  // next `.snap` file index (graph-NNNN.snap)
@@ -134,6 +148,50 @@ std::uint64_t g_graphs_recorded = 0;
 std::uint64_t g_nodes_recorded  = 0;
 std::uint64_t g_edges_recorded  = 0;
 std::uint64_t g_blind           = 0;  // G4 gate must end at 0
+
+// Task 4 restore detail.
+// g_suppressed_launches: launches intercepted DURING a shim-capture window and
+//   returned success WITHOUT executing (so the rebuilt graph is the sole
+//   execution). The gate asserts this == 2 (k_add via cudaLaunchKernel + k_mul
+//   via cuLaunchKernel) — the proof that no kernel ran eagerly.
+// g_real_begin_capture: number of times we called the REAL cuStreamBeginCapture
+//   (record mode pass-through, or restore fall-through). In a shimmed restore it
+//   stays 0 — the G2 "real-begin-capture count = 0" evidence.
+std::uint64_t g_suppressed_launches = 0;
+std::uint64_t g_real_begin_capture  = 0;
+
+// ---------------------------------------------------------------------------
+// Restore state (Task 4)
+// ---------------------------------------------------------------------------
+//
+// The deserialized `.snap` graphs are loaded ONCE (lazily, at first capture in
+// restore mode) into an ordered queue and never mutated afterward, so the
+// kernarg byte vectors they own keep stable addresses for the process lifetime.
+// The rebuild points each node's driver `extra` config at those bytes verbatim
+// (Δ=0 → the device pointers inside are valid), so the queue MUST outlive every
+// graph the caller later instantiates — hence process-lifetime static storage.
+struct RestoreState {
+  std::vector<snapshot_cuda::RecordedGraph> queue;  // in graph-NNNN.snap order
+  std::size_t next   = 0;                            // next graph to pop+rebuild
+  bool        loaded = false;
+};
+RestoreState g_restore;
+
+// Streams currently inside a SHIMMED capture window (begin-capture was faked).
+// Guarded by g_mu. g_shim_active mirrors its non-emptiness as a lock-free flag
+// so the launch hooks can early-out with a single atomic load on the hot path.
+std::set<CUstream> g_shim_streams;
+std::atomic<int>   g_shim_active{0};
+
+// Per-rebuilt-node launch config (the driver `extra` buffer-pointer form). The
+// config[] array and the size it references must stay valid until the caller
+// instantiates the graph — which the shim cannot observe — so these are kept
+// alive for the whole process (never freed). For N5a (one tiny graph) trivial.
+struct NodeConfig {
+  void*       config[5] = {nullptr, nullptr, nullptr, nullptr, nullptr};
+  std::size_t blob_size = 0;
+};
+std::vector<std::unique_ptr<NodeConfig>> g_node_configs;
 
 // ---------------------------------------------------------------------------
 // FNV-1a 64-bit hash
@@ -216,6 +274,44 @@ using StreamEndCaptureFn = CUresult (*)(CUstream, CUgraph*);
 StreamEndCaptureFn real_cuStreamEndCapture() {
   static const auto fn = reinterpret_cast<StreamEndCaptureFn>(
       dlsym(RTLD_NEXT, SNAPSHOT_STR(cuStreamEndCapture)));
+  return fn;
+}
+
+// Restore-shim composition (Task 4): we also interpose cuStreamBeginCapture,
+// cuStreamIsCapturing and BOTH launch entry points (runtime cudaLaunchKernel +
+// driver cuLaunchKernel). Each needs a dlsym(RTLD_NEXT) real resolver. The
+// SNAPSHOT_STR() macro is used for the driver names so the dlsym string tracks
+// whatever symbol cuda.h binds (e.g. cuStreamBeginCapture -> _v2, or a PTSZ
+// variant) — exactly matching the name our own override defines after the same
+// header macro-expansion, so override and real-thunk stay in lock-step.
+using StreamBeginCaptureFn = CUresult (*)(CUstream, CUstreamCaptureMode);
+StreamBeginCaptureFn real_cuStreamBeginCapture() {
+  static const auto fn = reinterpret_cast<StreamBeginCaptureFn>(
+      dlsym(RTLD_NEXT, SNAPSHOT_STR(cuStreamBeginCapture)));
+  return fn;
+}
+
+using StreamIsCapturingFn = CUresult (*)(CUstream, CUstreamCaptureStatus*);
+StreamIsCapturingFn real_cuStreamIsCapturing() {
+  static const auto fn = reinterpret_cast<StreamIsCapturingFn>(
+      dlsym(RTLD_NEXT, SNAPSHOT_STR(cuStreamIsCapturing)));
+  return fn;
+}
+
+using LaunchKernelFn = CUresult (*)(CUfunction, unsigned, unsigned, unsigned,
+                                    unsigned, unsigned, unsigned, unsigned,
+                                    CUstream, void**, void**);
+LaunchKernelFn real_cuLaunchKernel() {
+  static const auto fn = reinterpret_cast<LaunchKernelFn>(
+      dlsym(RTLD_NEXT, SNAPSHOT_STR(cuLaunchKernel)));
+  return fn;
+}
+
+using CudaLaunchKernelFn = cudaError_t (*)(const void*, dim3, dim3, void**,
+                                           std::size_t, cudaStream_t);
+CudaLaunchKernelFn real_cudaLaunchKernel() {
+  static const auto fn = reinterpret_cast<CudaLaunchKernelFn>(
+      dlsym(RTLD_NEXT, SNAPSHOT_STR(cudaLaunchKernel)));
   return fn;
 }
 
@@ -377,7 +473,6 @@ void record_captured_graph(CUgraph graph) {
     g_nodes_recorded += rec.nodes.size();
     g_edges_recorded += local_edges;
     g_blind += local_blind;
-    g_recorded += rec.nodes.size();
   }
 
   std::fprintf(stderr,
@@ -388,6 +483,188 @@ void record_captured_graph(CUgraph graph) {
                static_cast<unsigned long long>(local_edges),
                static_cast<unsigned long long>(local_blind), path,
                ok ? "ok" : "FAILED");
+}
+
+// ---------------------------------------------------------------------------
+// Restore path (Task 4): load `.snap`s, reverse-resolve identities, rebuild.
+// ---------------------------------------------------------------------------
+
+// Load every graph-NNNN.snap (ascending index) into g_restore.queue ONCE. Lazy
+// (first restore-mode capture) so the directory is read after the app has
+// settled. Iterates indices until the first missing file — matching the record
+// path's `graph-%04llu.snap` naming and preserving record order. Takes g_mu.
+void ensure_restore_loaded() {
+  std::lock_guard<std::mutex> lock(g_mu);
+  if (g_restore.loaded) return;
+  g_restore.loaded = true;
+  for (std::uint64_t idx = 0;; ++idx) {
+    char path[1280];
+    std::snprintf(path, sizeof(path), "%s/graph-%04llu.snap", g_snap_dir(),
+                  static_cast<unsigned long long>(idx));
+    std::FILE* f = std::fopen(path, "rb");
+    if (f == nullptr) break;  // first gap ends the sequence
+    std::fclose(f);
+    snapshot_cuda::RecordedGraph g;
+    if (snapshot_cuda::deserialize_graph(path, &g)) {
+      g_restore.queue.push_back(std::move(g));
+    } else {
+      std::fprintf(stderr, "[record-cuda] pid=%d restore: FAILED to parse %s\n",
+                   static_cast<int>(getpid()), path);
+    }
+  }
+  std::fprintf(stderr,
+               "[record-cuda] pid=%d restore: loaded %zu graph(s) from %s\n",
+               static_cast<int>(getpid()), g_restore.queue.size(), g_snap_dir());
+}
+
+// REVERSE identity resolution: a recorded {kind, name, module_hash} -> the live
+// CUfunction in THIS process. The forward maps (g_module_identity for nvrtc/
+// module kernels, g_hostfun_table for fatbin/static kernels) are populated by
+// the load-time and module hooks BEFORE the first capture, so both kernels are
+// resolvable by rebuild time. Returns nullptr (→ blind, G4) if unresolved.
+CUfunction resolve_function(const snapshot_cuda::RecordedNode& nd) {
+  if (nd.kind == 1) {
+    // module/nvrtc: match BOTH the kernel name and the PTX image hash (Task 3
+    // proved the hash is run-to-run deterministic, so this is exact).
+    std::lock_guard<std::mutex> lock(g_mu);
+    for (const auto& kv : g_module_identity) {
+      if (kv.second.name == nd.name &&
+          kv.second.module_hash == nd.module_hash) {
+        return kv.first;
+      }
+    }
+    return nullptr;
+  }
+
+  // fatbin/static: find the host stub whose registered deviceName == nd.name,
+  // then map it to a CUfunction via cudaGetFuncBySymbol (CUDA 12.0+;
+  // cudaFunction_t and CUfunction are the same CUfunc_st*).
+  const void* hostfun = nullptr;
+  {
+    std::lock_guard<std::mutex> lock(g_mu);
+    for (const auto& kv : g_hostfun_table) {
+      if (kv.second == nd.name) {
+        hostfun = kv.first;
+        break;
+      }
+    }
+  }
+  if (hostfun == nullptr) return nullptr;
+  CUfunction cufunc = nullptr;
+  const cudaError_t e =
+      cudaGetFuncBySymbol(reinterpret_cast<cudaFunction_t*>(&cufunc), hostfun);
+  if (e != cudaSuccess || cufunc == nullptr) return nullptr;
+  return cufunc;
+}
+
+// Rebuild a CUgraph from a recorded graph using the ROBUST create-then-link
+// pattern (NOT N1's in-order link, which silently drops edges whose source
+// isn't built yet — unsafe because cuGraphGetNodes order is not guaranteed
+// topological). Pass 1 creates every kernel node with NO deps; pass 2 wires the
+// edges, so any node ordering works. The kernarg blob is replayed verbatim via
+// the driver `extra` buffer-pointer config (exactly N1's launch mechanism). On
+// any failure the partial graph is destroyed and false is returned. Must be
+// called WITHOUT g_mu held (resolve_function takes it).
+bool rebuild_graph(const snapshot_cuda::RecordedGraph& rec, CUgraph* out) {
+  CUgraph g = nullptr;
+  if (cuGraphCreate(&g, 0) != CUDA_SUCCESS) return false;
+
+  const std::size_t n = rec.nodes.size();
+  std::vector<CUgraphNode> built(n, nullptr);
+
+  // Pass 1: create all kernel nodes (no dependencies yet).
+  for (std::size_t i = 0; i < n; ++i) {
+    const snapshot_cuda::RecordedNode& nd = rec.nodes[i];
+
+    const CUfunction func = resolve_function(nd);
+    if (func == nullptr) {
+      {
+        std::lock_guard<std::mutex> lock(g_mu);
+        ++g_blind;
+      }
+      std::fprintf(stderr,
+                   "[record-cuda] pid=%d restore: BLIND node %zu name=%s "
+                   "kind=%d (unresolved) — cannot rebuild\n",
+                   static_cast<int>(getpid()), i, nd.name.c_str(), nd.kind);
+      static_cast<void>(cuGraphDestroy(g));
+      return false;
+    }
+
+    // Per-node `extra` config pointing at the VERBATIM recorded kernarg bytes.
+    // Kept alive for the process lifetime (caller instantiates later, unseen).
+    auto cfg = std::make_unique<NodeConfig>();
+    cfg->blob_size = nd.kernarg.size();
+    cfg->config[0] = CU_LAUNCH_PARAM_BUFFER_POINTER;
+    cfg->config[1] = const_cast<std::uint8_t*>(nd.kernarg.data());
+    cfg->config[2] = CU_LAUNCH_PARAM_BUFFER_SIZE;
+    cfg->config[3] = &cfg->blob_size;
+    cfg->config[4] = CU_LAUNCH_PARAM_END;
+
+    CUDA_KERNEL_NODE_PARAMS p{};
+    p.func           = func;
+    p.gridDimX       = nd.grid[0];
+    p.gridDimY       = nd.grid[1];
+    p.gridDimZ       = nd.grid[2];
+    p.blockDimX      = nd.block[0];
+    p.blockDimY      = nd.block[1];
+    p.blockDimZ      = nd.block[2];
+    p.sharedMemBytes = nd.shared_mem_bytes;
+    p.kernelParams   = nullptr;
+    p.extra          = cfg->config;
+
+    CUgraphNode node = nullptr;
+    const CUresult rc = cuGraphAddKernelNode(&node, g, nullptr, 0, &p);
+    if (rc != CUDA_SUCCESS) {
+      const char* es = nullptr;
+      cuGetErrorString(rc, &es);
+      std::fprintf(stderr,
+                   "[record-cuda] pid=%d restore: cuGraphAddKernelNode node %zu "
+                   "failed: %s\n",
+                   static_cast<int>(getpid()), i, es ? es : "?");
+      static_cast<void>(cuGraphDestroy(g));
+      return false;
+    }
+    built[i] = node;
+    {
+      std::lock_guard<std::mutex> lock(g_mu);
+      g_node_configs.push_back(std::move(cfg));
+    }
+  }
+
+  // Pass 2: add dependency edges (dep d -> node i), tolerant of any node order.
+  for (std::size_t i = 0; i < n; ++i) {
+    for (std::uint32_t d : rec.nodes[i].deps) {
+      if (d >= n) continue;  // defensive: corrupt index
+      const CUresult rc =
+          cuGraphAddDependencies(g, &built[d], &built[i], 1);
+      if (rc != CUDA_SUCCESS) {
+        const char* es = nullptr;
+        cuGetErrorString(rc, &es);
+        std::fprintf(stderr,
+                     "[record-cuda] pid=%d restore: cuGraphAddDependencies "
+                     "(%u->%zu) failed: %s\n",
+                     static_cast<int>(getpid()), d, i, es ? es : "?");
+        static_cast<void>(cuGraphDestroy(g));
+        return false;
+      }
+    }
+  }
+
+  *out = g;
+  return true;
+}
+
+// Pop the next queued graph and rebuild it. Returns false if the queue is
+// exhausted (caller falls through to real capture) or rebuild failed.
+bool restore_next_graph(CUgraph* out) {
+  const snapshot_cuda::RecordedGraph* rec = nullptr;
+  {
+    std::lock_guard<std::mutex> lock(g_mu);
+    if (g_restore.next >= g_restore.queue.size()) return false;
+    rec = &g_restore.queue[g_restore.next];
+    ++g_restore.next;
+  }
+  return rebuild_graph(*rec, out);  // g_mu released: rebuild re-locks as needed
 }
 
 // ---------------------------------------------------------------------------
@@ -406,7 +683,8 @@ struct RecordSummary {
                  "[record-cuda] pid=%d SUMMARY mode=%s dir=%s "
                  "identity: %zu functions (%zu fatbin, %zu module) "
                  "recorded: graphs=%llu nodes=%llu edges=%llu blind=%llu "
-                 "restored=%llu fallthrough=%llu\n",
+                 "restored=%llu fallthrough=%llu suppressed=%llu "
+                 "real_begin=%llu\n",
                  static_cast<int>(getpid()),
                  g_mode() == Mode::kRecord ? "record" : "restore",
                  g_snap_dir(),
@@ -418,7 +696,9 @@ struct RecordSummary {
                  static_cast<unsigned long long>(g_edges_recorded),
                  static_cast<unsigned long long>(g_blind),
                  static_cast<unsigned long long>(g_restored),
-                 static_cast<unsigned long long>(g_fallthrough));
+                 static_cast<unsigned long long>(g_fallthrough),
+                 static_cast<unsigned long long>(g_suppressed_launches),
+                 static_cast<unsigned long long>(g_real_begin_capture));
   }
 };
 RecordSummary g_record_summary;
@@ -516,16 +796,143 @@ CUresult cuModuleGetFunction(CUfunction* f, CUmodule mod, const char* name) {
 }
 
 // ---------------------------------------------------------------------------
-// Capture-end hook (record path)
+// Launch-suppression hooks (Task 4 — REQUIRED for the restore gate)
+//
+// WHY: G2 forbids calling the real capture, so the kernel launches the smoke
+// issues between begin- and end-capture are NOT absorbed by any real capture.
+// If we let them through they execute EAGERLY, and then the rebuilt graph runs
+// them AGAIN. The smoke happens to be idempotent (k_add overwrites out from the
+// immutable input), so a naive shim would still print the right CHECKSUM —
+// passing G1 by luck, not by correctness. To make "skip capture" actually skip
+// (and make G1 a genuine single-execution proof) the shim SUPPRESSES every
+// launch on a shim-capturing stream: return success without executing, and
+// count it. The gate asserts suppressed=2 (k_add + k_mul).
+//
+// Hot-path discipline: the first thing each hook does is a single lock-free
+// atomic load; if no stream is in a shim-capture window (always true in record
+// mode and post-capture) it is a pure pass-through to the real function.
 // ---------------------------------------------------------------------------
 
-// cuStreamEndCapture: call the real end-capture FIRST so the caller gets a
-// working CUgraph and run #1 executes normally; then, in record mode, walk the
-// captured graph and serialize its kernel nodes. SCOPE (N5a): the runtime
-// cudaStreamEndCapture is intentionally NOT interposed — the CLI smoke uses the
-// driver path exclusively, and adding the runtime hook now would need a
-// double-walk dedupe-by-CUgraph with zero gate coverage (deferred to N5b).
+// Returns true (and counts it) iff `stream` is inside a shimmed capture window,
+// i.e. the launch should be suppressed instead of executed. Internal linkage
+// (static) so it is not exported as a public dynamic symbol.
+static bool launch_is_suppressed(CUstream stream) {
+  if (g_shim_active.load(std::memory_order_acquire) == 0) return false;
+  std::lock_guard<std::mutex> lock(g_mu);
+  if (g_shim_streams.count(stream) == 0) return false;
+  ++g_suppressed_launches;
+  return true;
+}
+
+// Runtime cudaLaunchKernel — backs the static k_add<<<>>> launch.
+cudaError_t cudaLaunchKernel(const void* func, dim3 gridDim, dim3 blockDim,
+                             void** args, std::size_t sharedMem,
+                             cudaStream_t stream) {
+  if (launch_is_suppressed(reinterpret_cast<CUstream>(stream))) {
+    return cudaSuccess;
+  }
+  return real_cudaLaunchKernel()(func, gridDim, blockDim, args, sharedMem,
+                                 stream);
+}
+
+// Driver cuLaunchKernel — backs the nvrtc k_mul launch.
+CUresult cuLaunchKernel(CUfunction f, unsigned gridDimX, unsigned gridDimY,
+                        unsigned gridDimZ, unsigned blockDimX,
+                        unsigned blockDimY, unsigned blockDimZ,
+                        unsigned sharedMemBytes, CUstream hStream,
+                        void** kernelParams, void** extra) {
+  if (launch_is_suppressed(hStream)) {
+    return CUDA_SUCCESS;
+  }
+  return real_cuLaunchKernel()(f, gridDimX, gridDimY, gridDimZ, blockDimX,
+                               blockDimY, blockDimZ, sharedMemBytes, hStream,
+                               kernelParams, extra);
+}
+
+// ---------------------------------------------------------------------------
+// Capture-shim hooks (record path + Task 4 restore shim)
+// ---------------------------------------------------------------------------
+
+// cuStreamBeginCapture: in restore mode, decide shim-vs-real HERE so the whole
+// window is consistent. If a graph remains in the restore queue, fake begin-
+// capture (mark the stream, return success, do NOT touch the real driver) —
+// this is what keeps the real-begin-capture count at 0 (G2). If the queue is
+// exhausted, fall through to a real capture (count it) so a short recording
+// degrades gracefully. In record mode it is a transparent pass-through.
+CUresult cuStreamBeginCapture(CUstream stream, CUstreamCaptureMode mode) {
+  if (g_mode() == Mode::kRestore) {
+    ensure_restore_loaded();
+    bool shim = false;
+    {
+      std::lock_guard<std::mutex> lock(g_mu);
+      shim = (g_restore.next < g_restore.queue.size());
+      if (shim) g_shim_streams.insert(stream);
+    }
+    if (shim) {
+      g_shim_active.fetch_add(1, std::memory_order_release);
+      return CUDA_SUCCESS;  // no real begin-capture
+    }
+    std::lock_guard<std::mutex> lock(g_mu);
+    ++g_fallthrough;  // queue empty → real capture for this window
+  }
+  {
+    std::lock_guard<std::mutex> lock(g_mu);
+    ++g_real_begin_capture;
+  }
+  return real_cuStreamBeginCapture()(stream, mode);
+}
+
+// cuStreamIsCapturing: report ACTIVE for a shim-capturing stream so any code
+// that polls capture status sees a consistent window (the N5a smoke doesn't,
+// but N5b will). Otherwise defer to the real driver.
+CUresult cuStreamIsCapturing(CUstream stream, CUstreamCaptureStatus* status) {
+  if (g_mode() == Mode::kRestore &&
+      g_shim_active.load(std::memory_order_acquire) > 0) {
+    std::lock_guard<std::mutex> lock(g_mu);
+    if (g_shim_streams.count(stream) > 0) {
+      if (status) *status = CU_STREAM_CAPTURE_STATUS_ACTIVE;
+      return CUDA_SUCCESS;
+    }
+  }
+  return real_cuStreamIsCapturing()(stream, status);
+}
+
+// cuStreamEndCapture:
+//  - Restore + shim-capturing stream: pop the next `.snap`, rebuild it into a
+//    fresh CUgraph, hand it back as *phGraph, end the window. No real capture
+//    happened, so this is the sole construction of the graph. (G2/G4.)
+//  - Otherwise (record mode, or restore fall-through): call the REAL end-
+//    capture; in record mode walk+serialize the captured graph (Task 3 path,
+//    UNCHANGED). SCOPE (N5a): the runtime cudaStreamEndCapture stays
+//    un-interposed — the CLI smoke uses the driver path exclusively (N5b).
 CUresult cuStreamEndCapture(CUstream stream, CUgraph* phGraph) {
+  if (g_mode() == Mode::kRestore) {
+    bool shimmed = false;
+    {
+      std::lock_guard<std::mutex> lock(g_mu);
+      shimmed = (g_shim_streams.count(stream) > 0);
+    }
+    if (shimmed) {
+      CUgraph rebuilt = nullptr;
+      const bool ok = restore_next_graph(&rebuilt);
+      {
+        std::lock_guard<std::mutex> lock(g_mu);
+        g_shim_streams.erase(stream);
+      }
+      g_shim_active.fetch_sub(1, std::memory_order_release);
+      if (!ok || rebuilt == nullptr) {
+        if (phGraph) *phGraph = nullptr;
+        return CUDA_ERROR_UNKNOWN;  // rebuild failed (e.g. blind node)
+      }
+      if (phGraph) *phGraph = rebuilt;
+      {
+        std::lock_guard<std::mutex> lock(g_mu);
+        ++g_restored;
+      }
+      return CUDA_SUCCESS;
+    }
+  }
+
   const CUresult rc = real_cuStreamEndCapture()(stream, phGraph);
   if (rc == CUDA_SUCCESS && phGraph != nullptr && *phGraph != nullptr &&
       g_mode() == Mode::kRecord) {

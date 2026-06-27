@@ -232,6 +232,95 @@ srun --environment=snapshot-cuda \
     fi
 
     echo "Task 3 gate PASSED"
+
+    # -----------------------------------------------------------------------
+    # Task 4 gate: BIT-IDENTICAL RESTORE (run #2).
+    #
+    # Replay the graph recorded into T3_DIR1 (graph-0000.snap) WITHOUT real
+    # capture: LD_PRELOAD=redirect:record, MODE=restore, same fixed-base env,
+    # same .snap dir. The restore shim fakes begin-capture, suppresses the two
+    # kernel launches (so nothing runs eagerly), and rebuilds+returns the graph
+    # at end-capture; the smoke then instantiates+launches the rebuilt graph as
+    # its SOLE execution. Asserts:
+    #   G1  restore CHECKSUM == record CHECKSUM (both == CS1)
+    #   G2  SUMMARY restored=1 fallthrough=0 real_begin=0 (no real capture)
+    #   G3  redirect SUMMARY passthrough=0 + fixed_base_honored=1 (Δ=0 in run #2)
+    #   G4  SUMMARY blind=0 (both kernels reverse-resolved)
+    #   SUPP SUMMARY suppressed=2 (k_add + k_mul intercepted → single execution)
+    # -----------------------------------------------------------------------
+    echo "--- Task 4: bit-identical restore ---"
+    T4_LOG="${DEPLOY_DIR}/snap-record-t3/restore.log"
+    ls -l "${SNAP1}"  # the .snap we restore from (recorded by T3 run 1)
+
+    echo "--- restore run (LD_PRELOAD=redirect:record, MODE=restore) ---"
+    LD_PRELOAD="${REDIRECT_SO}:${RECORD_SO}" \
+      SNAPSHOT_RECORD_CUDA_MODE=restore \
+      SNAPSHOT_RECORD_CUDA_DIR="${T3_DIR1}" \
+      "$SMOKE" 2>&1 | tee "${T4_LOG}"
+    T4_EXIT="${PIPESTATUS[0]}"
+
+    if [ "${T4_EXIT}" -ne 0 ]; then
+      echo "T4_RUN_EXIT=${T4_EXIT} (smoke exited non-zero in restore mode)"
+      exit 1
+    fi
+
+    REST_SUMMARY=$(grep "\[record-cuda\].*SUMMARY" "${T4_LOG}" || echo "REST_SUMMARY_MISSING")
+    echo "restore summary: ${REST_SUMMARY}"
+
+    # G1: bit-identical output.
+    CS_T4=$(grep "^CHECKSUM" "${T4_LOG}" || echo "MISSING")
+    echo "restore checksum: ${CS_T4} (record was ${CS1})"
+    if [ "${CS_T4}" = "${CS1}" ] && [ "${CS_T4}" != "MISSING" ]; then
+      echo "G1_RESTORE_BIT_IDENTICAL=1"
+    else
+      echo "G1_RESTORE_BIT_IDENTICAL=0 (expected ${CS1}, got ${CS_T4})"
+      exit 1
+    fi
+
+    # G2: exactly one graph restored, no fall-through, no real begin-capture.
+    if echo "${REST_SUMMARY}" | grep -qE "restored=1 fallthrough=0 "; then
+      echo "G2_RESTORED_ONE_NO_FALLTHROUGH=1"
+    else
+      echo "G2_RESTORED_ONE_NO_FALLTHROUGH=0 (expected restored=1 fallthrough=0)"
+      exit 1
+    fi
+    if echo "${REST_SUMMARY}" | grep -qE "real_begin=0( |$)"; then
+      echo "G2_NO_REAL_BEGIN_CAPTURE=1 (real capture count is 0)"
+    else
+      echo "G2_NO_REAL_BEGIN_CAPTURE=0 (real begin-capture was called)"
+      exit 1
+    fi
+
+    # G3: redirect still pinned the fixed base in run #2 (Δ=0 holds).
+    REST_REDIR=$(grep "\[redirect-cuda\].*SUMMARY" "${T4_LOG}" || echo "ABSENT")
+    REST_FIXED=$(grep "\[redirect-cuda\].*fixed_base_honored" "${T4_LOG}" || echo "ABSENT")
+    echo "restore redirect summary: ${REST_REDIR}"
+    echo "restore redirect fixed-vmm: ${REST_FIXED}"
+    if echo "${REST_REDIR}" | grep -qE "passthrough=0\(" && \
+       echo "${REST_FIXED}" | grep -qF "fixed_base_honored=1"; then
+      echo "G3_REDIRECT_FIXED_BASE=1 (passthrough=0, fixed_base_honored=1)"
+    else
+      echo "G3_REDIRECT_FIXED_BASE=0 (redirect did not pin the fixed base in run #2)"
+      exit 1
+    fi
+
+    # G4: both kernels reverse-resolved (no blind nodes).
+    if echo "${REST_SUMMARY}" | grep -qE "blind=0 restored=1"; then
+      echo "G4_NO_BLIND=1 (k_add + k_mul both resolved at restore)"
+    else
+      echo "G4_NO_BLIND=0 (a node was blind — reverse resolution failed)"
+      exit 1
+    fi
+
+    # SUPPRESSION PROOF: both launches intercepted → no eager execution → G1 genuine.
+    if echo "${REST_SUMMARY}" | grep -qE "suppressed=2( |$)"; then
+      echo "SUPPRESS_BOTH_LAUNCHES=1 (k_add via cudaLaunchKernel + k_mul via cuLaunchKernel)"
+    else
+      echo "SUPPRESS_BOTH_LAUNCHES=0 (expected suppressed=2 — a kernel ran eagerly)"
+      exit 1
+    fi
+
+    echo "Task 4 gate PASSED"
   '
 
 echo "cuda-record-smoke finished: $(date --iso-8601=seconds)"
