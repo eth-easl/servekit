@@ -684,14 +684,13 @@ void record_captured_graph(CUgraph graph) {
         rn.reason = "cuGraphMemsetNodeGetParams failed";
       }
     } else {
-      // N5b: any still-unsupported node type (GRAPH/CHILD/EVENT/HOST/EMPTY/…)
-      // is BLIND with an explicit reason — never a silent edge-drop.
-      rn.tag = snapshot_cuda::NodeTag::Blind;
-      node_blind = true;
-      char rb[64];
-      std::snprintf(rb, sizeof(rb), "unsupported node type %d",
-                    have_type ? static_cast<int>(nt) : -1);
-      rn.reason = rb;
+      // N5b (vLLM): wait-event (6) / event-record (7) / empty (5) / host (3) /
+      // child-graph (4) nodes. They carry no serializable kernel identity or
+      // (for events) process-local CUevent handles. Record them as Sync and
+      // rebuild as EMPTY (no-op) nodes — the dependency EDGES already encode
+      // the ordering, so an empty node preserving the deps is functionally
+      // equivalent for the graph's output (the canonical Δ=0-restore property).
+      rn.tag = snapshot_cuda::NodeTag::Sync;
     }
 
     // Dependency edges -> record indices of predecessors (all node types are
@@ -795,32 +794,69 @@ void ensure_restore_loaded() {
 // the load-time and module hooks BEFORE the first capture, so both kernels are
 // resolvable by rebuild time. Returns nullptr (→ blind, G4) if unresolved.
 CUfunction resolve_function(const snapshot_cuda::RecordedNode& nd) {
+  // Cache (any resolved name → CUfunction, shared across all resolution paths).
+  auto cached = [&]() -> CUfunction {
+    std::lock_guard<std::mutex> lock(g_mu);
+    const auto it = g_func_by_key.find({nd.name, nd.module_hash});
+    return it != g_func_by_key.end() ? it->second : nullptr;
+  };
+  if (CUfunction c = cached()) return c;
+
   if (nd.kind == 1) {
     // module/nvrtc: match BOTH the kernel name and the PTX image hash (Task 3
     // proved the hash is run-to-run deterministic, so this is exact). N5b Task 3:
     // O(log n) via the prebuilt reverse index (the N5a per-node scan is gone).
-    std::lock_guard<std::mutex> lock(g_mu);
-    const auto it = g_func_by_key.find({nd.name, nd.module_hash});
-    if (it != g_func_by_key.end()) return it->second;
-    return nullptr;
+    if (CUfunction c = cached()) return c;
   }
 
   // fatbin/static: find the host stub whose registered deviceName == nd.name,
   // then map it to a CUfunction via cudaGetFuncBySymbol (CUDA 12.0+;
   // cudaFunction_t and CUfunction are the same CUfunc_st*). N5b Task 3: O(log n)
   // via the prebuilt deviceName → hostFun reverse index.
-  const void* hostfun = nullptr;
-  {
-    std::lock_guard<std::mutex> lock(g_mu);
-    const auto it = g_hostfun_by_devname.find(nd.name);
-    if (it != g_hostfun_by_devname.end()) hostfun = it->second;
+  if (nd.kind == 0) {
+    const void* hostfun = nullptr;
+    {
+      std::lock_guard<std::mutex> lock(g_mu);
+      const auto it = g_hostfun_by_devname.find(nd.name);
+      if (it != g_hostfun_by_devname.end()) hostfun = it->second;
+    }
+    if (hostfun != nullptr) {
+      CUfunction cufunc = nullptr;
+      const cudaError_t e =
+          cudaGetFuncBySymbol(reinterpret_cast<cudaFunction_t*>(&cufunc), hostfun);
+      if (e == cudaSuccess && cufunc != nullptr) {
+        std::lock_guard<std::mutex> lock(g_mu);
+        g_func_by_key[{nd.name, nd.module_hash}] = cufunc;
+        return cufunc;
+      }
+    }
   }
-  if (hostfun == nullptr) return nullptr;
-  CUfunction cufunc = nullptr;
-  const cudaError_t e =
-      cudaGetFuncBySymbol(reinterpret_cast<cudaFunction_t*>(&cufunc), hostfun);
-  if (e != cudaSuccess || cufunc == nullptr) return nullptr;
-  return cufunc;
+
+  // N5b (vLLM): kind=2 (name-only — Triton/Inductor/NCCL kernels whose device
+  // name was captured via cuFuncGetName at record but which are not
+  // fatbin-registered and bypass cuModuleGetFunction), AND a fallback for any
+  // kind whose primary path missed. Resolve by scanning EVERY loaded module
+  // (tracked by the cuModuleLoadData hook) via cuModuleGetFunction(module,
+  // name). vLLM loads the same modules at restore (Δ=0), so the name resolves.
+  // One-time O(names × modules) at restore cold start; cached after first hit.
+  if (!nd.name.empty()) {
+    std::vector<CUmodule> mods;
+    {
+      std::lock_guard<std::mutex> lock(g_mu);
+      mods.reserve(g_module_hashes.size());
+      for (const auto& kv : g_module_hashes) mods.push_back(kv.first);
+    }
+    auto* real_get = real_cuModuleGetFunction();
+    for (CUmodule m : mods) {
+      CUfunction f = nullptr;
+      if (real_get && real_get(&f, m, nd.name.c_str()) == CUDA_SUCCESS && f) {
+        std::lock_guard<std::mutex> lock(g_mu);
+        g_func_by_key[{nd.name, nd.module_hash}] = f;
+        return f;
+      }
+    }
+  }
+  return nullptr;
 }
 
 // Rebuild a CUgraph from a recorded graph using the ROBUST create-then-link
@@ -1023,6 +1059,11 @@ bool rebuild_graph(const snapshot_cuda::RecordedGraph& rec, CUgraph* out) {
         return false;
       }
       what = "cuGraphAddMemsetNode(child-workaround)";
+    } else if (nd.tag == snapshot_cuda::NodeTag::Sync) {
+      // wait-event / event-record / empty / host / child — rebuilt as an EMPTY
+      // (no-op) node; the dependency edges (wired in pass 2) encode the ordering.
+      rc   = cuGraphAddEmptyNode(&node, g, nullptr, 0);
+      what = "cuGraphAddEmptyNode(Sync)";
     } else {
       // Blind node (unsupported type recorded as blind, or unresolved).
       std::lock_guard<std::mutex> lock(g_mu);
@@ -1625,6 +1666,15 @@ int snapshot_identity_for(CUfunction     func,
 #if CUDA_VERSION >= 12030
   const char* dev_name = nullptr;
   const CUresult rc = cuFuncGetName(&dev_name, func);
+  if (const char* dbg = std::getenv("SNAPSHOT_RECORD_CUDA_IDENTITY_DBG"); dbg) {
+    std::size_t modsz = 0, fatsz = 0;
+    { std::lock_guard<std::mutex> lock(g_mu); modsz = g_module_identity.size(); fatsz = g_hostfun_table.size(); }
+    std::fprintf(stderr,
+        "[record-cuda] identity-dbg func=%p cuFuncGetName rc=%d dev_name=%s "
+        "module_map=%zu fatbin_table=%zu\n",
+        (void*)func, (int)rc, (rc==CUDA_SUCCESS && dev_name)?dev_name:"(null)",
+        modsz, fatsz);
+  }
   if (rc == CUDA_SUCCESS && dev_name) {
     std::lock_guard<std::mutex> lock(g_mu);
     for (const auto& kv : g_hostfun_table) {
@@ -1635,6 +1685,16 @@ int snapshot_identity_for(CUfunction     func,
         return 1;
       }
     }
+    // N5b (vLLM): cuFuncGetName returned a valid device name but it is NOT
+    // fatbin-registered. This is the common case for Triton/Inductor/NCCL
+    // kernels, which load via cuModuleLoadData and bypass
+    // __cudaRegisterFunction (and mostly cuModuleGetFunction too). Record the
+    // name anyway as kind=2 (name-only); restore resolves it by scanning every
+    // loaded module via cuModuleGetFunction(module, name).
+    if (out_kind)        *out_kind        = 2;
+    copy_name(dev_name);
+    if (out_module_hash) *out_module_hash = 0ULL;
+    return 1;
   }
 #endif
 

@@ -80,6 +80,7 @@ enum class NodeTag : std::uint8_t {
   Kernel = 0u,
   Memcpy = 1u,
   Memset = 2u,
+  Sync   = 3u,   // N5b: wait-event / event-record / empty / host / child — rebuilt as empty node
   Blind  = 255u,
 };
 
@@ -216,6 +217,10 @@ inline bool serialize_graph(const RecordedGraph& g, const char* path) {
         detail::put_bytes(buf, nd.blob.data(), nd.blob.size());
         break;
       }
+      case NodeTag::Sync: {
+        // No payload — rebuilt as an empty (no-op) node preserving deps.
+        break;
+      }
       case NodeTag::Blind:
       default: {
         detail::put_u32(buf, static_cast<std::uint32_t>(nd.reason.size()));
@@ -302,6 +307,9 @@ inline bool deserialize_graph(const char* path, RecordedGraph* out) {
         nd.blob.resize(bsize);
         if (bsize) r.bytes(nd.blob.data(), bsize);
         break;
+      }
+      case NodeTag::Sync: {
+        break;  // no payload
       }
       case NodeTag::Blind:
       default: {
