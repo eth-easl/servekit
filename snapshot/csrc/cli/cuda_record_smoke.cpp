@@ -161,6 +161,12 @@ int main() {
   int  n    = kN;
   k_add<<<kGrid, kBlock, 0, reinterpret_cast<cudaStream_t>(stream)>>>(
       pa, pout, n);
+  // Surface a bad runtime launch (e.g. invalid config) here, not late at
+  // cuStreamEndCapture — Task 2/4 implementers modify this file.
+  if (cudaError_t e = cudaGetLastError(); e != cudaSuccess) {
+    fprintf(stderr, "k_add launch failed: %s\n", cudaGetErrorString(e));
+    return 1;
+  }
 
   // k_mul: driver-API launch on the same stream (captured after k_add).
   void* mul_args[] = {&pout, &n};
