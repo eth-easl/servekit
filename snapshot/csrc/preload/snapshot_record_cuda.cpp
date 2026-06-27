@@ -454,9 +454,19 @@ CudaStreamIsCapturingFn real_cudaStreamIsCapturing() {
   return fn;
 }
 
+// cudaStreamGetCaptureInfo gained a `const cudaGraphEdgeData**` out-param in
+// CUDA 13 (7 params); CUDA 12.x has 6. The override + real-resolver typedef
+// must match the header so the extern "C" override is not a conflicting
+// declaration (a hard compile error in either image).
+#if CUDA_VERSION >= 13000
+using CudaStreamGetCaptureInfoFn = cudaError_t (*)(
+    cudaStream_t, cudaStreamCaptureStatus*, unsigned long long*,
+    cudaGraph_t*, const cudaGraphNode_t**, const cudaGraphEdgeData**, size_t*);
+#else
 using CudaStreamGetCaptureInfoFn = cudaError_t (*)(
     cudaStream_t, cudaStreamCaptureStatus*, unsigned long long*,
     cudaGraph_t*, const cudaGraphNode_t**, size_t*);
+#endif
 CudaStreamGetCaptureInfoFn real_cudaStreamGetCaptureInfo() {
   static const auto fn = reinterpret_cast<CudaStreamGetCaptureInfoFn>(
       dlsym(RTLD_NEXT, SNAPSHOT_STR(cudaStreamGetCaptureInfo)));
@@ -534,6 +544,30 @@ std::vector<std::uint8_t> pack_extra_kernarg(void** extra) {
                                    static_cast<const std::uint8_t*>(buffer_ptr) +
                                        buffer_sz);
 }
+
+// CUDA 13 added a CUgraphEdgeData out/in param to the graph dependency APIs
+// (cuGraphNodeGetDependencies and cuGraphAddDependencies gained an edgeData
+// slot, becoming _v2 with an extra arg). These inline wrappers present one
+// arity to the call sites so the same source builds under CUDA 12.x and 13.
+#if CUDA_VERSION >= 13000
+static inline CUresult snap_node_get_deps(CUgraphNode n, CUgraphNode* deps,
+                                          size_t* num) {
+  return cuGraphNodeGetDependencies(n, deps, nullptr, num);
+}
+static inline CUresult snap_graph_add_deps(CUgraph g, const CUgraphNode* from,
+                                           const CUgraphNode* to, size_t n) {
+  return cuGraphAddDependencies(g, from, to, nullptr, n);
+}
+#else
+static inline CUresult snap_node_get_deps(CUgraphNode n, CUgraphNode* deps,
+                                          size_t* num) {
+  return cuGraphNodeGetDependencies(n, deps, num);
+}
+static inline CUresult snap_graph_add_deps(CUgraph g, const CUgraphNode* from,
+                                           const CUgraphNode* to, size_t n) {
+  return cuGraphAddDependencies(g, from, to, n);
+}
+#endif
 
 // Walk a captured graph and serialize its kernel nodes to graph-NNNN.snap.
 // Called from the cuStreamEndCapture hook AFTER the real end-capture, only in
@@ -663,10 +697,10 @@ void record_captured_graph(CUgraph graph) {
     // Dependency edges -> record indices of predecessors (all node types are
     // now indexed, so kernel→memcpy/memset edges resolve correctly).
     std::size_t dn = 0;
-    if (cuGraphNodeGetDependencies(node, nullptr, &dn) == CUDA_SUCCESS &&
+    if (snap_node_get_deps(node, nullptr, &dn) == CUDA_SUCCESS &&
         dn > 0) {
       std::vector<CUgraphNode> deps(dn);
-      if (cuGraphNodeGetDependencies(node, deps.data(), &dn) == CUDA_SUCCESS) {
+      if (snap_node_get_deps(node, deps.data(), &dn) == CUDA_SUCCESS) {
         for (CUgraphNode d : deps) {
           const auto it = rec_index.find(d);
           if (it != rec_index.end()) {
@@ -1019,7 +1053,7 @@ bool rebuild_graph(const snapshot_cuda::RecordedGraph& rec, CUgraph* out) {
     for (std::uint32_t d : rec.nodes[i].deps) {
       if (d >= n) continue;  // defensive: corrupt index
       const CUresult rc =
-          cuGraphAddDependencies(g, &built[d], &built[i], 1);
+          snap_graph_add_deps(g, &built[d], &built[i], 1);
       if (rc != CUDA_SUCCESS) {
         const char* es = nullptr;
         cuGetErrorString(rc, &es);
@@ -1496,7 +1530,29 @@ cudaError_t cudaStreamIsCapturing(cudaStream_t stream,
 // PyTorch's capture path polls cudaStreamGetCaptureInfo; report ACTIVE for a
 // shim-capturing stream so the window is consistent. graphId / captureInfo are
 // left untouched (we do not synthesize a capture id); for a shimmed stream the
-// only consumer that matters is the status poll.
+// only consumer that matters is the status poll. Signature is version-dependent
+// (CUDA 13 added a const cudaGraphEdgeData** out-param).
+#if CUDA_VERSION >= 13000
+cudaError_t cudaStreamGetCaptureInfo(cudaStream_t stream,
+                                     cudaStreamCaptureStatus* captureStatus,
+                                     unsigned long long* graphId,
+                                     cudaGraph_t* graphOut,
+                                     const cudaGraphNode_t** dependenciesOut,
+                                     const cudaGraphEdgeData** edgeDataOut,
+                                     size_t* numDependenciesOut) {
+  if (g_mode() == Mode::kRestore &&
+      g_shim_active.load(std::memory_order_acquire) > 0) {
+    std::lock_guard<std::mutex> lock(g_mu);
+    if (g_shim_streams.count(stream) > 0) {
+      if (captureStatus) *captureStatus = cudaStreamCaptureStatusActive;
+      return cudaSuccess;
+    }
+  }
+  return real_cudaStreamGetCaptureInfo()(stream, captureStatus, graphId,
+                                         graphOut, dependenciesOut,
+                                         edgeDataOut, numDependenciesOut);
+}
+#else
 cudaError_t cudaStreamGetCaptureInfo(cudaStream_t stream,
                                      cudaStreamCaptureStatus* captureStatus,
                                      unsigned long long* graphId,
@@ -1515,6 +1571,7 @@ cudaError_t cudaStreamGetCaptureInfo(cudaStream_t stream,
                                          graphOut, dependenciesOut,
                                          numDependenciesOut);
 }
+#endif
 
 // ---------------------------------------------------------------------------
 // snapshot_identity_for — identity resolver for graph-node CUfunction handles.

@@ -15,8 +15,11 @@ SNAP_CUDA_DIR="${SNAP_CUDA_DIR:-/capstor/scratch/cscs/xyao/snapshot-cuda}"
 MODEL=/capstor/store/cscs/swissai/infra01/hf_models/models/zai-org/GLM-4.7-Flash
 cd "$DEPLOY_DIR"
 
-RECORD_SO="${SNAP_CUDA_DIR}/snapshot/build-cuda/libsnapshot_record_cuda.so"
-REDIRECT_SO="${SNAP_CUDA_DIR}/snapshot/build-cuda/libsnapshot_redirect_cuda.so"
+# The record/redirect .so MUST be built inside the vllm serving image (glibc 2.35
+# + CUDA 13) so it loads under LD_PRELOAD — the snapshot-cuda devel build
+# (ubuntu24/glibc2.39 + CUDA 12.6) does not (the ldd gate catches this).
+RECORD_SO="${SNAP_CUDA_DIR}/snapshot/build-vllm/libsnapshot_record_cuda.so"
+REDIRECT_SO="${SNAP_CUDA_DIR}/snapshot/build-vllm/libsnapshot_redirect_cuda.so"
 TP="${TP:-4}"; GMU="${GMU:-0.85}"; REGION_GIB="${REGION_GIB:-72}"
 MAX_NUM_SEQS="${MAX_NUM_SEQS:-256}"; MAX_MODEL_LEN="${MAX_MODEL_LEN:-131072}"
 PORT="${PORT:-8821}"; DEADLINE="${DEADLINE:-1500}"
