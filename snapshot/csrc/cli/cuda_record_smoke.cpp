@@ -50,6 +50,23 @@ namespace {
     }                                                                         \
   } while (0)
 
+// Runtime-API error check — for the cudaMalloc/cudaFree allocation path. The
+// device buffers are allocated via the RUNTIME cudaMalloc (not driver
+// cuMemAlloc) so that snapshot_redirect_cuda — which hooks the runtime
+// cudaMalloc family — pins them at its deterministic fixed base. That fixed
+// base is what makes the recorded kernarg pointers (hence the .snap) byte-
+// identical across runs (Δ=0), and it mirrors the default PyTorch/vLLM caching
+// allocator path the record/restore mechanism targets in N5b.
+#define RK(call)                                                              \
+  do {                                                                        \
+    cudaError_t _e = (call);                                                  \
+    if (_e != cudaSuccess) {                                                  \
+      std::fprintf(stderr, "FAIL %s:%d %s: %s\n", __FILE__, __LINE__, #call, \
+                   cudaGetErrorString(_e));                                   \
+      return 1;                                                               \
+    }                                                                         \
+  } while (0)
+
 // Static kernel: compiled into this TU by nvcc.
 // __cudaRegisterFunction is emitted automatically, giving Task 2's interposer
 // a stable identity without any additional registration logic.
@@ -109,9 +126,13 @@ int main() {
   // -----------------------------------------------------------------------
   // Device buffers: a[i]=i (input), out (result).
   // -----------------------------------------------------------------------
+  // Allocate via the RUNTIME cudaMalloc so snapshot_redirect_cuda pins these at
+  // its fixed base (driver cuMemAlloc is NOT hooked by the redirect). d_a/d_out
+  // stay CUdeviceptr; cudaMalloc writes a void* into the same-width storage
+  // (mirrors cuda_redirect_smoke.cpp). cuMemcpy below works on the VA either way.
   CUdeviceptr d_a{}, d_out{};
-  DK(cuMemAlloc(&d_a, kBytes));
-  DK(cuMemAlloc(&d_out, kBytes));
+  RK(cudaMalloc(reinterpret_cast<void**>(&d_a), kBytes));
+  RK(cudaMalloc(reinterpret_cast<void**>(&d_out), kBytes));
 
   std::vector<int> h_a(kN);
   for (int i = 0; i < kN; ++i) h_a[i] = i;
@@ -213,8 +234,8 @@ int main() {
   cuGraphDestroy(graph);
   cuStreamDestroy(stream);
   cuModuleUnload(mod);
-  cuMemFree(d_out);
-  cuMemFree(d_a);
+  cudaFree(reinterpret_cast<void*>(d_out));
+  cudaFree(reinterpret_cast<void*>(d_a));
   cuCtxPopCurrent(nullptr);
   cuDevicePrimaryCtxRelease(dev);
 

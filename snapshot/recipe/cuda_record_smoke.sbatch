@@ -24,16 +24,16 @@
 #     (b) the smoke still prints its normal CHECKSUM
 #     (c) the two .snap files are BYTE-IDENTICAL (cmp) — the decisive Δ=0 proof
 #         that recorded kernarg pointers are fixed-base-deterministic
-#     (d) corroboration: redirect prints passthrough=0 + fixed_base_honored=1.
-#         NOTE: the record smoke allocates d_a/d_out via the DRIVER cuMemAlloc,
-#         which snapshot_redirect_cuda does NOT hook (it hooks the runtime
-#         cudaMalloc family). So the redirect may stay inert here and its
-#         SUMMARY/FIXED_VMM lines may be absent; per the plan, the cmp is the
-#         decisive gate and the redirect tokens are SOFT corroboration. The
-#         observed Δ=0 then rests on cuMemAlloc being deterministic across fresh
-#         processes (carry-forward: N5b should either switch the smoke to
-#         cudaMalloc or extend the redirect to hook cuMemAlloc for a guaranteed
-#         fixed-base under preload).
+#     (d) the redirect engaged and pinned the allocations: it prints
+#         passthrough=0 and fixed_base_honored=1.
+#         The smoke allocates d_a/d_out via the RUNTIME cudaMalloc (see
+#         cuda_record_smoke.cpp), which snapshot_redirect_cuda hooks, so the
+#         redirect serves them from its fixed-base region — that is what makes
+#         the recorded kernarg pointers (and the .snap) byte-identical across
+#         runs. (An earlier revision used driver cuMemAlloc, which the redirect
+#         does NOT hook, leaving it inert and the pointer bytes non-deterministic;
+#         the cudaMalloc switch fixed that and mirrors the PyTorch/vLLM caching
+#         allocator path targeted in N5b.)
 
 set -euo pipefail
 
@@ -199,23 +199,26 @@ srun --environment=snapshot-cuda \
       exit 1
     fi
 
-    # (d) SOFT corroboration: redirect SUMMARY passthrough=0 + fixed_base_honored=1.
-    # The record smoke uses driver cuMemAlloc, which redirect does not hook, so
-    # these lines may be absent; report but do NOT fail the gate on them.
+    # (d) redirect ENGAGED gate: the smoke now allocs via runtime cudaMalloc, so
+    # the redirect must initialize and pin those allocations — confirm its output
+    # is PRESENT with passthrough=0 (all allocs served from the fixed region) and
+    # fixed_base_honored=1 (region reserved at the requested base 0x600000000000).
     # (Reported BEFORE the decisive cmp so the log always carries this evidence.)
     REDIR_SUMMARY=$(grep "\[redirect-cuda\].*SUMMARY" "${T3_LOG1}" || echo "ABSENT")
     REDIR_FIXED=$(grep "\[redirect-cuda\].*fixed_base_honored" "${T3_LOG1}" || echo "ABSENT")
     echo "redirect summary: ${REDIR_SUMMARY}"
     echo "redirect fixed-vmm: ${REDIR_FIXED}"
     if echo "${REDIR_SUMMARY}" | grep -qE "passthrough=0\("; then
-      echo "REDIR_PASSTHROUGH_ZERO=1 (corroboration)"
+      echo "REDIR_PASSTHROUGH_ZERO=1 (all allocs served from fixed region)"
     else
-      echo "REDIR_PASSTHROUGH_ZERO=na (redirect inert: smoke uses driver cuMemAlloc)"
+      echo "REDIR_PASSTHROUGH_ZERO=0 (redirect did not serve allocs from region)"
+      exit 1
     fi
     if echo "${REDIR_FIXED}" | grep -qF "fixed_base_honored=1"; then
-      echo "REDIR_FIXED_BASE_HONORED=1 (corroboration)"
+      echo "REDIR_FIXED_BASE_HONORED=1 (region at requested fixed base)"
     else
-      echo "REDIR_FIXED_BASE_HONORED=na (redirect inert: smoke uses driver cuMemAlloc)"
+      echo "REDIR_FIXED_BASE_HONORED=0 (fixed base not honored)"
+      exit 1
     fi
 
     # (e) DECISIVE Δ=0 gate: the two .snap files must be byte-identical.
