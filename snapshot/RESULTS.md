@@ -1756,3 +1756,115 @@ fresh HIP rebuild was not re-run this session (no AMD node available on bristen)
 
 N5b (vLLM-CUDA TP=4 record/restore + A/B/C cold-start measurement on bristen)
 is next.
+
+
+---
+
+## N5b — vLLM-CUDA TP=4 record/restore + cold-start measurement (implementation complete; cluster gates pending)
+
+**Status (2026-06-27):** the full N5b implementation is committed (8 tasks) but
+the bristen cluster gates (G1–G6) have **not** been run from this environment —
+this session had no SLURM/`rcc` access, so every gate below is **pending a
+cluster run**. The measurement numbers are PLACEHOLDERS to be filled by the
+gates; the code, recipes, and the G6 regression invariant are done and verified
+offline. This section records exactly what was built and what to run.
+
+### What was built (N5b)
+
+Two cooperating layers, wiring the CLI-proven N5a `snapshot_record_cuda`
+mechanism into the real vLLM-CUDA engine (GLM-4.7-Flash, TP=4, bristen A100).
+
+**C-interposer (`snapshot/csrc/preload/snapshot_record_cuda.cpp`, additively
+extended; `.snap` format bumped to v2 in `record_cuda_format.hpp`):**
+- Runtime capture-API shims — `cudaStreamBeginCapture` / `EndCapture` /
+  `IsCapturing` / `GetCaptureInfo` (the PyTorch/vLLM path), routed to the same
+  record/restore logic as the N5a driver hooks, with dedupe-by-`CUgraph`
+  (`g_walked_graphs`) so a graph walked by both the runtime hook and the driver
+  hook it invokes internally is serialized exactly once.
+- Non-kernel graph nodes — `CU_GRAPH_NODE_TYPE_MEMCPY` / `MEMSET` recorded
+  structurally (verbatim `CUDA_MEMCPY3D` / `CUDA_MEMSET_NODE_PARAMS` blob) and
+  rebuilt (`cuGraphAddMemcpyNode` / `cuGraphAddMemsetNode`); every node is
+  indexed so kernel→memcpy/memset dependency edges resolve (fixes the N5a
+  non-kernel edge-drop); any still-unsupported node type is BLIND with an
+  explicit reason (no silent edge-drop).
+- `extra`-buffer kernargs (`CU_LAUNCH_PARAM_BUFFER_POINTER`) recorded verbatim.
+- Per-rank snapshot dirs (`SNAPSHOT_RECORD_CUDA_DIR=…/rank%r`, rank from
+  `RANK`/`LOCAL_RANK`/`VLLM_DP_RANK`/`SLURM_PROCID`); `region_base` export
+  (`snapshot_record_cuda_region_base()`) for the Python layer; prebuilt
+  reverse-identity maps (O(log n) resolve, replacing N5a's O(N) scans);
+  `cuModuleLoadDataEx` + `cuModuleUnload` (hash capture + eviction) for scale.
+
+**Python layer (`snapshot/recipe/cginst_cuda/`):** `cg_meta_cuda.py` (port of
+the AMD `cg_meta.py` — DLPack `kDLCUDA`=2 not `kDLROCM`=10,
+`snapshot_record_cuda_region_base`, Δ=0 `_reconstruct`) + `sitecustomize.py`,
+reconstructing `CUDAGraphWrapper.entry.output` and skipping the capture forward
+(vLLM 0.23.0 binding). Per-rank `%r` token in `VLLM_CG_{RECORD,RESTORE}_META`.
+
+**CLI gates (extend the N5a smoke):** `cuda_record_runtime_smoke.cpp` (runtime
+capture path), `cuda_record_full_smoke.cpp` (FULL-like: memset/memcpy nodes +
+extra kernargs + a diamond DAG), `cuda_region_base_probe.cpp`. The N5a
+`cuda_record_smoke.sbatch` now emits `N5A_GATES` + `N5B_RT_GATE` +
+`N5B_FULL_GATE` + `N5B_TASK3_GATE` + `N5B_CGMETA_GATE`.
+
+**vLLM recipes:** `vllm_record_cuda.sbatch` (+`_vllm_record_cuda.sh`),
+`vllm_restore_cuda.sbatch` (+`_vllm_restore_cuda.sh`),
+`vllm_abc_cuda.sbatch` (+`_vllm_abc_cuda.sh`), `_n5b_probe.py`,
+`_n5b_serve_probe.py` — TP=4 per-rank record/restore, cross-container `.so`
+glibc gate, token-identical serving, A/B/C cold-start + focused
+serving-overhead.
+
+### Gates (all PENDING a cluster run)
+
+| Gate | Recipe / marker | Proves |
+|---|---|---|
+| G1 | `cuda_record_smoke.sbatch` (`N5B_FULL_GATE`) | FULL-like graph (memcpy/memset + extra kernargs + diamond deps) record→restore bit-identical, `blind=0`. |
+| G2 | `vllm_record_cuda.sbatch` (`N5B_RECORD_GATE`) | TP=4 record captures every graph on every rank; per-rank `.snap`+meta, `blind=0`. |
+| G3 | `vllm_restore_cuda.sbatch` (`N5B_RESTORE_GATE`) | FULL-rebuild decision: rebuild-both (default) or the PIECEWISE+live-FULL fallback. |
+| G4 | `vllm_restore_cuda.sbatch` (`N5B_RESTORE_GATE`) | Restore serves token-identical vs the record-run reference; `fallthrough=0`, Δ=0 per rank. |
+| G5 | `vllm_abc_cuda.sbatch` (`N5B_ABC`) | A/B/C cold-start + serving overhead (restored vs baseline-graph). |
+| G6 | offline (this section) | HIP/core/N1/N2 byte-unchanged; N5a CLI gates still green. |
+
+**G6 (verified offline this session):**
+```
+git diff --stat 0cc4a58 HEAD -- \
+  snapshot/csrc/backends/hip snapshot/csrc/preload/snapshot_record.cpp \
+  snapshot/csrc/preload/snapshot_redirect.cpp snapshot/csrc/core \
+  snapshot/csrc/backends/cuda snapshot/csrc/preload/snapshot_redirect_cuda.cpp
+# (empty) — N5b is additive; only snapshot_record_cuda.cpp (extended) + new *_cuda* files.
+```
+The three Python files `py_compile` clean; all recipes `bash -n` clean; the
+header-only `record_cuda_format.hpp` compiles standalone. The CUDA-dependent
+interposer/smoke could not be compiled here (no CUDA toolkit in this
+environment) — that is the first thing a cluster build validates.
+
+### How to run the gates (bristen)
+```
+rcc --profile bristen-snapshot push && rcc --profile bristen-snapshot run \
+  'sbatch snapshot/recipe/cuda_record_smoke.sbatch'   # G1 + Task3 + cg_meta + N5a regression
+rcc --profile glm-47-flash-bristen-vllm push && rcc --profile glm-47-flash-bristen-vllm run \
+  'sbatch snapshot/recipe/vllm_record_cuda.sbatch'    # G2 (record; populates snap-n5b/ + meta-n5b/)
+rcc --profile glm-47-flash-bristen-vllm run \
+  'sbatch snapshot/recipe/vllm_restore_cuda.sbatch'   # G3/G4 (restore + token-identical)
+rcc --profile glm-47-flash-bristen-vllm run \
+  'sbatch snapshot/recipe/vllm_abc_cuda.sbatch'       # G5 (A/B/C + serving overhead)
+```
+
+### Expected outcome (honest framing, from the spec)
+On CUDA the eliminable capture is modest: vLLM 0.23.0 graph cold start ≈ **110s**,
+eager ≈ **78s**, eliminable capture ≈ **32s** (~29%; the tqdm capture loop is
+~23s). N5b's value is **(a)** demonstrating snapshot/restore end-to-end on a
+real CUDA engine (restore buys back most of the capture phase while keeping
+graph-mode serving speed) and **(b)** a measured, honestly-accounted A/B/C
+result — NOT a dramatic second count. The weight load (~20.4s, Lustre I/O) is
+non-eliminable. The target is **B ≈ graph-mode serving speed at a cold start
+near eager's**, reclaiming most of the ~32s envelope.
+
+```
+N5B_ABC: A=<baseline-graph s> B=<restore s> C=<eager s> elim=<A-B>s overhead_pct=<restored-vs-baseline>
+```
+(filled in by `vllm_abc_cuda.sbatch`.)
+
+### Next
+Fill in the measured numbers above; then (out of scope) a full benchmaker sweep
+across concurrencies/sequence lengths, SGLang, multi-node, other models, and the
+cubin `.nvinfo` parser + Δ≠0 relocation (deferred while Δ=0 holds).
