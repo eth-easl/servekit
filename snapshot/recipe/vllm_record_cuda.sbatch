@@ -75,7 +75,34 @@ srun --environment=glm-47-flash-vllm-cuda bash -lc '
   [ "${REC_SUMMARY}"   -ge "${TP_N}" ] || { echo "N5B_RECORD_GATE: FAIL (<${TP_N} record summaries; got ${REC_SUMMARY})"; exit 1; }
   grep -q "N5B_RECORD_INFERENCE=ok" "${LOG}" || { echo "N5B_RECORD_GATE: FAIL (record-mode inference did not return Paris)"; exit 1; }
 
-  echo "N5B_RECORD_GATE: PASS (vllm served under redirect+record, Δ=0 per rank, inference ok)"
+  # --- Task 6 (G2): record-completeness gate ---
+  # Every rank recorded >=1 graph, blind=0 across all ranks, and each rank wrote
+  # an entry.output meta JSON with >=1 entries (covering CAPTURE_SIZES). Only
+  # processes that actually capture write .snap / meta files, so non-capturing
+  # helper processes (main/RPC) contribute graphs=0 and never create a rank dir.
+  SNAP_ROOT="${SNAP_ROOT:-${DEPLOY_DIR}/snap-n5b}"
+  META_ROOT="${META_ROOT:-${DEPLOY_DIR}/meta-n5b}"
+  BLIND_TOTAL=$(grep -oE "blind=[0-9]+" "${LOG}" | awk -F= "{s+=\$2} END{print s+0}")
+  GRAPH_TOTAL=$(grep -oE "recorded: graphs=[0-9]+" "${LOG}" | awk -F= "{s+=\$2} END{print s+0}")
+  echo "recorded_graphs_total=${GRAPH_TOTAL} blind_total=${BLIND_TOTAL}"
+  [ "${GRAPH_TOTAL}" -ge "${TP_N}" ] || { echo "N5B_RECORD_GATE: FAIL (graphs total ${GRAPH_TOTAL} < ${TP_N})"; exit 1; }
+  [ "${BLIND_TOTAL}" -eq 0 ] || { echo "N5B_RECORD_GATE: FAIL (blind total ${BLIND_TOTAL} > 0)"; exit 1; }
+  COMPLETE=1
+  for r in $(seq 0 $((TP_N-1))); do
+    NSNAP=$(ls "${SNAP_ROOT}/rank${r}"/graph-*.snap 2>/dev/null | wc -l)
+    if [ -s "${META_ROOT}/rank${r}.json" ]; then
+      NENT=$(python3 -c "import json,sys; print(len(json.load(open(sys.argv[1])).get('entries',[])))" "${META_ROOT}/rank${r}.json" 2>/dev/null || echo 0)
+    else
+      NENT=0
+    fi
+    echo "rank${r}: snaps=${NSNAP} meta_entries=${NENT}"
+    [ "${NSNAP}" -ge 1 ] || { echo "N5B_RECORD_GATE: FAIL (rank${r}: no graph-*.snap)"; COMPLETE=0; }
+    [ "${NENT}"  -ge 1 ] || { echo "N5B_RECORD_GATE: FAIL (rank${r}: meta entries ${NENT} < 1)"; COMPLETE=0; }
+  done
+  [ "${COMPLETE}" -eq 1 ] || exit 1
+  echo "N5B_RECORD: ranks=${TP_N} blind=0 complete=1"
+
+  echo "N5B_RECORD_GATE: PASS (per-rank .snap + meta complete, blind=0, Δ=0, inference ok)"
 '
 
 echo "vllm-record-cuda-n5b finished: $(date --iso-8601=seconds)"
