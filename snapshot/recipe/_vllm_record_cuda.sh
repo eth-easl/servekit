@@ -34,10 +34,15 @@ if [ -n "${CAPTURE_SIZES:-}" ]; then
   # shellcheck disable=SC2206
   CAPTURE_ARGS=(--cudagraph-capture-sizes $CAPTURE_SIZES)
 fi
+# --disable-custom-all-reduce: vLLM's CustomAllreduce allocates an IPC-shared
+# buffer (cudaMalloc + cudaIpcGetMemHandle). The redirect serves cudaMalloc from
+# cuMemMap'd fixed-VMM memory, which does NOT support IPC handles → "invalid
+# argument". Fall back to NCCL all-reduce (functional; the A/B/C baseline uses
+# the same flag so the cold-start comparison is apples-to-apples).
 ARGS=(--host 127.0.0.1 --port "$PORT" --served-model-name cs \
   --tensor-parallel-size "$TP" --pipeline-parallel-size 1 --trust-remote-code \
   --gpu-memory-utilization "$GMU" --max-model-len "$MAX_MODEL_LEN" \
-  --max-num-seqs "$MAX_NUM_SEQS" "${CAPTURE_ARGS[@]}")
+  --max-num-seqs "$MAX_NUM_SEQS" --disable-custom-all-reduce "${CAPTURE_ARGS[@]}")
 
 # --- interposer + Python-meta env (per-worker %r resolved inside each rank) ---
 export LD_PRELOAD="${REDIRECT_SO}:${RECORD_SO}"

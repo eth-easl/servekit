@@ -154,20 +154,33 @@ bool ensure_init() {
       return false;
     }
     CUdevice dev = 0;
-    rc = cuDeviceGet(&dev, 0);
-    if (rc != CUDA_SUCCESS) {
-      std::fprintf(stderr, "[redirect-cuda] cuDeviceGet failed (%s)\n",
-                   cu_err(rc));
-      return false;
-    }
     CUcontext ctx{};
-    rc = cuDevicePrimaryCtxRetain(&ctx, dev);
-    if (rc != CUDA_SUCCESS) {
-      std::fprintf(stderr, "[redirect-cuda] cuDevicePrimaryCtxRetain (%s)\n",
-                   cu_err(rc));
-      return false;
+    // N5b (TP=4): respect the CURRENT device. vLLM TP workers call
+    // cudaSetDevice(rank) before any cudaMalloc, so each worker must reserve
+    // its fixed-VMM region on its OWN GPU — the prior hardcoded device 0 made
+    // all workers reserve on GPU 0 (1 succeeds, the rest OOM). If no context is
+    // active yet (the TP=1 / single-process path), fall back to device 0 +
+    // primary-ctx retain as before.
+    rc = cuCtxGetCurrent(&ctx);
+    if (rc != CUDA_SUCCESS || ctx == nullptr) {
+      rc = cuDeviceGet(&dev, 0);
+      if (rc != CUDA_SUCCESS) {
+        std::fprintf(stderr, "[redirect-cuda] cuDeviceGet failed (%s)\n",
+                     cu_err(rc));
+        return false;
+      }
+      rc = cuDevicePrimaryCtxRetain(&ctx, dev);
+      if (rc != CUDA_SUCCESS) {
+        std::fprintf(stderr, "[redirect-cuda] cuDevicePrimaryCtxRetain (%s)\n",
+                     cu_err(rc));
+        return false;
+      }
+      cuCtxSetCurrent(ctx);
+    } else {
+      // A context is already current (vLLM worker pinned its device) — read the
+      // device from it so cuMemCreate backs the region on the right GPU.
+      if (cuCtxGetDevice(&dev) != CUDA_SUCCESS) dev = 0;
     }
-    cuCtxSetCurrent(ctx);
 
     CUmemAllocationProp prop{};
     prop.type = CU_MEM_ALLOCATION_TYPE_PINNED;
@@ -413,6 +426,30 @@ std::uint64_t snapshot_redirect_region_base() { return g_base; }
 
 __attribute__((visibility("default")))
 std::uint64_t snapshot_redirect_region_size() { return g_region; }
+
+// cudaMemGetInfo hook (N5b, TP=4 under vLLM): the fixed-VMM region is reserved
+// upfront via cuMemCreate, so the driver reports it as USED — vLLM's startup
+// memory probe (request_memory) then sees only ~5GiB free and refuses
+// (target 0.85*80 > 5). But that region IS available to vLLM: every cudaMalloc
+// is served from it. Report it back as free (free += remaining region) so vLLM's
+// accounting matches what the redirect can actually serve. total is unchanged.
+// No-op before the region is reserved (g_region == 0).
+cudaError_t cudaMemGetInfo(size_t* free, size_t* total) {
+  using Fn = cudaError_t (*)(size_t*, size_t*);
+  static Fn real = reinterpret_cast<Fn>(dlsym(RTLD_NEXT, "cudaMemGetInfo"));
+  cudaError_t e = real ? real(free, total) : cudaErrorUnknown;
+  if (e == cudaSuccess && free != nullptr) {
+    std::uint64_t region_remaining = 0;
+    {
+      std::lock_guard<std::mutex> lock(g_mu);
+      if (g_region > g_cursor) region_remaining = g_region - g_cursor;
+    }
+    // The remaining region is available to serve future cudaMallocs, so it is
+    // effectively free from the application's perspective.
+    *free += static_cast<size_t>(region_remaining);
+  }
+  return e;
+}
 
 }  // extern "C"
 

@@ -28,7 +28,7 @@ rm -f "$LOG"; mkdir -p "${MEASURE_DIR}" "${DEPLOY_DIR}/logs"
 ARGS=(--host 127.0.0.1 --port "$PORT" --served-model-name cs \
   --tensor-parallel-size "$TP" --pipeline-parallel-size 1 --trust-remote-code \
   --gpu-memory-utilization "$GMU" --max-model-len "$MAX_MODEL_LEN" \
-  --max-num-seqs "$MAX_NUM_SEQS")
+  --max-num-seqs "$MAX_NUM_SEQS" --disable-custom-all-reduce)
 [ "$PROFILE" = "eager" ] && ARGS+=(--enforce-eager)
 
 # Only the restore profile engages the interposer (Δ=0 + skip capture).
