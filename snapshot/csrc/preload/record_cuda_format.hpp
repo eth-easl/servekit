@@ -1,42 +1,62 @@
-// record_cuda_format.hpp — N5a Task 3: the `.snap` binary format for recorded
-// CUDA graphs.
+// record_cuda_format.hpp — `.snap` binary format for recorded CUDA graphs.
+//
+// N5a Task 3 introduced v1 (kernel nodes only, N5a CLI smoke). N5b Task 2 bumps
+// to **v2**: type-tagged nodes so FULL/PIECEWISE graphs containing MEMCPY and
+// MEMSET nodes (plus the kernel nodes) are recorded structurally and rebuilt —
+// the N5a kernel-only gap that dropped non-kernel dependency edges. A node the
+// interposer cannot yet record/replay is tagged BLIND with an explicit reason
+// (no silent edge-drop). `extra`-buffer (CU_LAUNCH_PARAM_BUFFER_POINTER)
+// kernarg launches are recorded verbatim (the N5a kernelParams-only gap).
 //
 // Standalone, header-only, plain little-endian binary (length-prefixed blobs).
 // NO msgpack, NO dependency on snapshot/csrc/core/** — the record/restore .so
 // links only libcuda + libcudart + libdl and must stay self-contained for the
-// vLLM-CUDA image (N5b). Produced by snapshot_record_cuda.cpp (Task 3),
-// consumed VERBATIM by the restore path (Task 4).
+// vLLM-CUDA image. Produced by snapshot_record_cuda.cpp, consumed VERBATIM by
+// the restore path.
 //
 // Verbatim Δ=0 contract: because snapshot_redirect_cuda pins device pointers at
-// a fixed base, the recorded kernarg blob is byte-identical across runs. We
-// store it VERBATIM — no cubin/PTX parser, no pointer relocation.
+// a fixed base, the recorded kernarg blob AND the device pointers inside a
+// CUDA_MEMCPY3D / CUDA_MEMSET_NODE_PARAMS struct are byte-identical across
+// runs. We store them VERBATIM — no cubin/PTX parser, no pointer relocation.
 //
-// One `.snap` file == one captured CUDA graph. Layout (all integers are stored
-// little-endian; record + restore run on the same x86_64 A100 nodes, so byte
-// order is fixed and the format is endian-explicit regardless):
+// One `.snap` file == one captured CUDA graph. Layout (all integers little-
+// endian; record + restore run on the same x86_64 A100 nodes, so byte order is
+// fixed and the format is endian-explicit regardless):
 //
-//   magic        u8[8]            "SNAPCUD1"  (kSnapMagic)
-//   version      u32              kSnapVersion
-//   node_count   u32              number of kernel-node records that follow
-//   repeat node_count times (one record per captured KERNEL node, in
-//   cuGraphGetNodes order; a record's position == its node index, which is what
-//   dep_indices reference):
-//     kind         i32            0 = fatbin/static (__cudaRegisterFunction),
-//                                 1 = module/nvrtc (cuModuleGetFunction)
-//     module_hash  u64            FNV-1a64 of the PTX/cubin image (0 for fatbin)
-//     name_len     u32
-//     name         u8[name_len]   mangled device kernel name (no NUL stored)
-//     grid         u32[3]         gridDimX / gridDimY / gridDimZ
-//     block        u32[3]         blockDimX / blockDimY / blockDimZ
-//     shared_mem   u32            sharedMemBytes
-//     kernarg_size u32
-//     kernarg      u8[kernarg_size]   VERBATIM contiguous kernarg blob
+//   magic        u8[8]            "SNAPCUD1"  (kSnapMagic — format family)
+//   version      u32              kSnapVersion (=2)
+//   node_count   u32              number of node records that follow
+//   repeat node_count times (one record per captured node, in cuGraphGetNodes
+//   order; a record's position == its node index, which dep_indices reference):
+//     tag          u8             0=KERNEL, 1=MEMCPY, 2=MEMSET, 255=BLIND
+//     if tag == KERNEL:
+//       kind         i32          0 = fatbin/static, 1 = module/nvrtc
+//       module_hash  u64          FNV-1a64 of the PTX/cubin image (0 for fatbin)
+//       name_len     u32
+//       name         u8[name_len] mangled device kernel name (no NUL stored)
+//       grid         u32[3]       gridDimX/Y/Z
+//       block        u32[3]       blockDimX/Y/Z
+//       shared_mem   u32          sharedMemBytes
+//       kernarg_form u8           0 = packed from kernelParams, 1 = raw `extra`
+//       kernarg_size u32
+//       kernarg      u8[kernarg_size]   VERBATIM kernarg blob (either form)
+//     elif tag == MEMCPY:
+//       blob_size    u32
+//       blob         u8[blob_size]      VERBATIM CUDA_MEMCPY3D struct
+//     elif tag == MEMSET:
+//       blob_size    u32
+//       blob         u8[blob_size]      VERBATIM CUDA_MEMSET_NODE_PARAMS struct
+//     elif tag == BLIND:
+//       reason_len   u32
+//       reason       u8[reason_len]     why this node is not restorable
 //     dep_count    u32
-//     dep_indices  u32[dep_count]     record indices (0-based) of predecessors
+//     dep_indices  u32[dep_count]       record indices (0-based) of predecessors
 //
-// (kind, name, module_hash) is the IdentityMap key resolving the CUfunction;
-// (grid, block, shared_mem, kernarg) is the verbatim launch; dep_indices
-// reproduce the DAG edges.
+// For KERNEL nodes, (kind, name, module_hash) is the IdentityMap key resolving
+// the CUfunction; (grid, block, shared_mem, kernarg) is the verbatim launch;
+// kernarg_form records how the blob was obtained (both forms replay identically
+// via the driver `extra` buffer-pointer config). For MEMCPY/MEMSET, the verbatim
+// params struct (device pointers included) is correct unmodified under Δ=0.
 
 #pragma once
 
@@ -51,21 +71,42 @@ namespace snapshot_cuda {
 
 inline constexpr char          kSnapMagic[8] = {'S', 'N', 'A', 'P',
                                                 'C', 'U', 'D', '1'};
-inline constexpr std::uint32_t kSnapVersion  = 1u;
+inline constexpr std::uint32_t kSnapVersion  = 2u;
 
-// One recorded kernel-graph node.
-struct RecordedNode {
-  std::int32_t               kind = 0;      // 0=fatbin/static, 1=module/nvrtc
-  std::uint64_t              module_hash = 0;
-  std::string                name;          // mangled device kernel name
-  std::uint32_t              grid[3]  = {1u, 1u, 1u};
-  std::uint32_t              block[3] = {1u, 1u, 1u};
-  std::uint32_t              shared_mem_bytes = 0;
-  std::vector<std::uint8_t>  kernarg;       // verbatim contiguous kernarg blob
-  std::vector<std::uint32_t> deps;          // record indices of predecessors
+// Node-type tag. BLIND (255) marks a node the interposer could not record or
+// rebuild verbatim; a non-empty reason explains why. The restore gate requires
+// blind=0 for the chosen strategy's graphs.
+enum class NodeTag : std::uint8_t {
+  Kernel = 0u,
+  Memcpy = 1u,
+  Memset = 2u,
+  Blind  = 255u,
 };
 
-// One recorded CUDA graph (kernel nodes only, in cuGraphGetNodes order).
+// One recorded graph node. The tag selects which fields are meaningful; all
+// fields share one struct so serialization stays a flat switch on the tag.
+struct RecordedNode {
+  NodeTag tag = NodeTag::Blind;     // selects the meaningful fields below
+  std::vector<std::uint32_t> deps;  // record indices of predecessors (all tags)
+
+  // KERNEL fields (tag == Kernel).
+  std::int32_t  kind = 0;           // 0=fatbin/static, 1=module/nvrtc
+  std::uint64_t module_hash = 0;
+  std::string   name;               // mangled device kernel name
+  std::uint32_t grid[3]  = {1u, 1u, 1u};
+  std::uint32_t block[3] = {1u, 1u, 1u};
+  std::uint32_t shared_mem_bytes = 0;
+  std::uint8_t  kernarg_form = 0;   // 0=packed-kernelParams, 1=raw `extra`
+  std::vector<std::uint8_t> kernarg;
+
+  // MEMCPY / MEMSET fields (tag == Memcpy|Memset): verbatim params struct.
+  std::vector<std::uint8_t> blob;
+
+  // BLIND fields (tag == Blind): human-readable reason (no NUL stored).
+  std::string reason;
+};
+
+// One recorded CUDA graph (all node types, in cuGraphGetNodes order).
 struct RecordedGraph {
   std::vector<RecordedNode> nodes;
 };
@@ -86,6 +127,10 @@ inline void put_i32(std::vector<std::uint8_t>& b, std::int32_t v) {
 inline void put_u64(std::vector<std::uint8_t>& b, std::uint64_t v) {
   put_u32(b, static_cast<std::uint32_t>(v & 0xffffffffULL));
   put_u32(b, static_cast<std::uint32_t>((v >> 32) & 0xffffffffULL));
+}
+
+inline void put_u8(std::vector<std::uint8_t>& b, std::uint8_t v) {
+  b.push_back(v);
 }
 
 inline void put_bytes(std::vector<std::uint8_t>& b, const void* p,
@@ -110,6 +155,10 @@ struct Reader {
       return false;
     }
     return true;
+  }
+  std::uint8_t u8() {
+    if (!need(1)) return 0;
+    return p[pos++];
   }
   std::uint32_t u32() {
     if (!need(4)) return 0;
@@ -146,15 +195,35 @@ inline bool serialize_graph(const RecordedGraph& g, const char* path) {
   detail::put_u32(buf, kSnapVersion);
   detail::put_u32(buf, static_cast<std::uint32_t>(g.nodes.size()));
   for (const RecordedNode& nd : g.nodes) {
-    detail::put_i32(buf, nd.kind);
-    detail::put_u64(buf, nd.module_hash);
-    detail::put_u32(buf, static_cast<std::uint32_t>(nd.name.size()));
-    detail::put_bytes(buf, nd.name.data(), nd.name.size());
-    for (int k = 0; k < 3; ++k) detail::put_u32(buf, nd.grid[k]);
-    for (int k = 0; k < 3; ++k) detail::put_u32(buf, nd.block[k]);
-    detail::put_u32(buf, nd.shared_mem_bytes);
-    detail::put_u32(buf, static_cast<std::uint32_t>(nd.kernarg.size()));
-    detail::put_bytes(buf, nd.kernarg.data(), nd.kernarg.size());
+    detail::put_u8(buf, static_cast<std::uint8_t>(nd.tag));
+    switch (nd.tag) {
+      case NodeTag::Kernel: {
+        detail::put_i32(buf, nd.kind);
+        detail::put_u64(buf, nd.module_hash);
+        detail::put_u32(buf, static_cast<std::uint32_t>(nd.name.size()));
+        detail::put_bytes(buf, nd.name.data(), nd.name.size());
+        for (int k = 0; k < 3; ++k) detail::put_u32(buf, nd.grid[k]);
+        for (int k = 0; k < 3; ++k) detail::put_u32(buf, nd.block[k]);
+        detail::put_u32(buf, nd.shared_mem_bytes);
+        detail::put_u8(buf, nd.kernarg_form);
+        detail::put_u32(buf, static_cast<std::uint32_t>(nd.kernarg.size()));
+        detail::put_bytes(buf, nd.kernarg.data(), nd.kernarg.size());
+        break;
+      }
+      case NodeTag::Memcpy:
+      case NodeTag::Memset: {
+        detail::put_u32(buf, static_cast<std::uint32_t>(nd.blob.size()));
+        detail::put_bytes(buf, nd.blob.data(), nd.blob.size());
+        break;
+      }
+      case NodeTag::Blind:
+      default: {
+        detail::put_u32(buf, static_cast<std::uint32_t>(nd.reason.size()));
+        detail::put_bytes(buf, nd.reason.data(), nd.reason.size());
+        break;
+      }
+    }
+    // Dependency edges (common to all tags).
     detail::put_u32(buf, static_cast<std::uint32_t>(nd.deps.size()));
     for (std::uint32_t d : nd.deps) detail::put_u32(buf, d);
   }
@@ -169,7 +238,9 @@ inline bool serialize_graph(const RecordedGraph& g, const char* path) {
 }
 
 // Deserialize a `.snap` file into *out. Returns true on success; on any
-// malformed/truncated input returns false (with *out cleared/partial).
+// malformed/truncated input returns false (with *out cleared/partial). Rejects
+// a wrong magic or a version mismatch cleanly (v1 readers reject v2 and vice
+// versa) so a stale snapshot dir cannot be mis-parsed.
 inline bool deserialize_graph(const char* path, RecordedGraph* out) {
   if (out == nullptr) return false;
   out->nodes.clear();
@@ -198,25 +269,52 @@ inline bool deserialize_graph(const char* path, RecordedGraph* out) {
   if (r.u32() != kSnapVersion) return false;
   const std::uint32_t node_count = r.u32();
   // Cap the reserve so a corrupt/hostile file cannot request a huge up-front
-  // allocation. A captured graph with >1M kernel nodes is implausible for the
+  // allocation. A captured graph with >1M nodes is implausible for the
   // workloads this targets; reject rather than reserve gigabytes.
   if (node_count > (1u << 20)) return false;
   out->nodes.reserve(node_count);
   for (std::uint32_t i = 0; i < node_count && r.ok; ++i) {
     RecordedNode nd;
-    nd.kind        = r.i32();
-    nd.module_hash = r.u64();
-    const std::uint32_t name_len = r.u32();
-    if (!r.need(name_len)) return false;
-    nd.name.assign(reinterpret_cast<const char*>(buf.data() + r.pos), name_len);
-    r.pos += name_len;
-    for (int k = 0; k < 3; ++k) nd.grid[k] = r.u32();
-    for (int k = 0; k < 3; ++k) nd.block[k] = r.u32();
-    nd.shared_mem_bytes = r.u32();
-    const std::uint32_t ksize = r.u32();
-    if (!r.need(ksize)) return false;
-    nd.kernarg.resize(ksize);
-    if (ksize) r.bytes(nd.kernarg.data(), ksize);
+    nd.tag = static_cast<NodeTag>(r.u8());
+    switch (nd.tag) {
+      case NodeTag::Kernel: {
+        nd.kind        = r.i32();
+        nd.module_hash = r.u64();
+        const std::uint32_t name_len = r.u32();
+        if (!r.need(name_len)) return false;
+        nd.name.assign(reinterpret_cast<const char*>(buf.data() + r.pos),
+                       name_len);
+        r.pos += name_len;
+        for (int k = 0; k < 3; ++k) nd.grid[k] = r.u32();
+        for (int k = 0; k < 3; ++k) nd.block[k] = r.u32();
+        nd.shared_mem_bytes = r.u32();
+        nd.kernarg_form     = r.u8();
+        const std::uint32_t ksize = r.u32();
+        if (!r.need(ksize)) return false;
+        nd.kernarg.resize(ksize);
+        if (ksize) r.bytes(nd.kernarg.data(), ksize);
+        break;
+      }
+      case NodeTag::Memcpy:
+      case NodeTag::Memset: {
+        const std::uint32_t bsize = r.u32();
+        if (!r.need(bsize)) return false;
+        nd.blob.resize(bsize);
+        if (bsize) r.bytes(nd.blob.data(), bsize);
+        break;
+      }
+      case NodeTag::Blind:
+      default: {
+        nd.tag = NodeTag::Blind;  // coerce any unknown tag to BLIND on read
+        const std::uint32_t rlen = r.u32();
+        if (!r.need(rlen)) return false;
+        nd.reason.assign(reinterpret_cast<const char*>(buf.data() + r.pos),
+                         rlen);
+        r.pos += rlen;
+        break;
+      }
+    }
+    // Dependency edges (common to all tags).
     const std::uint32_t dep_count = r.u32();
     if (!r.need(static_cast<std::size_t>(dep_count) * 4u)) return false;
     nd.deps.reserve(dep_count);

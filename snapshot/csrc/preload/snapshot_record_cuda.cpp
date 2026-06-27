@@ -26,10 +26,10 @@
 // cudaGetFuncBySymbol for fatbin kernels); any unresolved node is BLIND (G4=0).
 //
 // SCOPE (N5a): the driver capture/launch path is interposed (the CLI smoke uses
-// it exclusively). Only KERNEL nodes are recorded; a kernel node whose kernargs
+// it exclusively). Only KERNEL nodes were recorded; a kernel node whose kernargs
 // use the `extra` (CU_LAUNCH_PARAM_BUFFER_POINTER) path or whose identity
-// cannot be resolved is marked BLIND and counted (it is not restorable
-// verbatim) — N5b territory.
+// cannot be resolved was marked BLIND and counted (not restorable verbatim) —
+// N5b territory.
 //
 // N5b Task 1 extends this with RUNTIME capture-API shims
 // (cudaStream{Begin,End,IsCapturing,GetCaptureInfo}) — the path
@@ -37,6 +37,13 @@
 // dedupe-by-CUgraph (g_walked_graphs) so a graph walked by both the runtime
 // hook and the driver hook it invokes internally is serialized exactly once.
 // A SUMMARY `rt_capture=<n>` field counts the runtime-path windows.
+//
+// N5b Task 2 extends record/restore to ALL graph node types: MEMCPY and MEMSET
+// nodes are recorded structurally (verbatim params struct) and rebuilt; the
+// `extra`-buffer kernarg form is recorded verbatim; every node is indexed so
+// non-kernel dependency edges resolve (fixing the N5a edge-drop); any
+// still-unsupported node type is BLIND with an explicit reason (no silent
+// drop). `.snap` format bumped to v2 (type-tagged nodes).
 //
 // Env contract:
 //   SNAPSHOT_RECORD_CUDA_MODE=record|restore  (default: record)
@@ -427,6 +434,30 @@ std::vector<std::uint8_t> pack_kernarg(CUfunction f, void** kernel_params,
   return blob;
 }
 
+// N5b Task 2: extract the verbatim kernarg blob from the `extra` launch config
+// (CU_LAUNCH_PARAM_BUFFER_POINTER / BUFFER_SIZE) used by some vLLM/Triton
+// launches. The `extra` array is a sequence of {tag, value} pairs terminated
+// by CU_LAUNCH_PARAM_END. Returns the blob (empty on failure) — Δ=0 makes it
+// directly valid at restore, replayed via the same `extra` form.
+std::vector<std::uint8_t> pack_extra_kernarg(void** extra) {
+  if (extra == nullptr) return {};
+  const void* buffer_ptr = nullptr;
+  std::size_t  buffer_sz  = 0;
+  for (std::size_t i = 0; extra[i] != CU_LAUNCH_PARAM_END; i += 2) {
+    const auto tag = reinterpret_cast<std::uintptr_t>(extra[i]);
+    if (tag == static_cast<std::uintptr_t>(CU_LAUNCH_PARAM_BUFFER_POINTER)) {
+      buffer_ptr = extra[i + 1];
+    } else if (tag ==
+               static_cast<std::uintptr_t>(CU_LAUNCH_PARAM_BUFFER_SIZE)) {
+      buffer_sz = *static_cast<const std::size_t*>(extra[i + 1]);
+    }
+  }
+  if (buffer_ptr == nullptr || buffer_sz == 0) return {};
+  return std::vector<std::uint8_t>(static_cast<const std::uint8_t*>(buffer_ptr),
+                                   static_cast<const std::uint8_t*>(buffer_ptr) +
+                                       buffer_sz);
+}
+
 // Walk a captured graph and serialize its kernel nodes to graph-NNNN.snap.
 // Called from the cuStreamEndCapture hook AFTER the real end-capture, only in
 // record mode. Runs WITHOUT g_mu held (snapshot_identity_for takes g_mu
@@ -450,68 +481,110 @@ void record_captured_graph(CUgraph graph) {
   std::vector<CUgraphNode> nodes(n);
   if (n > 0 && cuGraphGetNodes(graph, nodes.data(), &n) != CUDA_SUCCESS) return;
 
-  // Pass 1: assign a record index to each KERNEL node, in cuGraphGetNodes
-  // order. Two passes so dep handles resolve to record indices regardless of
-  // the (driver-defined, not guaranteed topological) node ordering.
+  // Pass 1: assign a record index to EVERY node (kernel, memcpy, memset, and
+  // any other type), in cuGraphGetNodes order. Indexing all nodes — not just
+  // kernel nodes — is what fixes the N5a non-kernel edge-drop: a dependency
+  // edge into a memcpy/memset node now resolves to a real record index.
   std::map<CUgraphNode, std::uint32_t> rec_index;
-  std::vector<CUgraphNode> kernel_nodes;
-  kernel_nodes.reserve(n);
+  std::vector<CUgraphNode> all_nodes;
+  all_nodes.reserve(n);
   for (std::size_t i = 0; i < n; ++i) {
-    CUgraphNodeType t{};
-    if (cuGraphNodeGetType(nodes[i], &t) != CUDA_SUCCESS) continue;
-    if (t != CU_GRAPH_NODE_TYPE_KERNEL) continue;  // N5a: kernel nodes only
-    rec_index[nodes[i]] = static_cast<std::uint32_t>(kernel_nodes.size());
-    kernel_nodes.push_back(nodes[i]);
+    rec_index[nodes[i]] = static_cast<std::uint32_t>(all_nodes.size());
+    all_nodes.push_back(nodes[i]);
   }
 
-  // Pass 2: build one record per kernel node (record position == node index, so
-  // rec_index stays aligned even for blind nodes).
+  // Pass 2: build one record per node, dispatching on its type. Record
+  // position == node index, so rec_index stays aligned for every tag.
   snapshot_cuda::RecordedGraph rec;
-  rec.nodes.reserve(kernel_nodes.size());
+  rec.nodes.reserve(all_nodes.size());
   std::uint64_t local_blind = 0;
   std::uint64_t local_edges = 0;
-  for (CUgraphNode node : kernel_nodes) {
+  for (CUgraphNode node : all_nodes) {
     snapshot_cuda::RecordedNode rn;
     bool node_blind = false;
 
-    CUDA_KERNEL_NODE_PARAMS p{};
-    if (cuGraphKernelNodeGetParams(node, &p) == CUDA_SUCCESS) {
-      rn.grid[0] = p.gridDimX;
-      rn.grid[1] = p.gridDimY;
-      rn.grid[2] = p.gridDimZ;
-      rn.block[0] = p.blockDimX;
-      rn.block[1] = p.blockDimY;
-      rn.block[2] = p.blockDimZ;
-      rn.shared_mem_bytes = p.sharedMemBytes;
+    CUgraphNodeType nt{};
+    const bool have_type = (cuGraphNodeGetType(node, &nt) == CUDA_SUCCESS);
+    if (have_type && nt == CU_GRAPH_NODE_TYPE_KERNEL) {
+      rn.tag = snapshot_cuda::NodeTag::Kernel;
+      CUDA_KERNEL_NODE_PARAMS p{};
+      if (cuGraphKernelNodeGetParams(node, &p) == CUDA_SUCCESS) {
+        rn.grid[0] = p.gridDimX;
+        rn.grid[1] = p.gridDimY;
+        rn.grid[2] = p.gridDimZ;
+        rn.block[0] = p.blockDimX;
+        rn.block[1] = p.blockDimY;
+        rn.block[2] = p.blockDimZ;
+        rn.shared_mem_bytes = p.sharedMemBytes;
 
-      // Function identity (copy-out into a caller-owned buffer).
-      int kind = 0;
-      char name_buf[1024];
-      name_buf[0] = '\0';
-      std::uint64_t mhash = 0;
-      if (snapshot_identity_for(p.func, &kind, name_buf, sizeof(name_buf),
-                                &mhash)) {
-        rn.kind = kind;
-        rn.name = name_buf;
-        rn.module_hash = mhash;
-      } else {
-        node_blind = true;  // unrecognised CUfunction
-      }
+        // Function identity (copy-out into a caller-owned buffer).
+        int kind = 0;
+        char name_buf[1024];
+        name_buf[0] = '\0';
+        std::uint64_t mhash = 0;
+        if (snapshot_identity_for(p.func, &kind, name_buf, sizeof(name_buf),
+                                  &mhash)) {
+          rn.kind = kind;
+          rn.name = name_buf;
+          rn.module_hash = mhash;
+        } else {
+          node_blind = true;  // unrecognised CUfunction
+        }
 
-      // Verbatim kernarg blob. Only the kernelParams (array-of-void*) path is
-      // supported in N5a; an `extra`-only node (CU_LAUNCH_PARAM_BUFFER_POINTER)
-      // is N5b — mark blind and leave kernarg empty.
-      if (p.kernelParams != nullptr) {
-        const std::size_t ksize = cuda_kernarg_size(p.func);
-        rn.kernarg = pack_kernarg(p.func, p.kernelParams, ksize);
+        // Verbatim kernarg blob. N5b: support BOTH launch forms —
+        //   kernelParams (array-of-void*)  → pack via cuFuncGetParamInfo
+        //   extra (CU_LAUNCH_PARAM_BUFFER_POINTER) → verbatim buffer copy
+        // (vLLM/Triton may use the extra form). Both replay via the driver
+        // `extra` config; kernarg_form records which form was captured.
+        if (p.kernelParams != nullptr) {
+          const std::size_t ksize = cuda_kernarg_size(p.func);
+          rn.kernarg = pack_kernarg(p.func, p.kernelParams, ksize);
+          rn.kernarg_form = 0;
+        } else if (p.extra != nullptr) {
+          rn.kernarg = pack_extra_kernarg(p.extra);
+          rn.kernarg_form = 1;
+          if (rn.kernarg.empty()) node_blind = true;  // malformed extra config
+        } else {
+          node_blind = true;  // neither kernarg form present
+        }
       } else {
         node_blind = true;
       }
+    } else if (have_type && nt == CU_GRAPH_NODE_TYPE_MEMCPY) {
+      rn.tag = snapshot_cuda::NodeTag::Memcpy;
+      CUDA_MEMCPY3D p{};
+      if (cuGraphMemcpyNodeGetParams(node, &p) == CUDA_SUCCESS) {
+        // Verbatim struct blob: Δ=0 makes the device pointers inside valid at
+        // restore. (Same image on record + restore ⟹ identical struct layout.)
+        const auto* src = reinterpret_cast<const std::uint8_t*>(&p);
+        rn.blob.assign(src, src + sizeof(p));
+      } else {
+        node_blind = true;
+        rn.reason = "cuGraphMemcpyNodeGetParams failed";
+      }
+    } else if (have_type && nt == CU_GRAPH_NODE_TYPE_MEMSET) {
+      rn.tag = snapshot_cuda::NodeTag::Memset;
+      CUDA_MEMSET_NODE_PARAMS p{};
+      if (cuGraphMemsetNodeGetParams(node, &p) == CUDA_SUCCESS) {
+        const auto* src = reinterpret_cast<const std::uint8_t*>(&p);
+        rn.blob.assign(src, src + sizeof(p));
+      } else {
+        node_blind = true;
+        rn.reason = "cuGraphMemsetNodeGetParams failed";
+      }
     } else {
+      // N5b: any still-unsupported node type (GRAPH/CHILD/EVENT/HOST/EMPTY/…)
+      // is BLIND with an explicit reason — never a silent edge-drop.
+      rn.tag = snapshot_cuda::NodeTag::Blind;
       node_blind = true;
+      char rb[64];
+      std::snprintf(rb, sizeof(rb), "unsupported node type %d",
+                    have_type ? static_cast<int>(nt) : -1);
+      rn.reason = rb;
     }
 
-    // Dependency edges -> record indices of predecessors.
+    // Dependency edges -> record indices of predecessors (all node types are
+    // now indexed, so kernel→memcpy/memset edges resolve correctly).
     std::size_t dn = 0;
     if (cuGraphNodeGetDependencies(node, nullptr, &dn) == CUDA_SUCCESS &&
         dn > 0) {
@@ -636,11 +709,13 @@ CUfunction resolve_function(const snapshot_cuda::RecordedNode& nd) {
 // Rebuild a CUgraph from a recorded graph using the ROBUST create-then-link
 // pattern (NOT N1's in-order link, which silently drops edges whose source
 // isn't built yet — unsafe because cuGraphGetNodes order is not guaranteed
-// topological). Pass 1 creates every kernel node with NO deps; pass 2 wires the
-// edges, so any node ordering works. The kernarg blob is replayed verbatim via
-// the driver `extra` buffer-pointer config (exactly N1's launch mechanism). On
-// any failure the partial graph is destroyed and false is returned. Must be
-// called WITHOUT g_mu held (resolve_function takes it).
+// topological). Pass 1 creates every node (kernel / memcpy / memset) with NO
+// deps; pass 2 wires the edges, so any node ordering works. The kernarg / struct
+// blobs are replayed verbatim via the driver `extra` buffer-pointer config
+// (kernels) or the verbatim params struct (memcpy/memset) — exactly N1's launch
+// mechanism, extended to non-kernel nodes. On any failure the partial graph is
+// destroyed and false is returned. Must be called WITHOUT g_mu held
+// (resolve_function takes it).
 bool rebuild_graph(const snapshot_cuda::RecordedGraph& rec, CUgraph* out) {
   CUgraph g = nullptr;
   if (cuGraphCreate(&g, 0) != CUDA_SUCCESS) return false;
@@ -648,63 +723,122 @@ bool rebuild_graph(const snapshot_cuda::RecordedGraph& rec, CUgraph* out) {
   const std::size_t n = rec.nodes.size();
   std::vector<CUgraphNode> built(n, nullptr);
 
-  // Pass 1: create all kernel nodes (no dependencies yet).
+  // Current context — cuGraphAddMemcpyNode / cuGraphAddMemsetNode require it.
+  CUcontext ctx = nullptr;
+  static_cast<void>(cuCtxGetCurrent(&ctx));  // best-effort; null → primary ctx
+
+  // Pass 1: create all nodes with NO deps, tag-dispatched (kernel / memcpy /
+  // memset / blind). Create-then-link so any cuGraphGetNodes ordering works.
+  // The kernarg / struct blobs are replayed VERBATIM (the restore queue owns
+  // them with stable addresses for the process lifetime); Δ=0 makes every
+  // embedded device pointer valid unmodified. On any failure the partial graph
+  // is destroyed and false is returned. Must be called WITHOUT g_mu held
+  // (resolve_function takes it).
   for (std::size_t i = 0; i < n; ++i) {
     const snapshot_cuda::RecordedNode& nd = rec.nodes[i];
+    CUgraphNode node = nullptr;
+    CUresult rc = CUDA_SUCCESS;
+    const char* what = "?";
 
-    const CUfunction func = resolve_function(nd);
-    if (func == nullptr) {
-      {
+    if (nd.tag == snapshot_cuda::NodeTag::Kernel) {
+      const CUfunction func = resolve_function(nd);
+      if (func == nullptr) {
+        {
+          std::lock_guard<std::mutex> lock(g_mu);
+          ++g_blind;
+        }
+        std::fprintf(stderr,
+                     "[record-cuda] pid=%d restore: BLIND node %zu name=%s "
+                     "kind=%d (unresolved) — cannot rebuild\n",
+                     static_cast<int>(getpid()), i, nd.name.c_str(), nd.kind);
+        static_cast<void>(cuGraphDestroy(g));
+        return false;
+      }
+      // Per-node `extra` config pointing at the VERBATIM recorded kernarg bytes.
+      // Kept alive for the process lifetime (caller instantiates later, unseen).
+      auto cfg = std::make_unique<NodeConfig>();
+      cfg->blob_size = nd.kernarg.size();
+      cfg->config[0] = CU_LAUNCH_PARAM_BUFFER_POINTER;
+      cfg->config[1] = const_cast<std::uint8_t*>(nd.kernarg.data());
+      cfg->config[2] = CU_LAUNCH_PARAM_BUFFER_SIZE;
+      cfg->config[3] = &cfg->blob_size;
+      cfg->config[4] = CU_LAUNCH_PARAM_END;
+
+      CUDA_KERNEL_NODE_PARAMS p{};
+      p.func           = func;
+      p.gridDimX       = nd.grid[0];
+      p.gridDimY       = nd.grid[1];
+      p.gridDimZ       = nd.grid[2];
+      p.blockDimX      = nd.block[0];
+      p.blockDimY      = nd.block[1];
+      p.blockDimZ      = nd.block[2];
+      p.sharedMemBytes = nd.shared_mem_bytes;
+      p.kernelParams   = nullptr;
+      p.extra          = cfg->config;
+
+      rc   = cuGraphAddKernelNode(&node, g, nullptr, 0, &p);
+      what = "cuGraphAddKernelNode";
+      if (rc == CUDA_SUCCESS) {
+        std::lock_guard<std::mutex> lock(g_mu);
+        g_node_configs.push_back(std::move(cfg));
+      }
+    } else if (nd.tag == snapshot_cuda::NodeTag::Memcpy) {
+      // Verbatim CUDA_MEMCPY3D replay (mutable local copy → non-const ptr).
+      if (nd.blob.size() != sizeof(CUDA_MEMCPY3D)) {
         std::lock_guard<std::mutex> lock(g_mu);
         ++g_blind;
+        std::fprintf(stderr,
+                     "[record-cuda] pid=%d restore: BLIND memcpy node %zu "
+                     "(blob %zu != CUDA_MEMCPY3D %zu)\n",
+                     static_cast<int>(getpid()), i, nd.blob.size(),
+                     sizeof(CUDA_MEMCPY3D));
+        static_cast<void>(cuGraphDestroy(g));
+        return false;
       }
+      CUDA_MEMCPY3D params =
+          *reinterpret_cast<const CUDA_MEMCPY3D*>(nd.blob.data());
+      rc   = cuGraphAddMemcpyNode(&node, g, nullptr, 0, &params, ctx);
+      what = "cuGraphAddMemcpyNode";
+    } else if (nd.tag == snapshot_cuda::NodeTag::Memset) {
+      // Verbatim CUDA_MEMSET_NODE_PARAMS replay.
+      if (nd.blob.size() != sizeof(CUDA_MEMSET_NODE_PARAMS)) {
+        std::lock_guard<std::mutex> lock(g_mu);
+        ++g_blind;
+        std::fprintf(stderr,
+                     "[record-cuda] pid=%d restore: BLIND memset node %zu "
+                     "(blob %zu != CUDA_MEMSET_NODE_PARAMS %zu)\n",
+                     static_cast<int>(getpid()), i, nd.blob.size(),
+                     sizeof(CUDA_MEMSET_NODE_PARAMS));
+        static_cast<void>(cuGraphDestroy(g));
+        return false;
+      }
+      CUDA_MEMSET_NODE_PARAMS params =
+          *reinterpret_cast<const CUDA_MEMSET_NODE_PARAMS*>(nd.blob.data());
+      rc   = cuGraphAddMemsetNode(&node, g, nullptr, 0, &params, ctx);
+      what = "cuGraphAddMemsetNode";
+    } else {
+      // Blind node (unsupported type recorded as blind, or unresolved).
+      std::lock_guard<std::mutex> lock(g_mu);
+      ++g_blind;
       std::fprintf(stderr,
-                   "[record-cuda] pid=%d restore: BLIND node %zu name=%s "
-                   "kind=%d (unresolved) — cannot rebuild\n",
-                   static_cast<int>(getpid()), i, nd.name.c_str(), nd.kind);
+                   "[record-cuda] pid=%d restore: BLIND node %zu tag=%d "
+                   "reason=%s — cannot rebuild\n",
+                   static_cast<int>(getpid()), i, static_cast<int>(nd.tag),
+                   nd.reason.c_str());
       static_cast<void>(cuGraphDestroy(g));
       return false;
     }
 
-    // Per-node `extra` config pointing at the VERBATIM recorded kernarg bytes.
-    // Kept alive for the process lifetime (caller instantiates later, unseen).
-    auto cfg = std::make_unique<NodeConfig>();
-    cfg->blob_size = nd.kernarg.size();
-    cfg->config[0] = CU_LAUNCH_PARAM_BUFFER_POINTER;
-    cfg->config[1] = const_cast<std::uint8_t*>(nd.kernarg.data());
-    cfg->config[2] = CU_LAUNCH_PARAM_BUFFER_SIZE;
-    cfg->config[3] = &cfg->blob_size;
-    cfg->config[4] = CU_LAUNCH_PARAM_END;
-
-    CUDA_KERNEL_NODE_PARAMS p{};
-    p.func           = func;
-    p.gridDimX       = nd.grid[0];
-    p.gridDimY       = nd.grid[1];
-    p.gridDimZ       = nd.grid[2];
-    p.blockDimX      = nd.block[0];
-    p.blockDimY      = nd.block[1];
-    p.blockDimZ      = nd.block[2];
-    p.sharedMemBytes = nd.shared_mem_bytes;
-    p.kernelParams   = nullptr;
-    p.extra          = cfg->config;
-
-    CUgraphNode node = nullptr;
-    const CUresult rc = cuGraphAddKernelNode(&node, g, nullptr, 0, &p);
     if (rc != CUDA_SUCCESS) {
       const char* es = nullptr;
       cuGetErrorString(rc, &es);
       std::fprintf(stderr,
-                   "[record-cuda] pid=%d restore: cuGraphAddKernelNode node %zu "
-                   "failed: %s\n",
-                   static_cast<int>(getpid()), i, es ? es : "?");
+                   "[record-cuda] pid=%d restore: %s node %zu failed: %s\n",
+                   static_cast<int>(getpid()), what, i, es ? es : "?");
       static_cast<void>(cuGraphDestroy(g));
       return false;
     }
     built[i] = node;
-    {
-      std::lock_guard<std::mutex> lock(g_mu);
-      g_node_configs.push_back(std::move(cfg));
-    }
   }
 
   // Pass 2: add dependency edges (dep d -> node i), tolerant of any node order.

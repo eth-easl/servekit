@@ -47,13 +47,14 @@ srun --environment=snapshot-cuda \
 
     # Build: smoke binary + record interposer + redirect interposer.
     cmake --build snapshot/build-cuda -j"${SLURM_CPUS_PER_TASK:-8}" \
-      --target cuda_record_smoke cuda_record_runtime_smoke snapshot_record_cuda snapshot_redirect_cuda
+      --target cuda_record_smoke cuda_record_runtime_smoke cuda_record_full_smoke snapshot_record_cuda snapshot_redirect_cuda
 
     SMOKE="$PWD/snapshot/build-cuda/cuda_record_smoke"
     RT_SMOKE="$PWD/snapshot/build-cuda/cuda_record_runtime_smoke"
+    FULL_SMOKE="$PWD/snapshot/build-cuda/cuda_record_full_smoke"
     RECORD_SO="$PWD/snapshot/build-cuda/libsnapshot_record_cuda.so"
     REDIRECT_SO="$PWD/snapshot/build-cuda/libsnapshot_redirect_cuda.so"
-    ls -l "$SMOKE" "$RT_SMOKE" "$RECORD_SO" "$REDIRECT_SO"
+    ls -l "$SMOKE" "$RT_SMOKE" "$FULL_SMOKE" "$RECORD_SO" "$REDIRECT_SO"
 
     # Persistent log paths — no /tmp (diskless compute nodes + reproducibility).
     LOG1="${DEPLOY_DIR}/logs/smoke-run1.log"
@@ -383,6 +384,83 @@ srun --environment=snapshot-cuda \
       { echo "N5B_RT_GATE: FAIL (fixed_base_honored=1)"; exit 1; }
 
     echo "N5B_RT_GATE: PASS (runtime path record→restore bit-identical, rt_capture=1)"
+
+    # -------------------------------------------------------------------
+    # N5b Task 2 (G1): FULL-like graph — non-kernel nodes + `extra` kernargs +
+    # a diamond DAG. Exercises the v2 format (memcpy/memset/blind tags) and
+    # the non-kernel edge resolution (the N5a gap) end to end.
+    # -------------------------------------------------------------------
+    echo "--- N5b Task 2 (G1): FULL-like graph (record → restore) ---"
+    FULL_DIR1="${DEPLOY_DIR}/snap-record-full/run1"
+    FULL_DIR2="${DEPLOY_DIR}/snap-record-full/run2"
+    FULL_LOG_R="${DEPLOY_DIR}/snap-record-full/record.log"
+    FULL_LOG_R2="${DEPLOY_DIR}/snap-record-full/record2.log"
+    FULL_LOG_S="${DEPLOY_DIR}/snap-record-full/restore.log"
+    rm -rf "${FULL_DIR1}" "${FULL_DIR2}"; mkdir -p "${FULL_DIR1}" "${FULL_DIR2}"
+
+    echo "--- FULL record run 1 (LD_PRELOAD=redirect:record) ---"
+    LD_PRELOAD="${REDIRECT_SO}:${RECORD_SO}" \
+      SNAPSHOT_RECORD_CUDA_MODE=record \
+      SNAPSHOT_RECORD_CUDA_DIR="${FULL_DIR1}" \
+      "${FULL_SMOKE}" 2>&1 | tee "${FULL_LOG_R}"
+    FULL_EXIT_R="${PIPESTATUS[0]}"
+    [ "${FULL_EXIT_R}" -eq 0 ] || { echo "N5B_FULL_GATE: FAIL (record exit=${FULL_EXIT_R})"; exit 1; }
+
+    echo "--- FULL record run 2 (Δ=0 determinism) ---"
+    LD_PRELOAD="${REDIRECT_SO}:${RECORD_SO}" \
+      SNAPSHOT_RECORD_CUDA_MODE=record \
+      SNAPSHOT_RECORD_CUDA_DIR="${FULL_DIR2}" \
+      "${FULL_SMOKE}" 2>&1 | tee "${FULL_LOG_R2}"
+    FULL_EXIT_R2="${PIPESTATUS[0]}"
+    [ "${FULL_EXIT_R2}" -eq 0 ] || { echo "N5B_FULL_GATE: FAIL (record2 exit=${FULL_EXIT_R2})"; exit 1; }
+
+    FULL_CS_R=$(grep "^FULL_CHECKSUM" "${FULL_LOG_R}" | head -1)
+    echo "FULL record checksum: ${FULL_CS_R}"
+    FULL_REC_SUMMARY=$(grep "\[record-cuda\].*SUMMARY" "${FULL_LOG_R}" || echo MISSING)
+    echo "FULL record summary: ${FULL_REC_SUMMARY}"
+    # G1: every node resolved (memcpy/memset handled, no blind), 1 graph.
+    echo "${FULL_REC_SUMMARY}" | grep -q "blind=0" || { echo "N5B_FULL_GATE: FAIL (blind=0 in record)"; exit 1; }
+    echo "${FULL_REC_SUMMARY}" | grep -qE "recorded: graphs=1" || { echo "N5B_FULL_GATE: FAIL (recorded: graphs=1)"; exit 1; }
+    # At least the 4 kernels + 1 memset + 2 memcpys = 7 nodes; print the count.
+    FULL_NODES=$(echo "${FULL_REC_SUMMARY}" | grep -oE "nodes=[0-9]+" | head -1)
+    echo "FULL node count: ${FULL_NODES}"
+    echo "${FULL_NODES}" | grep -qE "nodes=([7-9]|[1-9][0-9]+)" || \
+      { echo "N5B_FULL_GATE: FAIL (expected >=7 nodes for memset+2memcpy+4kernel diamond; got ${FULL_NODES})"; exit 1; }
+
+    # Δ=0: the two FULL record dirs must be byte-identical.
+    FULL_SNAP1="${FULL_DIR1}/graph-0000.snap"
+    FULL_SNAP2="${FULL_DIR2}/graph-0000.snap"
+    [ -s "${FULL_SNAP1}" ] && [ -s "${FULL_SNAP2}" ] || { echo "N5B_FULL_GATE: FAIL (.snap missing)"; exit 1; }
+    if cmp "${FULL_SNAP1}" "${FULL_SNAP2}"; then
+      echo "N5B_FULL_SNAP_BYTE_IDENTICAL=1"
+    else
+      echo "N5B_FULL_GATE: FAIL (.snap differs between two FULL record runs)"; exit 1
+    fi
+
+    echo "--- FULL restore run (LD_PRELOAD=redirect:record, MODE=restore) ---"
+    LD_PRELOAD="${REDIRECT_SO}:${RECORD_SO}" \
+      SNAPSHOT_RECORD_CUDA_MODE=restore \
+      SNAPSHOT_RECORD_CUDA_DIR="${FULL_DIR1}" \
+      "${FULL_SMOKE}" 2>&1 | tee "${FULL_LOG_S}"
+    FULL_EXIT_S="${PIPESTATUS[0]}"
+    [ "${FULL_EXIT_S}" -eq 0 ] || { echo "N5B_FULL_GATE: FAIL (restore exit=${FULL_EXIT_S})"; exit 1; }
+
+    FULL_CS_S=$(grep "^FULL_CHECKSUM" "${FULL_LOG_S}" | head -1)
+    echo "FULL restore checksum: ${FULL_CS_S}"
+    FULL_REST_SUMMARY=$(grep "\[record-cuda\].*SUMMARY" "${FULL_LOG_S}" || echo MISSING)
+    echo "FULL restore summary: ${FULL_REST_SUMMARY}"
+
+    # G1: bit-identical restored output, blind=0, restored=1/fallthrough=0.
+    if [ "${FULL_CS_R}" = "${FULL_CS_S}" ] && [ -n "${FULL_CS_R}" ]; then
+      echo "N5B_FULL_BIT_IDENTICAL=1"
+    else
+      echo "N5B_FULL_GATE: FAIL (record=${FULL_CS_R} restore=${FULL_CS_S})"; exit 1
+    fi
+    echo "${FULL_REST_SUMMARY}" | grep -q "restored=1"     || { echo "N5B_FULL_GATE: FAIL (restored=1)";     exit 1; }
+    echo "${FULL_REST_SUMMARY}" | grep -q "fallthrough=0" || { echo "N5B_FULL_GATE: FAIL (fallthrough=0)"; exit 1; }
+    echo "${FULL_REST_SUMMARY}" | grep -q "blind=0"       || { echo "N5B_FULL_GATE: FAIL (blind=0)";       exit 1; }
+
+    echo "N5B_FULL_GATE: PASS (FULL-like graph record→restore bit-identical, blind=0)"
   '
 
 echo "cuda-record-smoke finished: $(date --iso-8601=seconds)"
