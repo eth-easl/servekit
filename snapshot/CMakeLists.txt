@@ -116,6 +116,20 @@ elseif(SNAPSHOT_BACKEND STREQUAL "CUDA")
   set_source_files_properties(csrc/cli/cuda_record_smoke.cpp PROPERTIES LANGUAGE CUDA)
   snapshot_configure_cuda(cuda_record_smoke)
   target_link_libraries(cuda_record_smoke PRIVATE "${SNAPSHOT_CUDART_LIBRARY}")
+
+  # N5a Task 2: LD_PRELOAD identity interposer for record/restore.
+  # Interposes __cudaRegisterFatBinary/__cudaRegisterFunction/__cudaRegisterFatBinaryEnd
+  # (fatbin/static-kernel path) and cuModuleLoadData/cuModuleGetFunction
+  # (nvrtc/module path) to build an IdentityMap before any graph is captured.
+  # Mirrors snapshot_redirect_cuda: plain CXX (not nvcc), links libcuda +
+  # libcudart + libdl, -static-libstdc++/-libgcc for torch-image portability.
+  add_library(snapshot_record_cuda SHARED csrc/preload/snapshot_record_cuda.cpp)
+  target_include_directories(snapshot_record_cuda PRIVATE
+    "${SNAPSHOT_CUDA_INCLUDE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/include")
+  target_link_libraries(snapshot_record_cuda PRIVATE
+    "${SNAPSHOT_CUDA_DRIVER_LIBRARY}" "${SNAPSHOT_CUDART_LIBRARY}" ${CMAKE_DL_LIBS})
+  target_link_options(snapshot_record_cuda PRIVATE
+    -static-libstdc++ -static-libgcc)
 endif()
 
 add_executable(snapshot
