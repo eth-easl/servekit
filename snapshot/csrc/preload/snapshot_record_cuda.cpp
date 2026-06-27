@@ -58,7 +58,7 @@ Mode g_mode() {
 }
 
 const char* g_snap_dir() {
-  static const char* d = [] -> const char* {
+  static const char* d = []() {
     const char* e = std::getenv("SNAPSHOT_RECORD_CUDA_DIR");
     return e ? e : ".";
   }();
@@ -117,13 +117,15 @@ std::uint64_t fnv1a_64(const void* data, std::size_t len) {
   return h;
 }
 
-// Hash a PTX/cubin image.  PTX images are null-terminated C strings, so
-// strnlen() is safe.  Bounded to 1 MiB to avoid pathological inputs.
+// Hash a PTX/cubin image.  PTX images are null-terminated C strings, so a
+// bounded scan is safe.  Cap at 1 MiB to avoid pathological inputs.
+// Note: strnlen is POSIX and not in std::; use a manual loop for portability.
 std::uint64_t hash_image(const void* image) {
   if (!image) return 0ULL;
   const char* s = static_cast<const char*>(image);
   constexpr std::size_t kMaxBytes = 1ULL << 20;  // 1 MiB
-  const std::size_t len = std::strnlen(s, kMaxBytes);
+  std::size_t len = 0;
+  while (len < kMaxBytes && s[len] != '\0') ++len;
   return fnv1a_64(image, len);
 }
 
