@@ -52,6 +52,23 @@ def _log(msg):
     print(f"[cg_meta_cuda] {msg}", flush=True)
 
 
+def _rank():
+    # Per-worker rank, read the same way the C-interposer reads it for the
+    # SNAPSHOT_RECORD_CUDA_DIR %r token (first set wins). Used to resolve a %r
+    # token in the meta path so each TP worker writes its own rankN.json.
+    for name in ("RANK", "LOCAL_RANK", "VLLM_DP_RANK", "SLURM_PROCID"):
+        v = os.environ.get(name)
+        if v:
+            return v
+    return "0"
+
+
+def _resolve_rank_path(path):
+    if path and "%r" in path:
+        return path.replace("%r", _rank())
+    return path
+
+
 def _region_base():
     # snapshot_record_cuda (LD_PRELOAD'd) exports snapshot_record_cuda_region_base()
     # (N5b Task 3), which reads the redirect's fixed VMM base. Resolve it directly
@@ -206,8 +223,8 @@ def _install():
     _orig_call = CUDAGraphWrapper.__call__
     _orig_wrt = cgmod.weak_ref_tensors
 
-    RECORD_PATH = os.environ.get("VLLM_CG_RECORD_META")
-    RESTORE_PATH = os.environ.get("VLLM_CG_RESTORE_META")
+    RECORD_PATH = _resolve_rank_path(os.environ.get("VLLM_CG_RECORD_META"))
+    RESTORE_PATH = _resolve_rank_path(os.environ.get("VLLM_CG_RESTORE_META"))
 
     # --- weak_ref_tensors: tolerate non-tensor (wrapped/dummy) values ---
     def _safe_wrt(x):
