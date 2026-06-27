@@ -349,7 +349,7 @@ srun --environment=snapshot-cuda \
     # CUgraph dedupe: the runtime end-capture must serialize exactly ONE graph
     # (a double-walk would produce graph-0000 + graph-0001 → graphs=2).
     echo "${RT_REC_SUMMARY}" | grep -qF "recorded: graphs=1 nodes=2 edges=1 blind=0" || \
-      { echo "N5B_RT_GATE: FAIL (expected 'recorded: graphs=1 nodes=2 edges=1 blind=0'; got ${RT_REC_SUMMARY})"; exit 1; }
+      { echo "N5B_RT_GATE: FAIL (expected recorded: graphs=1 nodes=2 edges=1 blind=0; got ${RT_REC_SUMMARY})"; exit 1; }
 
     echo "--- runtime restore run (LD_PRELOAD=redirect:record, MODE=restore) ---"
     LD_PRELOAD="${REDIRECT_SO}:${RECORD_SO}" \
@@ -474,7 +474,7 @@ srun --environment=snapshot-cuda \
       echo "N5B_TASK3_GATE: FAIL (snapshot_record_cuda_region_base not exported)"; exit 1
     fi
 
-    # (b) the export returns the redirect's fixed base once redirect is engaged.
+    # (b) the export returns the redirect fixed base once redirect is engaged.
     PROBE_BASE=$(LD_PRELOAD="${REDIRECT_SO}:${RECORD_SO}" "${PROBE}" 2>/dev/null \
                  | grep "^REGION_BASE=" | head -1)
     echo "region_base probe: ${PROBE_BASE}"
@@ -504,6 +504,23 @@ srun --environment=snapshot-cuda \
       { echo "N5B_TASK3_GATE: FAIL (per-rank record summary)"; exit 1; }
 
     echo "N5B_TASK3_GATE: PASS (region_base export non-zero + per-rank dirs)"
+  '
+
+# ---------------------------------------------------------------------------
+# N5b Task 4: host-side unit test for cg_meta_cuda (DLPack kDLCUDA wrap +
+# metadata round-trip). Needs torch+CUDA, so a SEPARATE srun under the
+# torch-cuda EDF (the snapshot-cuda devel container has no torch). The recipe
+# dir is on /capstor (mounted in both EDFs); the test imports cg_meta_cuda from
+# its own dir (no vLLM needed — it exercises _serialize/_reconstruct/wrap only).
+# ---------------------------------------------------------------------------
+srun --environment=snapshot-torch-cuda \
+  bash -lc 'set -euo pipefail
+    cd "${DEPLOY_DIR}"
+    python3 snapshot/recipe/cginst_cuda/_test_wrap.py 2>&1 \
+      | tee "${DEPLOY_DIR}/logs/cg_meta_wrap.log"
+    grep -q "CG_META_WRAP_OK=1" "${DEPLOY_DIR}/logs/cg_meta_wrap.log" || \
+      { echo "N5B_CGMETA_GATE: FAIL (CG_META_WRAP_OK=1 not printed)"; exit 1; }
+    echo "N5B_CGMETA_GATE: PASS (DLPack kDLCUDA wrap + metadata round-trip)"
   '
 
 echo "cuda-record-smoke finished: $(date --iso-8601=seconds)"
