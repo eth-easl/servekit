@@ -69,6 +69,13 @@
 #include <dlfcn.h>
 #include <unistd.h>
 
+// RTLD_DEFAULT (GNU extension) is exposed under the same _GNU_SOURCE guard as
+// the RTLD_NEXT the existing thunks use. Defensive fallback so the build does
+// not depend on a specific toolchain header configuration.
+#ifndef RTLD_DEFAULT
+#define RTLD_DEFAULT ((void*)0)
+#endif
+
 #include <atomic>
 #include <cstdint>
 #include <cstdio>
@@ -111,11 +118,38 @@ Mode g_mode() {
 }
 
 const char* g_snap_dir() {
-  static const char* d = []() {
+  // N5b Task 3: per-rank snapshot dirs. If SNAPSHOT_RECORD_CUDA_DIR contains
+  // "%r", substitute the worker rank from the first set of {RANK, LOCAL_RANK,
+  // VLLM_DP_RANK, SLURM_PROCID} so each TP worker records/restores its own
+  // .snap set without collision. Resolved once (cached in a static string).
+  static const std::string d = []() {
     const char* e = std::getenv("SNAPSHOT_RECORD_CUDA_DIR");
-    return e ? e : ".";
+    if (!e) return std::string(".");
+    std::string s = e;
+    const std::size_t p = s.find("%r");
+    if (p == std::string::npos) return s;
+    const char* rank_envs[] = {"RANK", "LOCAL_RANK", "VLLM_DP_RANK",
+                               "SLURM_PROCID"};
+    const char* r = nullptr;
+    for (const char* name : rank_envs) {
+      if (const char* v = std::getenv(name)) {
+        if (*v) { r = v; break; }
+      }
+    }
+    const std::string rank = r ? r : "0";
+    std::string out;
+    out.reserve(s.size() + rank.size());
+    for (std::size_t i = 0; i < s.size(); ++i) {
+      if (i + 1 < s.size() && s[i] == '%' && s[i + 1] == 'r') {
+        out += rank;
+        ++i;
+      } else {
+        out += s[i];
+      }
+    }
+    return out;
   }();
-  return d;
+  return d.c_str();
 }
 
 // ---------------------------------------------------------------------------
@@ -150,6 +184,17 @@ struct ModuleKernelId {
   std::uint64_t module_hash = 0;
 };
 std::map<CUfunction, ModuleKernelId> g_module_identity;
+
+// N5b Task 3: prebuilt reverse-identity maps for O(log n) resolution at
+// rebuild time (the N5a path scanned g_module_identity / g_hostfun_table in
+// O(N) per node — acceptable for the CLI smoke, but hundreds of graphs ×
+// thousands of nodes want the index). Maintained incrementally by the
+// registration hooks so they stay current under lazy module loads, and evicted
+// by the cuModuleUnload hook (bounds process-lifetime growth).
+std::map<std::pair<std::string, std::uint64_t>, CUfunction> g_func_by_key;
+std::map<std::string, const void*> g_hostfun_by_devname;
+// CUmodule → its CUfunctions, so cuModuleUnload can evict identity entries.
+std::map<CUmodule, std::set<CUfunction>> g_module_to_functions;
 
 // Record + restore counters.
 std::uint64_t g_restored    = 0;  // graphs rebuilt+returned by the restore shim
@@ -288,6 +333,23 @@ using ModuleGetFunctionFn = CUresult (*)(CUfunction*, CUmodule, const char*);
 ModuleGetFunctionFn real_cuModuleGetFunction() {
   static const auto fn = reinterpret_cast<ModuleGetFunctionFn>(
       dlsym(RTLD_NEXT, "cuModuleGetFunction"));
+  return fn;
+}
+
+// N5b Task 3: the extended module-load form (some nvrtc/Triton paths use
+// cuModuleLoadDataEx instead of cuModuleLoadData) and module unload (eviction).
+using ModuleLoadDataExFn = CUresult (*)(CUmodule*, const void*, unsigned int,
+                                        CUjit_option*, void**);
+ModuleLoadDataExFn real_cuModuleLoadDataEx() {
+  static const auto fn = reinterpret_cast<ModuleLoadDataExFn>(
+      dlsym(RTLD_NEXT, SNAPSHOT_STR(cuModuleLoadDataEx)));
+  return fn;
+}
+
+using ModuleUnloadFn = CUresult (*)(CUmodule);
+ModuleUnloadFn real_cuModuleUnload() {
+  static const auto fn = reinterpret_cast<ModuleUnloadFn>(
+      dlsym(RTLD_NEXT, SNAPSHOT_STR(cuModuleUnload)));
   return fn;
 }
 
@@ -674,29 +736,23 @@ void ensure_restore_loaded() {
 CUfunction resolve_function(const snapshot_cuda::RecordedNode& nd) {
   if (nd.kind == 1) {
     // module/nvrtc: match BOTH the kernel name and the PTX image hash (Task 3
-    // proved the hash is run-to-run deterministic, so this is exact).
+    // proved the hash is run-to-run deterministic, so this is exact). N5b Task 3:
+    // O(log n) via the prebuilt reverse index (the N5a per-node scan is gone).
     std::lock_guard<std::mutex> lock(g_mu);
-    for (const auto& kv : g_module_identity) {
-      if (kv.second.name == nd.name &&
-          kv.second.module_hash == nd.module_hash) {
-        return kv.first;
-      }
-    }
+    const auto it = g_func_by_key.find({nd.name, nd.module_hash});
+    if (it != g_func_by_key.end()) return it->second;
     return nullptr;
   }
 
   // fatbin/static: find the host stub whose registered deviceName == nd.name,
   // then map it to a CUfunction via cudaGetFuncBySymbol (CUDA 12.0+;
-  // cudaFunction_t and CUfunction are the same CUfunc_st*).
+  // cudaFunction_t and CUfunction are the same CUfunc_st*). N5b Task 3: O(log n)
+  // via the prebuilt deviceName → hostFun reverse index.
   const void* hostfun = nullptr;
   {
     std::lock_guard<std::mutex> lock(g_mu);
-    for (const auto& kv : g_hostfun_table) {
-      if (kv.second == nd.name) {
-        hostfun = kv.first;
-        break;
-      }
-    }
+    const auto it = g_hostfun_by_devname.find(nd.name);
+    if (it != g_hostfun_by_devname.end()) hostfun = it->second;
   }
   if (hostfun == nullptr) return nullptr;
   CUfunction cufunc = nullptr;
@@ -961,6 +1017,8 @@ void __cudaRegisterFunction(
   if (hostFun && deviceName) {
     std::lock_guard<std::mutex> lock(g_mu);
     g_hostfun_table[static_cast<const void*>(hostFun)] = deviceName;
+    // N5b Task 3: reverse index (deviceName → hostFun) for O(log n) resolve.
+    g_hostfun_by_devname[deviceName] = static_cast<const void*>(hostFun);
   }
 }
 
@@ -982,11 +1040,54 @@ CUresult cuModuleLoadData(CUmodule* mod, const void* image) {
   auto* const real = real_cuModuleLoadData();
   const CUresult rc = real(mod, image);
   if (rc == CUDA_SUCCESS && mod && *mod) {
-    const std::uint64_t h = hash_image(image);
     std::lock_guard<std::mutex> lock(g_mu);
-    g_module_hashes[*mod] = h;
+    // N5b Task 3: dedupe — cuModuleLoadData may internally route through
+    // cuModuleLoadDataEx (also interposed), so only hash a module once.
+    if (g_module_hashes.find(*mod) == g_module_hashes.end()) {
+      g_module_hashes[*mod] = hash_image(image);
+    }
   }
   return rc;
+}
+
+// cuModuleLoadDataEx (N5b Task 3): the extended module-load form. Same hash
+// capture as cuModuleLoadData (deduped), so nvrtc/Triton paths that use this
+// entry point also populate g_module_hashes for kernel identity.
+CUresult cuModuleLoadDataEx(CUmodule* mod, const void* image,
+                            unsigned int numOptions, CUjit_option* options,
+                            void** optValues) {
+  auto* const real = real_cuModuleLoadDataEx();
+  const CUresult rc = real(mod, image, numOptions, options, optValues);
+  if (rc == CUDA_SUCCESS && mod && *mod) {
+    std::lock_guard<std::mutex> lock(g_mu);
+    if (g_module_hashes.find(*mod) == g_module_hashes.end()) {
+      g_module_hashes[*mod] = hash_image(image);
+    }
+  }
+  return rc;
+}
+
+// cuModuleUnload (N5b Task 3): evict the module's identity entries so repeated
+// module load/unload (e.g. Triton re-JIT) does not grow the maps unboundedly.
+// The CUfunction handles become invalid after unload; keeping them would also
+// risk a stale-handle resolve at rebuild time.
+CUresult cuModuleUnload(CUmodule mod) {
+  if (mod) {
+    std::lock_guard<std::mutex> lock(g_mu);
+    const auto mfit = g_module_to_functions.find(mod);
+    if (mfit != g_module_to_functions.end()) {
+      for (CUfunction f : mfit->second) {
+        const auto iit = g_module_identity.find(f);
+        if (iit != g_module_identity.end()) {
+          g_func_by_key.erase({iit->second.name, iit->second.module_hash});
+          g_module_identity.erase(iit);
+        }
+      }
+      g_module_to_functions.erase(mfit);
+    }
+    g_module_hashes.erase(mod);
+  }
+  return real_cuModuleUnload()(mod);
 }
 
 // cuModuleGetFunction: call real; on success insert the kernel's identity
@@ -1002,6 +1103,10 @@ CUresult cuModuleGetFunction(CUfunction* f, CUmodule mod, const char* name) {
     const std::uint64_t mhash =
         (hit != g_module_hashes.end()) ? hit->second : 0ULL;
     g_module_identity[*f] = {name, mhash};
+    // N5b Task 3: prebuilt reverse index + module→function set (for resolve +
+    // cuModuleUnload eviction).
+    g_func_by_key[{name, mhash}] = *f;
+    g_module_to_functions[mod].insert(*f);
   }
   return rc;
 }
@@ -1353,6 +1458,23 @@ int snapshot_identity_for(CUfunction     func,
 #endif
 
   return 0;
+}
+
+// ---------------------------------------------------------------------------
+// snapshot_record_cuda_region_base — N5b Task 3 export for the Python layer.
+// Returns the fixed VMM base snapshot_redirect_cuda reserved (Δ=0), or 0 if the
+// redirect .so is not active. The Python cg_meta_cuda layer resolves this
+// symbol via ctypes to reconstruct entry.output device pointers at restore
+// (region_base + recorded offset == recorded data_ptr under Δ=0). The redirect
+// .so exports snapshot_redirect_region_base(); resolve it through RTLD_DEFAULT
+// (the redirect is LD_PRELOAD'd ahead of this .so, so its export is visible).
+// ---------------------------------------------------------------------------
+__attribute__((visibility("default")))
+std::uint64_t snapshot_record_cuda_region_base() {
+  using Fn = std::uint64_t (*)();
+  void* sym = dlsym(RTLD_DEFAULT, "snapshot_redirect_region_base");
+  if (sym == nullptr) return 0ULL;
+  return reinterpret_cast<Fn>(sym)();
 }
 
 }  // extern "C"

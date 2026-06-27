@@ -47,14 +47,15 @@ srun --environment=snapshot-cuda \
 
     # Build: smoke binary + record interposer + redirect interposer.
     cmake --build snapshot/build-cuda -j"${SLURM_CPUS_PER_TASK:-8}" \
-      --target cuda_record_smoke cuda_record_runtime_smoke cuda_record_full_smoke snapshot_record_cuda snapshot_redirect_cuda
+      --target cuda_record_smoke cuda_record_runtime_smoke cuda_record_full_smoke cuda_region_base_probe snapshot_record_cuda snapshot_redirect_cuda
 
     SMOKE="$PWD/snapshot/build-cuda/cuda_record_smoke"
     RT_SMOKE="$PWD/snapshot/build-cuda/cuda_record_runtime_smoke"
     FULL_SMOKE="$PWD/snapshot/build-cuda/cuda_record_full_smoke"
+    PROBE="$PWD/snapshot/build-cuda/cuda_region_base_probe"
     RECORD_SO="$PWD/snapshot/build-cuda/libsnapshot_record_cuda.so"
     REDIRECT_SO="$PWD/snapshot/build-cuda/libsnapshot_redirect_cuda.so"
-    ls -l "$SMOKE" "$RT_SMOKE" "$FULL_SMOKE" "$RECORD_SO" "$REDIRECT_SO"
+    ls -l "$SMOKE" "$RT_SMOKE" "$FULL_SMOKE" "$PROBE" "$RECORD_SO" "$REDIRECT_SO"
 
     # Persistent log paths — no /tmp (diskless compute nodes + reproducibility).
     LOG1="${DEPLOY_DIR}/logs/smoke-run1.log"
@@ -461,6 +462,48 @@ srun --environment=snapshot-cuda \
     echo "${FULL_REST_SUMMARY}" | grep -q "blind=0"       || { echo "N5B_FULL_GATE: FAIL (blind=0)";       exit 1; }
 
     echo "N5B_FULL_GATE: PASS (FULL-like graph record→restore bit-identical, blind=0)"
+
+    # -------------------------------------------------------------------
+    # N5b Task 3: region_base export + per-rank dir resolution + scale maps.
+    # -------------------------------------------------------------------
+    echo "--- N5b Task 3: region_base export + per-rank dir ---"
+    # (a) the export symbol is present in the record .so.
+    if nm -D "${RECORD_SO}" | grep -qE "snapshot_record_cuda_region_base"; then
+      echo "N5B_REGION_BASE_SYMBOL=1"
+    else
+      echo "N5B_TASK3_GATE: FAIL (snapshot_record_cuda_region_base not exported)"; exit 1
+    fi
+
+    # (b) the export returns the redirect's fixed base once redirect is engaged.
+    PROBE_BASE=$(LD_PRELOAD="${REDIRECT_SO}:${RECORD_SO}" "${PROBE}" 2>/dev/null \
+                 | grep "^REGION_BASE=" | head -1)
+    echo "region_base probe: ${PROBE_BASE}"
+    echo "${PROBE_BASE}" | grep -qE "^REGION_BASE=0x[0-9a-f]*[1-9a-f][0-9a-f]*" || \
+      { echo "N5B_TASK3_GATE: FAIL (region_base returned 0 — redirect not engaged by probe?)"; exit 1; }
+
+    # (c) per-rank %r substitution: RANK=2 → snaps land under .../rank2/, and
+    # the literal "rank%r" dir is NOT created.
+    RANK_DIR="${DEPLOY_DIR}/snap-record-rank"
+    rm -rf "${RANK_DIR}"; mkdir -p "${RANK_DIR}"
+    LD_PRELOAD="${REDIRECT_SO}:${RECORD_SO}" \
+      SNAPSHOT_RECORD_CUDA_MODE=record \
+      SNAPSHOT_RECORD_CUDA_DIR="${RANK_DIR}/rank%r" \
+      RANK=2 \
+      "${RT_SMOKE}" > "${RANK_DIR}/probe.log" 2>&1 || true
+    if [ -s "${RANK_DIR}/rank2/graph-0000.snap" ] && [ ! -e "${RANK_DIR}/rank%r" ]; then
+      echo "N5B_PER_RANK_DIR=1 (RANK=2 → rank2/)"
+    else
+      echo "N5B_TASK3_GATE: FAIL (per-rank %r not substituted; expected ${RANK_DIR}/rank2/graph-0000.snap)"
+      ls -R "${RANK_DIR}" | head -20
+      exit 1
+    fi
+    # Per-rank record still complete + blind=0.
+    RANK_REC_SUMMARY=$(grep "\[record-cuda\].*SUMMARY" "${RANK_DIR}/probe.log" || echo MISSING)
+    echo "per-rank record summary: ${RANK_REC_SUMMARY}"
+    echo "${RANK_REC_SUMMARY}" | grep -qF "recorded: graphs=1 nodes=2 edges=1 blind=0" || \
+      { echo "N5B_TASK3_GATE: FAIL (per-rank record summary)"; exit 1; }
+
+    echo "N5B_TASK3_GATE: PASS (region_base export non-zero + per-rank dirs)"
   '
 
 echo "cuda-record-smoke finished: $(date --iso-8601=seconds)"

@@ -135,6 +135,15 @@ elseif(SNAPSHOT_BACKEND STREQUAL "CUDA")
   snapshot_configure_cuda(cuda_record_full_smoke)
   target_link_libraries(cuda_record_full_smoke PRIVATE "${SNAPSHOT_CUDART_LIBRARY}")
 
+  # N5b Task 3: dlsym probe for snapshot_record_cuda_region_base(). Run under
+  # LD_PRELOAD=redirect:record; a tiny cudaMalloc engages the redirect so the
+  # export returns the fixed base (non-zero).
+  add_executable(cuda_region_base_probe csrc/cli/cuda_region_base_probe.cpp)
+  set_source_files_properties(csrc/cli/cuda_region_base_probe.cpp PROPERTIES LANGUAGE CUDA)
+  snapshot_configure_cuda(cuda_region_base_probe)
+  target_link_libraries(cuda_region_base_probe PRIVATE
+    "${SNAPSHOT_CUDART_LIBRARY}" ${CMAKE_DL_LIBS})
+
   # N5a Task 2: LD_PRELOAD identity interposer for record/restore.
   # Interposes __cudaRegisterFatBinary/__cudaRegisterFunction/__cudaRegisterFatBinaryEnd
   # (fatbin/static-kernel path) and cuModuleLoadData/cuModuleGetFunction
