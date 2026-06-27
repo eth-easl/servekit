@@ -26,11 +26,17 @@
 // cudaGetFuncBySymbol for fatbin kernels); any unresolved node is BLIND (G4=0).
 //
 // SCOPE (N5a): the driver capture/launch path is interposed (the CLI smoke uses
-// it exclusively). The runtime cudaStreamEndCapture — and the double-walk
-// dedupe-by-CUgraph it would need — is deferred to N5b. Only KERNEL nodes are
-// recorded; a kernel node whose kernargs use the `extra`
-// (CU_LAUNCH_PARAM_BUFFER_POINTER) path or whose identity cannot be resolved is
-// marked BLIND and counted (it is not restorable verbatim) — N5b territory.
+// it exclusively). Only KERNEL nodes are recorded; a kernel node whose kernargs
+// use the `extra` (CU_LAUNCH_PARAM_BUFFER_POINTER) path or whose identity
+// cannot be resolved is marked BLIND and counted (it is not restorable
+// verbatim) — N5b territory.
+//
+// N5b Task 1 extends this with RUNTIME capture-API shims
+// (cudaStream{Begin,End,IsCapturing,GetCaptureInfo}) — the path
+// torch.cuda.graph()/vLLM drive — routed to the SAME record/restore logic, with
+// dedupe-by-CUgraph (g_walked_graphs) so a graph walked by both the runtime
+// hook and the driver hook it invokes internally is serialized exactly once.
+// A SUMMARY `rt_capture=<n>` field counts the runtime-path windows.
 //
 // Env contract:
 //   SNAPSHOT_RECORD_CUDA_MODE=record|restore  (default: record)
@@ -159,6 +165,9 @@ std::uint64_t g_blind           = 0;  // G4 gate must end at 0
 //   stays 0 — the G2 "real-begin-capture count = 0" evidence.
 std::uint64_t g_suppressed_launches = 0;
 std::uint64_t g_real_begin_capture  = 0;
+// N5b: runtime-API capture windows observed (the path PyTorch/vLLM drive).
+// 0 for the N5a driver-API smoke; 1 for the Task-1 runtime smoke; N for vLLM.
+std::uint64_t g_rt_captures         = 0;
 
 // ---------------------------------------------------------------------------
 // Restore state (Task 4)
@@ -182,6 +191,21 @@ RestoreState g_restore;
 // so the launch hooks can early-out with a single atomic load on the hot path.
 std::set<CUstream> g_shim_streams;
 std::atomic<int>   g_shim_active{0};
+
+// N5b: record-walk dedupe. The RUNTIME cudaStreamEndCapture (PyTorch's path)
+// may route its internal cuStreamEndCapture through this same interposer
+// (libcudart resolves the driver symbol against the LD_PRELOAD global scope)
+// → one real capture fires BOTH the runtime and driver hooks. Keyed by the
+// CUgraph handle so each captured graph is serialized exactly once. (Handles
+// are process-unique across the capture phase; vLLM does not destroy graphs
+// mid-capture, so the set is not evicted — see Task 3 for scale hardening.)
+std::set<CUgraph> g_walked_graphs;
+
+// N5b: count each real begin-capture once per window. When the runtime hook
+// calls the real runtime, libcudart may hit the interposed driver
+// cuStreamBeginCapture → two begin calls for one window. Deduped by stream;
+// the matching erase is in both EndCapture paths.
+std::set<CUstream> g_real_begin_streams;
 
 // Per-rebuilt-node launch config (the driver `extra` buffer-pointer form). The
 // config[] array and the size it references must stay valid until the caller
@@ -315,6 +339,48 @@ CudaLaunchKernelFn real_cudaLaunchKernel() {
   return fn;
 }
 
+// N5b Task 1: RUNTIME capture-API real-symbol resolvers. PyTorch/vLLM drive
+// CUDA-graph capture through the runtime cudaStream*Capture API (the
+// cudaStream_t / cudaGraph_t types from cuda_runtime_api.h), not the driver
+// cuStream* API the N5a CLI smoke used. cudaGraph_t IS CUgraph (both are
+// CUgraph_st*), so the runtime hooks route to the SAME record/restore logic.
+//
+// SNAPSHOT_STR is used for the runtime names too so the dlsym string tracks
+// whatever symbol cuda_runtime_api.h binds (e.g. a PTSZ / _v2 variant),
+// exactly matching the name our own override defines after the same header
+// macro-expansion — override and real-thunk stay in lock-step.
+using CudaStreamBeginCaptureFn =
+    cudaError_t (*)(cudaStream_t, cudaStreamCaptureMode);
+CudaStreamBeginCaptureFn real_cudaStreamBeginCapture() {
+  static const auto fn = reinterpret_cast<CudaStreamBeginCaptureFn>(
+      dlsym(RTLD_NEXT, SNAPSHOT_STR(cudaStreamBeginCapture)));
+  return fn;
+}
+
+using CudaStreamEndCaptureFn = cudaError_t (*)(cudaStream_t, cudaGraph_t*);
+CudaStreamEndCaptureFn real_cudaStreamEndCapture() {
+  static const auto fn = reinterpret_cast<CudaStreamEndCaptureFn>(
+      dlsym(RTLD_NEXT, SNAPSHOT_STR(cudaStreamEndCapture)));
+  return fn;
+}
+
+using CudaStreamIsCapturingFn =
+    cudaError_t (*)(cudaStream_t, cudaStreamCaptureStatus*);
+CudaStreamIsCapturingFn real_cudaStreamIsCapturing() {
+  static const auto fn = reinterpret_cast<CudaStreamIsCapturingFn>(
+      dlsym(RTLD_NEXT, SNAPSHOT_STR(cudaStreamIsCapturing)));
+  return fn;
+}
+
+using CudaStreamGetCaptureInfoFn = cudaError_t (*)(
+    cudaStream_t, cudaStreamCaptureStatus*, unsigned long long*,
+    const cudaGraphCaptureInfo**, unsigned long long*);
+CudaStreamGetCaptureInfoFn real_cudaStreamGetCaptureInfo() {
+  static const auto fn = reinterpret_cast<CudaStreamGetCaptureInfoFn>(
+      dlsym(RTLD_NEXT, SNAPSHOT_STR(cudaStreamGetCaptureInfo)));
+  return fn;
+}
+
 // ---------------------------------------------------------------------------
 // Record path (Task 3): walk a captured CUgraph and serialize its kernel nodes.
 //
@@ -368,6 +434,16 @@ std::vector<std::uint8_t> pack_kernarg(CUfunction f, void** kernel_params,
 // updates re-acquire g_mu briefly.
 void record_captured_graph(CUgraph graph) {
   if (graph == nullptr) return;
+
+  // N5b: dedupe-by-CUgraph. If this graph was already walked (runtime
+  // end-capture routed through the driver hook inside libcudart), skip —
+  // otherwise the same graph would be serialized twice (graph-NNNN.snap +
+  // graph-(NNNN+1).snap), corrupting the per-graph count and the restore
+  // queue ordering.
+  {
+    std::lock_guard<std::mutex> lock(g_mu);
+    if (!g_walked_graphs.insert(graph).second) return;
+  }
 
   std::size_t n = 0;
   if (cuGraphGetNodes(graph, nullptr, &n) != CUDA_SUCCESS) return;
@@ -684,7 +760,7 @@ struct RecordSummary {
                  "identity: %zu functions (%zu fatbin, %zu module) "
                  "recorded: graphs=%llu nodes=%llu edges=%llu blind=%llu "
                  "restored=%llu fallthrough=%llu suppressed=%llu "
-                 "real_begin=%llu\n",
+                 "real_begin=%llu rt_capture=%llu\n",
                  static_cast<int>(getpid()),
                  g_mode() == Mode::kRecord ? "record" : "restore",
                  g_snap_dir(),
@@ -698,7 +774,8 @@ struct RecordSummary {
                  static_cast<unsigned long long>(g_restored),
                  static_cast<unsigned long long>(g_fallthrough),
                  static_cast<unsigned long long>(g_suppressed_launches),
-                 static_cast<unsigned long long>(g_real_begin_capture));
+                 static_cast<unsigned long long>(g_real_begin_capture),
+                 static_cast<unsigned long long>(g_rt_captures));
   }
 };
 RecordSummary g_record_summary;
@@ -824,6 +901,17 @@ static bool launch_is_suppressed(CUstream stream) {
   return true;
 }
 
+// N5b: count each real begin-capture once per window. When the runtime hook
+// calls the real runtime, libcudart may route its internal cuStreamBeginCapture
+// through our (interposed) driver hook → two begin calls for one window. The
+// runtime/driver begin hooks both gate g_real_begin_capture on this; the
+// matching erase happens in both EndCapture paths. Returns true the FIRST time
+// `stream` is seen in a window.
+static bool count_real_begin_once(CUstream stream) {
+  std::lock_guard<std::mutex> lock(g_mu);
+  return g_real_begin_streams.insert(stream).second;
+}
+
 // Runtime cudaLaunchKernel — backs the static k_add<<<>>> launch.
 cudaError_t cudaLaunchKernel(const void* func, dim3 gridDim, dim3 blockDim,
                              void** args, std::size_t sharedMem,
@@ -865,8 +953,11 @@ CUresult cuStreamBeginCapture(CUstream stream, CUstreamCaptureMode mode) {
     bool shim = false;
     {
       std::lock_guard<std::mutex> lock(g_mu);
-      shim = (g_restore.next < g_restore.queue.size());
-      if (shim) g_shim_streams.insert(stream);
+      if (g_restore.next < g_restore.queue.size()) {
+        // Idempotent mark vs the runtime hook (only one of the two fires per
+        // window in practice, since a shimmed begin never calls the real API).
+        shim = g_shim_streams.insert(stream).second;
+      }
     }
     if (shim) {
       g_shim_active.fetch_add(1, std::memory_order_release);
@@ -875,7 +966,7 @@ CUresult cuStreamBeginCapture(CUstream stream, CUstreamCaptureMode mode) {
     std::lock_guard<std::mutex> lock(g_mu);
     ++g_fallthrough;  // queue empty → real capture for this window
   }
-  {
+  if (count_real_begin_once(stream)) {
     std::lock_guard<std::mutex> lock(g_mu);
     ++g_real_begin_capture;
   }
@@ -903,8 +994,10 @@ CUresult cuStreamIsCapturing(CUstream stream, CUstreamCaptureStatus* status) {
 //    happened, so this is the sole construction of the graph. (G2/G4.)
 //  - Otherwise (record mode, or restore fall-through): call the REAL end-
 //    capture; in record mode walk+serialize the captured graph (Task 3 path,
-//    UNCHANGED). SCOPE (N5a): the runtime cudaStreamEndCapture stays
-//    un-interposed — the CLI smoke uses the driver path exclusively (N5b).
+//    UNCHANGED). N5b Task 1: the RUNTIME cudaStreamEndCapture is now
+//    interposed too (PyTorch's path); record_captured_graph's dedupe-by-
+//    CUgraph keeps the walk single if libcudart routes the runtime call back
+//    through this driver hook.
 CUresult cuStreamEndCapture(CUstream stream, CUgraph* phGraph) {
   if (g_mode() == Mode::kRestore) {
     bool shimmed = false;
@@ -918,6 +1011,7 @@ CUresult cuStreamEndCapture(CUstream stream, CUgraph* phGraph) {
       {
         std::lock_guard<std::mutex> lock(g_mu);
         g_shim_streams.erase(stream);
+        g_real_begin_streams.erase(stream);  // N5b: clear begin-dedupe token
       }
       g_shim_active.fetch_sub(1, std::memory_order_release);
       if (!ok || rebuilt == nullptr) {
@@ -938,7 +1032,125 @@ CUresult cuStreamEndCapture(CUstream stream, CUgraph* phGraph) {
       g_mode() == Mode::kRecord) {
     record_captured_graph(*phGraph);
   }
+  {
+    std::lock_guard<std::mutex> lock(g_mu);
+    g_real_begin_streams.erase(stream);  // N5b: clear begin-dedupe token
+  }
   return rc;
+}
+
+// ---------------------------------------------------------------------------
+// N5b Task 1: RUNTIME capture-API interposers (the PyTorch / vLLM path).
+// Mirror the driver hooks above; cudaGraph_t == CUgraph (CUgraph_st*), so the
+// restore path hands the rebuilt CUgraph back as a cudaGraph_t. The CUgraph
+// record dedupe (record_captured_graph) and the per-window begin dedupe
+// (count_real_begin_once) keep each window's walk/count single even if
+// libcudart routes the runtime call through the driver hook.
+// ---------------------------------------------------------------------------
+
+cudaError_t cudaStreamBeginCapture(cudaStream_t stream,
+                                   cudaStreamCaptureMode mode) {
+  if (g_mode() == Mode::kRestore) {
+    ensure_restore_loaded();
+    bool shim = false;
+    {
+      std::lock_guard<std::mutex> lock(g_mu);
+      if (g_restore.next < g_restore.queue.size()) {
+        shim = g_shim_streams.insert(stream).second;  // idempotent vs driver hook
+      }
+    }
+    if (shim) {
+      g_shim_active.fetch_add(1, std::memory_order_release);
+      std::lock_guard<std::mutex> lock(g_mu);
+      ++g_rt_captures;  // runtime-path window (authoritative for vLLM)
+      return cudaSuccess;  // no real begin-capture
+    }
+    std::lock_guard<std::mutex> lock(g_mu);
+    ++g_fallthrough;  // queue empty → real capture for this window
+  } else {
+    std::lock_guard<std::mutex> lock(g_mu);
+    ++g_rt_captures;  // record-mode runtime capture observed
+  }
+  if (count_real_begin_once(stream)) {
+    std::lock_guard<std::mutex> lock(g_mu);
+    ++g_real_begin_capture;
+  }
+  return real_cudaStreamBeginCapture()(stream, mode);
+}
+
+cudaError_t cudaStreamEndCapture(cudaStream_t stream, cudaGraph_t* phGraph) {
+  if (g_mode() == Mode::kRestore) {
+    bool shimmed = false;
+    {
+      std::lock_guard<std::mutex> lock(g_mu);
+      shimmed = (g_shim_streams.count(stream) > 0);
+    }
+    if (shimmed) {
+      CUgraph rebuilt = nullptr;
+      const bool ok = restore_next_graph(&rebuilt);
+      {
+        std::lock_guard<std::mutex> lock(g_mu);
+        g_shim_streams.erase(stream);
+        g_real_begin_streams.erase(stream);
+      }
+      g_shim_active.fetch_sub(1, std::memory_order_release);
+      if (!ok || rebuilt == nullptr) {
+        if (phGraph) *phGraph = nullptr;
+        return cudaErrorUnknown;
+      }
+      if (phGraph) *phGraph = reinterpret_cast<cudaGraph_t>(rebuilt);
+      {
+        std::lock_guard<std::mutex> lock(g_mu);
+        ++g_restored;
+      }
+      return cudaSuccess;
+    }
+  }
+
+  const cudaError_t rc = real_cudaStreamEndCapture()(stream, phGraph);
+  if (rc == cudaSuccess && phGraph != nullptr && *phGraph != nullptr &&
+      g_mode() == Mode::kRecord) {
+    record_captured_graph(reinterpret_cast<CUgraph>(*phGraph));
+  }
+  {
+    std::lock_guard<std::mutex> lock(g_mu);
+    g_real_begin_streams.erase(stream);
+  }
+  return rc;
+}
+
+cudaError_t cudaStreamIsCapturing(cudaStream_t stream,
+                                  cudaStreamCaptureStatus* status) {
+  if (g_mode() == Mode::kRestore &&
+      g_shim_active.load(std::memory_order_acquire) > 0) {
+    std::lock_guard<std::mutex> lock(g_mu);
+    if (g_shim_streams.count(stream) > 0) {
+      if (status) *status = cudaStreamCaptureStatusActive;
+      return cudaSuccess;
+    }
+  }
+  return real_cudaStreamIsCapturing()(stream, status);
+}
+
+// PyTorch's capture path polls cudaStreamGetCaptureInfo; report ACTIVE for a
+// shim-capturing stream so the window is consistent. graphId / captureInfo are
+// left untouched (we do not synthesize a capture id); for a shimmed stream the
+// only consumer that matters is the status poll.
+cudaError_t cudaStreamGetCaptureInfo(cudaStream_t stream,
+                                     cudaStreamCaptureStatus* captureStatus,
+                                     unsigned long long* graphId,
+                                     const cudaGraphCaptureInfo** captureInfo,
+                                     unsigned long long* elapsedTimeMs) {
+  if (g_mode() == Mode::kRestore &&
+      g_shim_active.load(std::memory_order_acquire) > 0) {
+    std::lock_guard<std::mutex> lock(g_mu);
+    if (g_shim_streams.count(stream) > 0) {
+      if (captureStatus) *captureStatus = cudaStreamCaptureStatusActive;
+      return cudaSuccess;
+    }
+  }
+  return real_cudaStreamGetCaptureInfo()(stream, captureStatus, graphId,
+                                         captureInfo, elapsedTimeMs);
 }
 
 // ---------------------------------------------------------------------------

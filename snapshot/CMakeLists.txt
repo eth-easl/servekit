@@ -117,6 +117,15 @@ elseif(SNAPSHOT_BACKEND STREQUAL "CUDA")
   snapshot_configure_cuda(cuda_record_smoke)
   target_link_libraries(cuda_record_smoke PRIVATE "${SNAPSHOT_CUDART_LIBRARY}")
 
+  # N5b Task 1: CLI smoke capturing via the RUNTIME cudaStream*Capture API
+  # (PyTorch's path). Same two kernels as cuda_record_smoke, but the graph is
+  # captured/instantiated/launched through the runtime API — exercising the
+  # runtime shims and the CUgraph record dedupe.
+  add_executable(cuda_record_runtime_smoke csrc/cli/cuda_record_runtime_smoke.cpp)
+  set_source_files_properties(csrc/cli/cuda_record_runtime_smoke.cpp PROPERTIES LANGUAGE CUDA)
+  snapshot_configure_cuda(cuda_record_runtime_smoke)
+  target_link_libraries(cuda_record_runtime_smoke PRIVATE "${SNAPSHOT_CUDART_LIBRARY}")
+
   # N5a Task 2: LD_PRELOAD identity interposer for record/restore.
   # Interposes __cudaRegisterFatBinary/__cudaRegisterFunction/__cudaRegisterFatBinaryEnd
   # (fatbin/static-kernel path) and cuModuleLoadData/cuModuleGetFunction

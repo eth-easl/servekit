@@ -47,12 +47,13 @@ srun --environment=snapshot-cuda \
 
     # Build: smoke binary + record interposer + redirect interposer.
     cmake --build snapshot/build-cuda -j"${SLURM_CPUS_PER_TASK:-8}" \
-      --target cuda_record_smoke snapshot_record_cuda snapshot_redirect_cuda
+      --target cuda_record_smoke cuda_record_runtime_smoke snapshot_record_cuda snapshot_redirect_cuda
 
     SMOKE="$PWD/snapshot/build-cuda/cuda_record_smoke"
+    RT_SMOKE="$PWD/snapshot/build-cuda/cuda_record_runtime_smoke"
     RECORD_SO="$PWD/snapshot/build-cuda/libsnapshot_record_cuda.so"
     REDIRECT_SO="$PWD/snapshot/build-cuda/libsnapshot_redirect_cuda.so"
-    ls -l "$SMOKE" "$RECORD_SO" "$REDIRECT_SO"
+    ls -l "$SMOKE" "$RT_SMOKE" "$RECORD_SO" "$REDIRECT_SO"
 
     # Persistent log paths — no /tmp (diskless compute nodes + reproducibility).
     LOG1="${DEPLOY_DIR}/logs/smoke-run1.log"
@@ -316,6 +317,72 @@ srun --environment=snapshot-cuda \
     # -------------------------------------------------------------------
     echo ""
     echo "N5A_GATES: G1=PASS G2=PASS G3=PASS G4=PASS"
+
+    # -------------------------------------------------------------------
+    # N5b Task 1: RUNTIME-API capture smoke (the PyTorch / vLLM path).
+    # Same two kernels as the N5a smoke, but the graph is captured via the
+    # RUNTIME cudaStream{Begin,End}Capture + cudaGraphInstantiate/Launch —
+    # what torch.cuda.graph() uses. Exercises the runtime shims and the CUgraph
+    # record dedupe (the runtime end-capture may route through the interposed
+    # driver cuStreamEndCapture inside libcudart → walk twice for one CUgraph).
+    # -------------------------------------------------------------------
+    echo "--- N5b Task 1: runtime capture path (record → restore) ---"
+    RT_DIR="${DEPLOY_DIR}/snap-record-rt"
+    RT_LOG_R="${DEPLOY_DIR}/snap-record-rt/record.log"
+    RT_LOG_S="${DEPLOY_DIR}/snap-record-rt/restore.log"
+    rm -rf "${RT_DIR}"; mkdir -p "${RT_DIR}"
+
+    echo "--- runtime record run (LD_PRELOAD=redirect:record) ---"
+    LD_PRELOAD="${REDIRECT_SO}:${RECORD_SO}" \
+      SNAPSHOT_RECORD_CUDA_MODE=record \
+      SNAPSHOT_RECORD_CUDA_DIR="${RT_DIR}" \
+      "${RT_SMOKE}" 2>&1 | tee "${RT_LOG_R}"
+    RT_EXIT_R="${PIPESTATUS[0]}"
+    [ "${RT_EXIT_R}" -eq 0 ] || { echo "N5B_RT_GATE: FAIL (record exit=${RT_EXIT_R})"; exit 1; }
+
+    RT_CS_R=$(grep "^RT_CHECKSUM" "${RT_LOG_R}" | head -1)
+    echo "runtime record checksum: ${RT_CS_R}"
+    RT_REC_SUMMARY=$(grep "\[record-cuda\].*SUMMARY" "${RT_LOG_R}" || echo MISSING)
+    echo "runtime record summary: ${RT_REC_SUMMARY}"
+    # CUgraph dedupe: the runtime end-capture must serialize exactly ONE graph
+    # (a double-walk would produce graph-0000 + graph-0001 → graphs=2).
+    echo "${RT_REC_SUMMARY}" | grep -qF "recorded: graphs=1 nodes=2 edges=1 blind=0" || \
+      { echo "N5B_RT_GATE: FAIL (expected 'recorded: graphs=1 nodes=2 edges=1 blind=0'; got ${RT_REC_SUMMARY})"; exit 1; }
+
+    echo "--- runtime restore run (LD_PRELOAD=redirect:record, MODE=restore) ---"
+    LD_PRELOAD="${REDIRECT_SO}:${RECORD_SO}" \
+      SNAPSHOT_RECORD_CUDA_MODE=restore \
+      SNAPSHOT_RECORD_CUDA_DIR="${RT_DIR}" \
+      "${RT_SMOKE}" 2>&1 | tee "${RT_LOG_S}"
+    RT_EXIT_S="${PIPESTATUS[0]}"
+    [ "${RT_EXIT_S}" -eq 0 ] || { echo "N5B_RT_GATE: FAIL (restore exit=${RT_EXIT_S})"; exit 1; }
+
+    RT_CS_S=$(grep "^RT_CHECKSUM" "${RT_LOG_S}" | head -1)
+    echo "runtime restore checksum: ${RT_CS_S}"
+    RT_REST_SUMMARY=$(grep "\[record-cuda\].*SUMMARY" "${RT_LOG_S}" || echo MISSING)
+    echo "runtime restore summary: ${RT_REST_SUMMARY}"
+
+    # G1 (runtime): bit-identical restored output.
+    if [ "${RT_CS_R}" = "${RT_CS_S}" ] && [ -n "${RT_CS_R}" ]; then
+      echo "N5B_RT_BIT_IDENTICAL=1"
+    else
+      echo "N5B_RT_GATE: FAIL (record=${RT_CS_R} restore=${RT_CS_S})"; exit 1
+    fi
+    # G2 (runtime): restored via runtime shim, no real capture, rt_capture=1.
+    echo "${RT_REST_SUMMARY}" | grep -q "restored=1"        || { echo "N5B_RT_GATE: FAIL (restored=1)";        exit 1; }
+    echo "${RT_REST_SUMMARY}" | grep -q "fallthrough=0"    || { echo "N5B_RT_GATE: FAIL (fallthrough=0)";    exit 1; }
+    echo "${RT_REST_SUMMARY}" | grep -qE "real_begin=0( |$)" || { echo "N5B_RT_GATE: FAIL (real_begin=0)";   exit 1; }
+    echo "${RT_REST_SUMMARY}" | grep -qE "suppressed=2( |$)" || { echo "N5B_RT_GATE: FAIL (suppressed=2)";   exit 1; }
+    echo "${RT_REST_SUMMARY}" | grep -q "blind=0"          || { echo "N5B_RT_GATE: FAIL (blind=0)";          exit 1; }
+    echo "${RT_REST_SUMMARY}" | grep -qE "rt_capture=1( |$)" || { echo "N5B_RT_GATE: FAIL (rt_capture=1)";   exit 1; }
+
+    # G3 (runtime): redirect pinned the fixed base in the restore run (Δ=0).
+    RT_REDIR=$(grep "\[redirect-cuda\].*SUMMARY" "${RT_LOG_S}" || echo ABSENT)
+    echo "${RT_REDIR}" | grep -qE "passthrough=0\(" || { echo "N5B_RT_GATE: FAIL (passthrough=0)"; exit 1; }
+    grep "\[redirect-cuda\].*fixed_base_honored" "${RT_LOG_S}" | grep -qF "fixed_base_honored=1" || \
+      { echo "N5B_RT_GATE: FAIL (fixed_base_honored=1)"; exit 1; }
+
+    echo "N5B_RT_GATE: PASS (runtime path record→restore bit-identical, rt_capture=1)"
   '
 
 echo "cuda-record-smoke finished: $(date --iso-8601=seconds)"
