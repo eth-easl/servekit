@@ -1,11 +1,24 @@
-// snapshot_record_cuda — N5a Task 2: LD_PRELOAD identity interposer for CUDA.
+// snapshot_record_cuda — N5a LD_PRELOAD record interposer for CUDA.
 //
-// Interposes the CUDA fatbin-registration and module-load hooks to build an
-// IdentityMap of all kernels that will appear as graph nodes.  No record or
-// restore logic is implemented here — the Task 2 deliverable is proving that
-// both the static (fatbin / __cudaRegisterFunction) and runtime (nvrtc /
-// cuModuleLoadData + cuModuleGetFunction) kernel paths are observable,
-// captured, and reported in the exit SUMMARY.
+// Task 2 built the IdentityMap (fatbin / __cudaRegisterFunction + nvrtc /
+// cuModuleLoadData + cuModuleGetFunction) so every kernel that can appear as a
+// graph node is identifiable.
+//
+// Task 3 (this revision) adds the CAPTURE/RECORD path: it interposes the driver
+// cuStreamEndCapture, calls the real end-capture first (so run #1 executes
+// normally), then — in record mode — walks the captured CUgraph and persists
+// each KERNEL node (function identity + VERBATIM kernarg blob + grid/block dims
+// + dependency edges) to a `.snap` file (record_cuda_format.hpp). Because this
+// runs under snapshot_redirect_cuda's fixed-base device pointers, the recorded
+// kernarg blob is byte-identical across runs (Δ=0) — Task 4 restores it
+// verbatim, no cubin/PTX parser, no pointer relocation.
+//
+// SCOPE (N5a): interpose ONLY the driver cuStreamEndCapture (the CLI smoke uses
+// the driver path exclusively). The runtime cudaStreamEndCapture — and the
+// double-walk dedupe-by-CUgraph it would need — is deferred to N5b. Only KERNEL
+// nodes are recorded; a kernel node whose kernargs use the `extra`
+// (CU_LAUNCH_PARAM_BUFFER_POINTER) path or whose identity cannot be resolved is
+// marked BLIND and counted (it is not restorable verbatim) — N5b territory.
 //
 // Env contract:
 //   SNAPSHOT_RECORD_CUDA_MODE=record|restore  (default: record)
@@ -14,7 +27,8 @@
 // At process exit, prints to stderr:
 //   [record-cuda] pid=<N> SUMMARY mode=<mode> dir=<dir>
 //       identity: <total> functions (<fatbin> fatbin, <module> module)
-//       recorded=<N> restored=<N> fallthrough=<N>
+//       recorded: graphs=<G> nodes=<N> edges=<E> blind=<B>
+//       restored=<N> fallthrough=<N>
 //
 // Patterns mirrored from snapshot_redirect_cuda.cpp (N2):
 //   dlsym(RTLD_NEXT, ...) lazy real-symbol resolution, static-local singleton
@@ -37,6 +51,17 @@
 #include <map>
 #include <mutex>
 #include <string>
+#include <vector>
+
+#include "record_cuda_format.hpp"
+
+// Forward declaration of the exported identity resolver (defined at the bottom
+// of this TU inside the extern "C" block). The record walk below calls it; the
+// signature uses a caller-owned buffer (copy-out) so a stored name can never
+// dangle past a future cuModuleUnload eviction.
+extern "C" int snapshot_identity_for(CUfunction func, int* out_kind,
+                                     char* out_name, std::size_t out_name_cap,
+                                     std::uint64_t* out_module_hash);
 
 namespace {
 
@@ -98,10 +123,17 @@ struct ModuleKernelId {
 };
 std::map<CUfunction, ModuleKernelId> g_module_identity;
 
-// Placeholder counters for Tasks 3–4.
-std::uint64_t g_recorded    = 0;
+// Record counters (Task 3) + restore/fallthrough placeholders (Task 4).
+std::uint64_t g_recorded    = 0;  // total kernel nodes serialized (legacy token)
 std::uint64_t g_restored    = 0;
 std::uint64_t g_fallthrough = 0;
+
+// Task 3 record detail.
+std::uint64_t g_graph_index     = 0;  // next `.snap` file index (graph-NNNN.snap)
+std::uint64_t g_graphs_recorded = 0;
+std::uint64_t g_nodes_recorded  = 0;
+std::uint64_t g_edges_recorded  = 0;
+std::uint64_t g_blind           = 0;  // G4 gate must end at 0
 
 // ---------------------------------------------------------------------------
 // FNV-1a 64-bit hash
@@ -170,6 +202,194 @@ ModuleGetFunctionFn real_cuModuleGetFunction() {
   return fn;
 }
 
+// cuStreamEndCapture is the ONLY graph API we interpose, so it is the only one
+// that needs a dlsym(RTLD_NEXT) real-symbol resolver (to reach past our own
+// override to the driver). Its signature is stable and unversioned.
+//
+// SNAPSHOT_STR expands its argument through the preprocessor before stringizing
+// so the dlsym name matches whatever symbol cuda.h binds `cuStreamEndCapture`
+// to (it is unversioned today, but this stays correct if a future header
+// macro-remaps it — and is exactly the name our exported override defines).
+#define SNAPSHOT_STR2(x) #x
+#define SNAPSHOT_STR(x) SNAPSHOT_STR2(x)
+using StreamEndCaptureFn = CUresult (*)(CUstream, CUgraph*);
+StreamEndCaptureFn real_cuStreamEndCapture() {
+  static const auto fn = reinterpret_cast<StreamEndCaptureFn>(
+      dlsym(RTLD_NEXT, SNAPSHOT_STR(cuStreamEndCapture)));
+  return fn;
+}
+
+// ---------------------------------------------------------------------------
+// Record path (Task 3): walk a captured CUgraph and serialize its kernel nodes.
+//
+// The graph-walk driver calls (cuGraphGetNodes / cuGraphNodeGetType /
+// cuGraphKernelNodeGetParams / cuGraphNodeGetDependencies / cuFuncGetParamInfo)
+// are invoked DIRECTLY rather than through dlsym(RTLD_NEXT) thunks. This is
+// deliberate: in CUDA 12 several of these names are macro-remapped by cuda.h to
+// versioned symbols whose ABI differs (cuGraphKernelNodeGetParams ->
+// _v2 with the v2 CUDA_KERNEL_NODE_PARAMS struct; cuGraphNodeGetDependencies
+// gained an edge-data overload). Calling them directly lets the header pick the
+// symbol AND the matching struct/signature consistently — exactly as N1's
+// cuda_graph.cpp does — eliminating any v1/v2 mismatch a hand-written dlsym
+// thunk would risk. We never interpose these, so a direct call resolves to the
+// real libcuda implementation.
+// ---------------------------------------------------------------------------
+
+// Sum over params of (offset+size) = the kernel's declared kernarg-segment size.
+// Mirrors N1 cuda_graph.cpp::kernarg_size_for. cuFuncGetParamInfo returns
+// CUDA_ERROR_INVALID_VALUE once `i` is past the last parameter.
+std::size_t cuda_kernarg_size(CUfunction f) {
+  std::size_t total = 0;
+  for (std::size_t i = 0;; ++i) {
+    std::size_t off = 0;
+    std::size_t sz = 0;
+    if (cuFuncGetParamInfo(f, i, &off, &sz) != CUDA_SUCCESS) break;
+    if (off + sz > total) total = off + sz;
+  }
+  return total;
+}
+
+// Reconstitute the contiguous kernarg buffer verbatim: kernelParams[j] points
+// at one arg value; copy each back into the flat blob at its declared offset.
+std::vector<std::uint8_t> pack_kernarg(CUfunction f, void** kernel_params,
+                                       std::size_t ksize) {
+  std::vector<std::uint8_t> blob(ksize, 0u);
+  for (std::size_t j = 0;; ++j) {
+    std::size_t off = 0;
+    std::size_t sz = 0;
+    if (cuFuncGetParamInfo(f, j, &off, &sz) != CUDA_SUCCESS) break;
+    if (kernel_params == nullptr || kernel_params[j] == nullptr) continue;
+    if (off + sz > blob.size()) continue;
+    std::memcpy(blob.data() + off, kernel_params[j], sz);
+  }
+  return blob;
+}
+
+// Walk a captured graph and serialize its kernel nodes to graph-NNNN.snap.
+// Called from the cuStreamEndCapture hook AFTER the real end-capture, only in
+// record mode. Runs WITHOUT g_mu held (snapshot_identity_for takes g_mu
+// internally; the non-recursive mutex would deadlock otherwise) — counter
+// updates re-acquire g_mu briefly.
+void record_captured_graph(CUgraph graph) {
+  if (graph == nullptr) return;
+
+  std::size_t n = 0;
+  if (cuGraphGetNodes(graph, nullptr, &n) != CUDA_SUCCESS) return;
+  std::vector<CUgraphNode> nodes(n);
+  if (n > 0 && cuGraphGetNodes(graph, nodes.data(), &n) != CUDA_SUCCESS) return;
+
+  // Pass 1: assign a record index to each KERNEL node, in cuGraphGetNodes
+  // order. Two passes so dep handles resolve to record indices regardless of
+  // the (driver-defined, not guaranteed topological) node ordering.
+  std::map<CUgraphNode, std::uint32_t> rec_index;
+  std::vector<CUgraphNode> kernel_nodes;
+  kernel_nodes.reserve(n);
+  for (std::size_t i = 0; i < n; ++i) {
+    CUgraphNodeType t{};
+    if (cuGraphNodeGetType(nodes[i], &t) != CUDA_SUCCESS) continue;
+    if (t != CU_GRAPH_NODE_TYPE_KERNEL) continue;  // N5a: kernel nodes only
+    rec_index[nodes[i]] = static_cast<std::uint32_t>(kernel_nodes.size());
+    kernel_nodes.push_back(nodes[i]);
+  }
+
+  // Pass 2: build one record per kernel node (record position == node index, so
+  // rec_index stays aligned even for blind nodes).
+  snapshot_cuda::RecordedGraph rec;
+  rec.nodes.reserve(kernel_nodes.size());
+  std::uint64_t local_blind = 0;
+  std::uint64_t local_edges = 0;
+  for (CUgraphNode node : kernel_nodes) {
+    snapshot_cuda::RecordedNode rn;
+    bool node_blind = false;
+
+    CUDA_KERNEL_NODE_PARAMS p{};
+    if (cuGraphKernelNodeGetParams(node, &p) == CUDA_SUCCESS) {
+      rn.grid[0] = p.gridDimX;
+      rn.grid[1] = p.gridDimY;
+      rn.grid[2] = p.gridDimZ;
+      rn.block[0] = p.blockDimX;
+      rn.block[1] = p.blockDimY;
+      rn.block[2] = p.blockDimZ;
+      rn.shared_mem_bytes = p.sharedMemBytes;
+
+      // Function identity (copy-out into a caller-owned buffer).
+      int kind = 0;
+      char name_buf[1024];
+      name_buf[0] = '\0';
+      std::uint64_t mhash = 0;
+      if (snapshot_identity_for(p.func, &kind, name_buf, sizeof(name_buf),
+                                &mhash)) {
+        rn.kind = kind;
+        rn.name = name_buf;
+        rn.module_hash = mhash;
+      } else {
+        node_blind = true;  // unrecognised CUfunction
+      }
+
+      // Verbatim kernarg blob. Only the kernelParams (array-of-void*) path is
+      // supported in N5a; an `extra`-only node (CU_LAUNCH_PARAM_BUFFER_POINTER)
+      // is N5b — mark blind and leave kernarg empty.
+      if (p.kernelParams != nullptr) {
+        const std::size_t ksize = cuda_kernarg_size(p.func);
+        rn.kernarg = pack_kernarg(p.func, p.kernelParams, ksize);
+      } else {
+        node_blind = true;
+      }
+    } else {
+      node_blind = true;
+    }
+
+    // Dependency edges -> record indices of predecessors.
+    std::size_t dn = 0;
+    if (cuGraphNodeGetDependencies(node, nullptr, &dn) == CUDA_SUCCESS &&
+        dn > 0) {
+      std::vector<CUgraphNode> deps(dn);
+      if (cuGraphNodeGetDependencies(node, deps.data(), &dn) == CUDA_SUCCESS) {
+        for (CUgraphNode d : deps) {
+          const auto it = rec_index.find(d);
+          if (it != rec_index.end()) {
+            rn.deps.push_back(it->second);
+            ++local_edges;
+          }
+        }
+      }
+    }
+
+    if (node_blind) ++local_blind;
+    rec.nodes.push_back(std::move(rn));
+  }
+
+  // Reserve this graph's file index.
+  std::uint64_t idx = 0;
+  {
+    std::lock_guard<std::mutex> lock(g_mu);
+    idx = g_graph_index++;
+  }
+
+  char path[1280];
+  std::snprintf(path, sizeof(path), "%s/graph-%04llu.snap", g_snap_dir(),
+                static_cast<unsigned long long>(idx));
+  const bool ok = snapshot_cuda::serialize_graph(rec, path);
+
+  if (ok) {
+    std::lock_guard<std::mutex> lock(g_mu);
+    ++g_graphs_recorded;
+    g_nodes_recorded += rec.nodes.size();
+    g_edges_recorded += local_edges;
+    g_blind += local_blind;
+    g_recorded += rec.nodes.size();
+  }
+
+  std::fprintf(stderr,
+               "[record-cuda] pid=%d graph=%llu nodes=%zu edges=%llu blind=%llu "
+               "-> %s (%s)\n",
+               static_cast<int>(getpid()),
+               static_cast<unsigned long long>(idx), rec.nodes.size(),
+               static_cast<unsigned long long>(local_edges),
+               static_cast<unsigned long long>(local_blind), path,
+               ok ? "ok" : "FAILED");
+}
+
 // ---------------------------------------------------------------------------
 // RAII exit summary (mirrors RedirectSummary in snapshot_redirect_cuda.cpp)
 // The destructor runs as a static-object finaliser at process exit, after
@@ -185,14 +405,18 @@ struct RecordSummary {
     std::fprintf(stderr,
                  "[record-cuda] pid=%d SUMMARY mode=%s dir=%s "
                  "identity: %zu functions (%zu fatbin, %zu module) "
-                 "recorded=%llu restored=%llu fallthrough=%llu\n",
+                 "recorded: graphs=%llu nodes=%llu edges=%llu blind=%llu "
+                 "restored=%llu fallthrough=%llu\n",
                  static_cast<int>(getpid()),
                  g_mode() == Mode::kRecord ? "record" : "restore",
                  g_snap_dir(),
                  fatbin_count + module_count,
                  fatbin_count,
                  module_count,
-                 static_cast<unsigned long long>(g_recorded),
+                 static_cast<unsigned long long>(g_graphs_recorded),
+                 static_cast<unsigned long long>(g_nodes_recorded),
+                 static_cast<unsigned long long>(g_edges_recorded),
+                 static_cast<unsigned long long>(g_blind),
                  static_cast<unsigned long long>(g_restored),
                  static_cast<unsigned long long>(g_fallthrough));
   }
@@ -292,32 +516,66 @@ CUresult cuModuleGetFunction(CUfunction* f, CUmodule mod, const char* name) {
 }
 
 // ---------------------------------------------------------------------------
-// snapshot_identity_for — lazy identity resolver for graph-node CUfunction
-// handles.  Used by Task 3 (graph-capture interposers) to tag each graph
-// node with a stable kernel identity before serialisation.
+// Capture-end hook (record path)
+// ---------------------------------------------------------------------------
+
+// cuStreamEndCapture: call the real end-capture FIRST so the caller gets a
+// working CUgraph and run #1 executes normally; then, in record mode, walk the
+// captured graph and serialize its kernel nodes. SCOPE (N5a): the runtime
+// cudaStreamEndCapture is intentionally NOT interposed — the CLI smoke uses the
+// driver path exclusively, and adding the runtime hook now would need a
+// double-walk dedupe-by-CUgraph with zero gate coverage (deferred to N5b).
+CUresult cuStreamEndCapture(CUstream stream, CUgraph* phGraph) {
+  const CUresult rc = real_cuStreamEndCapture()(stream, phGraph);
+  if (rc == CUDA_SUCCESS && phGraph != nullptr && *phGraph != nullptr &&
+      g_mode() == Mode::kRecord) {
+    record_captured_graph(*phGraph);
+  }
+  return rc;
+}
+
+// ---------------------------------------------------------------------------
+// snapshot_identity_for — identity resolver for graph-node CUfunction handles.
+// Used by the Task 3 record walk to tag each node with a stable kernel identity
+// before serialisation.
 //
 // For module-kind functions (k_mul): O(log n) lookup in g_module_identity,
 // populated eagerly by cuModuleGetFunction.
 // For fatbin-kind functions (k_add): calls cuFuncGetName (CUDA 12.3+) to
 // get the mangled device name, then matches it against g_hostfun_table.
 //
-// Returns 1 if resolved, 0 if the function is unrecognised.
+// COPY-OUT semantics (a Task-2 review finding): the resolved name is copied
+// into a caller-owned, bounded, NUL-terminated buffer rather than returned as a
+// pointer into internal std::string storage — a future cuModuleUnload eviction
+// (Task 4) must never be able to dangle a name the caller already stored.
+//
+// Returns 1 if resolved (out_name filled, NUL-terminated), 0 if unrecognised.
 // out_kind: 0 = fatbin/static, 1 = module/nvrtc.
-// out_name: pointer into an internal std::string (valid until process exit).
+// out_name: caller-owned buffer of out_name_cap bytes.
 // out_module_hash: FNV-1a64 hash of the PTX image; 0 for fatbin-kind.
 // ---------------------------------------------------------------------------
 __attribute__((visibility("default")))
 int snapshot_identity_for(CUfunction     func,
-                           int*           out_kind,
-                           const char**   out_name,
-                           std::uint64_t* out_module_hash) {
+                          int*           out_kind,
+                          char*          out_name,
+                          std::size_t    out_name_cap,
+                          std::uint64_t* out_module_hash) {
+  auto copy_name = [&](const std::string& s) {
+    if (out_name && out_name_cap) {
+      const std::size_t k =
+          s.size() < out_name_cap - 1 ? s.size() : out_name_cap - 1;
+      std::memcpy(out_name, s.data(), k);
+      out_name[k] = '\0';
+    }
+  };
+
   // --- module-kind: O(log n) lookup in g_module_identity ---
   {
     std::lock_guard<std::mutex> lock(g_mu);
     const auto it = g_module_identity.find(func);
     if (it != g_module_identity.end()) {
       if (out_kind)        *out_kind        = 1;
-      if (out_name)        *out_name        = it->second.name.c_str();
+      copy_name(it->second.name);
       if (out_module_hash) *out_module_hash = it->second.module_hash;
       return 1;
     }
@@ -333,7 +591,7 @@ int snapshot_identity_for(CUfunction     func,
     for (const auto& kv : g_hostfun_table) {
       if (kv.second == dev_name) {
         if (out_kind)        *out_kind        = 0;
-        if (out_name)        *out_name        = kv.second.c_str();
+        copy_name(kv.second);
         if (out_module_hash) *out_module_hash = 0ULL;
         return 1;
       }

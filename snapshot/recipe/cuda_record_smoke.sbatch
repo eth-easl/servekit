@@ -16,6 +16,24 @@
 #     (b) SUMMARY reports "identity: 2 functions (1 fatbin, 1 module)"
 #         i.e. k_add resolved via __cudaRegisterFunction (fatbin path) AND
 #              k_mul resolved via cuModuleGetFunction (module/nvrtc path).
+# N5a Task 3 gate: build libsnapshot_redirect_cuda.so too, run the smoke under
+#   LD_PRELOAD=redirect:record in record mode TWICE into two separate snap dirs,
+#   confirm:
+#     (a) graph-0000.snap is written with 2 kernel nodes + 1 dep edge
+#         (record SUMMARY: recorded: graphs=1 nodes=2 edges=1 blind=0)
+#     (b) the smoke still prints its normal CHECKSUM
+#     (c) the two .snap files are BYTE-IDENTICAL (cmp) — the decisive Δ=0 proof
+#         that recorded kernarg pointers are fixed-base-deterministic
+#     (d) corroboration: redirect prints passthrough=0 + fixed_base_honored=1.
+#         NOTE: the record smoke allocates d_a/d_out via the DRIVER cuMemAlloc,
+#         which snapshot_redirect_cuda does NOT hook (it hooks the runtime
+#         cudaMalloc family). So the redirect may stay inert here and its
+#         SUMMARY/FIXED_VMM lines may be absent; per the plan, the cmp is the
+#         decisive gate and the redirect tokens are SOFT corroboration. The
+#         observed Δ=0 then rests on cuMemAlloc being deterministic across fresh
+#         processes (carry-forward: N5b should either switch the smoke to
+#         cudaMalloc or extend the redirect to hook cuMemAlloc for a guaranteed
+#         fixed-base under preload).
 
 set -euo pipefail
 
@@ -43,13 +61,15 @@ srun --environment=snapshot-cuda \
     cmake --build snapshot/build-cuda -j"${SLURM_CPUS_PER_TASK:-8}" \
       --target cuda_record_smoke
 
-    # Task 2: build record interposer shared library.
+    # Task 2 + Task 3: build record interposer + the redirect interposer it
+    # composes with (Task 3 runs the smoke under both .so via LD_PRELOAD).
     cmake --build snapshot/build-cuda -j"${SLURM_CPUS_PER_TASK:-8}" \
-      --target snapshot_record_cuda
+      --target snapshot_record_cuda snapshot_redirect_cuda
 
     SMOKE="$PWD/snapshot/build-cuda/cuda_record_smoke"
     RECORD_SO="$PWD/snapshot/build-cuda/libsnapshot_record_cuda.so"
-    ls -l "$SMOKE" "$RECORD_SO"
+    REDIRECT_SO="$PWD/snapshot/build-cuda/libsnapshot_redirect_cuda.so"
+    ls -l "$SMOKE" "$RECORD_SO" "$REDIRECT_SO"
 
     echo "--- run 1 ---"
     "$SMOKE" | tee /tmp/r1.txt
@@ -114,6 +134,101 @@ srun --environment=snapshot-cuda \
     fi
 
     echo "Task 2 gate PASSED"
+
+    # -----------------------------------------------------------------------
+    # Task 3 gate: record the captured graph to .snap under redirect+record,
+    # twice into two separate dirs, then prove byte-identical (Δ=0).
+    # Use persistent paths under ${DEPLOY_DIR} (not /tmp) and PIPESTATUS.
+    # -----------------------------------------------------------------------
+    echo "--- Task 3: capture/record + Δ=0 ---"
+    T3_DIR1="${DEPLOY_DIR}/snap-record-t3/run1"
+    T3_DIR2="${DEPLOY_DIR}/snap-record-t3/run2"
+    T3_LOG1="${DEPLOY_DIR}/snap-record-t3/r1.log"
+    T3_LOG2="${DEPLOY_DIR}/snap-record-t3/r2.log"
+    rm -rf "${T3_DIR1}" "${T3_DIR2}"
+    mkdir -p "${T3_DIR1}" "${T3_DIR2}"
+
+    echo "--- record run 1 (LD_PRELOAD=redirect:record) ---"
+    LD_PRELOAD="${REDIRECT_SO}:${RECORD_SO}" \
+      SNAPSHOT_RECORD_CUDA_MODE=record \
+      SNAPSHOT_RECORD_CUDA_DIR="${T3_DIR1}" \
+      "$SMOKE" 2>&1 | tee "${T3_LOG1}"
+    T3_EXIT1="${PIPESTATUS[0]}"
+
+    echo "--- record run 2 (LD_PRELOAD=redirect:record) ---"
+    LD_PRELOAD="${REDIRECT_SO}:${RECORD_SO}" \
+      SNAPSHOT_RECORD_CUDA_MODE=record \
+      SNAPSHOT_RECORD_CUDA_DIR="${T3_DIR2}" \
+      "$SMOKE" 2>&1 | tee "${T3_LOG2}"
+    T3_EXIT2="${PIPESTATUS[0]}"
+
+    if [ "${T3_EXIT1}" -ne 0 ] || [ "${T3_EXIT2}" -ne 0 ]; then
+      echo "T3_RUN_EXIT=fail (run1=${T3_EXIT1} run2=${T3_EXIT2})"
+      exit 1
+    fi
+
+    SNAP1="${T3_DIR1}/graph-0000.snap"
+    SNAP2="${T3_DIR2}/graph-0000.snap"
+
+    # (a) .snap files exist and are non-empty.
+    if [ -s "${SNAP1}" ] && [ -s "${SNAP2}" ]; then
+      echo "SNAP_WRITTEN=1"
+      ls -l "${SNAP1}" "${SNAP2}"
+    else
+      echo "SNAP_WRITTEN=0 (expected ${SNAP1} and ${SNAP2})"
+      exit 1
+    fi
+
+    # (b) record SUMMARY reports 1 graph, 2 nodes, 1 edge, 0 blind (run 1).
+    REC_SUMMARY=$(grep "\[record-cuda\].*SUMMARY" "${T3_LOG1}" || echo "REC_SUMMARY_MISSING")
+    echo "record summary: ${REC_SUMMARY}"
+    if echo "${REC_SUMMARY}" | grep -qF "recorded: graphs=1 nodes=2 edges=1 blind=0"; then
+      echo "RECORD_COUNTS=1 (1 graph, 2 kernel nodes, 1 dep edge, 0 blind)"
+    else
+      echo "RECORD_COUNTS=0 (expected \"recorded: graphs=1 nodes=2 edges=1 blind=0\")"
+      exit 1
+    fi
+
+    # (c) smoke still prints the same CHECKSUM under redirect+record.
+    CS_T3=$(grep "^CHECKSUM" "${T3_LOG1}" || echo "MISSING")
+    echo "checksum under redirect+record: ${CS_T3}"
+    if [ "${CS_T3}" = "${CS1}" ] && [ "${CS_T3}" != "MISSING" ]; then
+      echo "T3_CHECKSUM_UNCHANGED=1"
+    else
+      echo "T3_CHECKSUM_UNCHANGED=0 (expected ${CS1}, got ${CS_T3})"
+      exit 1
+    fi
+
+    # (d) SOFT corroboration: redirect SUMMARY passthrough=0 + fixed_base_honored=1.
+    # The record smoke uses driver cuMemAlloc, which redirect does not hook, so
+    # these lines may be absent; report but do NOT fail the gate on them.
+    # (Reported BEFORE the decisive cmp so the log always carries this evidence.)
+    REDIR_SUMMARY=$(grep "\[redirect-cuda\].*SUMMARY" "${T3_LOG1}" || echo "ABSENT")
+    REDIR_FIXED=$(grep "\[redirect-cuda\].*fixed_base_honored" "${T3_LOG1}" || echo "ABSENT")
+    echo "redirect summary: ${REDIR_SUMMARY}"
+    echo "redirect fixed-vmm: ${REDIR_FIXED}"
+    if echo "${REDIR_SUMMARY}" | grep -qE "passthrough=0\("; then
+      echo "REDIR_PASSTHROUGH_ZERO=1 (corroboration)"
+    else
+      echo "REDIR_PASSTHROUGH_ZERO=na (redirect inert: smoke uses driver cuMemAlloc)"
+    fi
+    if echo "${REDIR_FIXED}" | grep -qF "fixed_base_honored=1"; then
+      echo "REDIR_FIXED_BASE_HONORED=1 (corroboration)"
+    else
+      echo "REDIR_FIXED_BASE_HONORED=na (redirect inert: smoke uses driver cuMemAlloc)"
+    fi
+
+    # (e) DECISIVE Δ=0 gate: the two .snap files must be byte-identical.
+    if cmp "${SNAP1}" "${SNAP2}"; then
+      echo "SNAP_BYTE_IDENTICAL=1 (Δ=0: recorded kernarg pointers are deterministic)"
+    else
+      echo "SNAP_BYTE_IDENTICAL=0 (.snap differs between runs — Δ≠0)"
+      echo "--- cmp -l (differing bytes: expected ONLY device-pointer slots) ---"
+      cmp -l "${SNAP1}" "${SNAP2}" | head -40 || true
+      exit 1
+    fi
+
+    echo "Task 3 gate PASSED"
   '
 
 echo "cuda-record-smoke finished: $(date --iso-8601=seconds)"
