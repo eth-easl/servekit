@@ -1,0 +1,21 @@
+name    = "glm-52-fp8-beverin"
+profile = "glm-52-fp8"
+engine  = "vllm"
+served_model_name = "zai-org/GLM-5.2-FP8-rocm"
+port = 8000
+default_nodes = 4
+
+[scripts]
+probe = "probe_vllm.sbatch"
+serve = "serve_glm_52_fp8.sbatch"
+
+[ready]
+markers = ["APIV1-server"]
+log_pattern = "logs/opentela-{job}.log"
+
+[verify]
+models_path = "/v1/models"
+chat_path   = "/v1/chat/completions"
+
+[snapshot]
+enabled = false

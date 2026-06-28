@@ -1757,17 +1757,503 @@ fresh HIP rebuild was not re-run this session (no AMD node available on bristen)
 N5b (vLLM-CUDA TP=4 record/restore + A/B/C cold-start measurement on bristen)
 is next.
 
+---
+
+## M3k — FULL-graph rebuild fault: precise per-node diagnosis (2026-06-27)
+
+**Goal:** convert the M3i-update "24% projected" win into a clean *functional*
+cold-start result. The blocker was that restoring from the complete 800-graph
+`record-default-fb` recording (FULL + PIECEWISE) crashed, while the
+piecewise-only `record-default-pw` (410 graphs) restored cleanly. The leading
+hypothesis (namer identity mismatch / 410-of-912 drain) was **disproven**:
+`record-default-fb` already has 800 fully-named graphs (`IDENTITY_GATE=PASS`,
+`nodes_without_identity=0` for every one). Identity is complete.
+
+**The real blocker (job 530981 restore from record-default-fb):**
+```
+[restore] loading 800 snapshots from snapshot/record-default-fb
+[restore] rebuilt 34/800 graphs (766 failed, 0 unresolved entries), reloc known=0 blind=0
+[restore] rebuild_graph FAILED graph #3 (nodes=17): hipGraphAddKernelNode failed: unspecified launch failure
+```
+The 800 graphs split cleanly by structure: **32 PIECEWISE** (6/11 nodes, ~2.8 MB)
+and **766 FULL decode** (17 nodes, ~17 MB). The 32 PIECEWISE rebuild; the **766
+FULL all fail at `hipGraphAddKernelNode`**. Natural-sort puts PIECEWISE first,
+so "34 rebuilt, 766 failed" = the 32 PIECEWISE + 2 transitional succeeded, then
+every FULL graph failed (the sticky `hipErrorLaunchFailure` poisoned the rest).
+
+**Stickiness ruled out (job 531792, isolated per-graph rebuild-check).** Each
+graph rebuilt in a FRESH process (own GPU state, funcs resolved from the
+snapshot's embedded modules — self-contained, ROCm-version-independent):
+- graph-0 (PIECEWISE, 6n): rebuild + instantiate + launch **OK**
+- graph-1 (PIECEWISE, 11n): rebuild + instantiate + launch **OK**
+- graph-2..7 (FULL, 17n): **all fail** `hipGraphAddKernelNode: unspecified launch failure`
+
+So FULL graphs are **genuinely un-rebuildable**, not stickiness casualties.
+
+**Per-node trace (job 531829, `SNAPSHOT_REBUILD_DEBUG=1` on graph-2).** The
+failure localizes to a SINGLE node:
+```
+[rebuild] node#0 Cijk_..._GEMM        func_ok=1 argtag=0 argcnt=0  -> AddKernelNode rc=0 (OK)
+[rebuild] node#1 triton_red_fused_...  func_ok=1 argtag=1 argcnt=10 -> AddKernelNode rc=0 (OK)
+[rebuild] node#2 Cijk_..._GEMM        func_ok=1 argtag=0 argcnt=0  -> AddKernelNode rc=0 (OK)
+[rebuild] node#3 Cijk_..._GEMM        func_ok=1 argtag=0 argcnt=0  -> AddKernelNode rc=0 (OK)
+[rebuild] node#4 triton_poi_fused_mul_silu_slice_0  func_ok=1 argtag=1 argcnt=7 sigargc=7 blob=145 -> rc=-1 FAIL
+backend_error: hipGraphAddKernelNode failed: unspecified launch failure
+```
+- `func_ok=1` — the function handle resolved fine. NOT a resolution problem.
+- `argcnt=7 == sigargc=7` — arg count matches the kernel signature. NOT an undercount.
+- The first 4 nodes (3 CK GEMMs + 1 Triton red) pass; **node#4 is the first
+  `triton_poi` (pointwise) kernel and the first failure.**
+
+**Signature comparison (snapshot analyze):**
+```
+node#4 triton_poi_fused_mul_silu_slice_0: sig_args=7 sig_ptrs=4 kernarg_sz=56
+                                           captured_tag=1 captured_args=7 blob_bytes=145 ptr_offsets=4
+```
+Counts match (7=7, 4=4), but `blob_bytes=145` vs `kernarg_sz=56` — the recorded
+kernarg blob is ~2.6× the kernel's true kernarg segment. (The passing node#1
+`triton_red` shows the SAME ~2× oversize pattern: blob=205 vs kernarg_sz=72, so
+oversize per se is not the fault — it's tolerated by HIP's array-format launch.)
+
+**Cross-check that rules out the kernel itself:** the working `record-default-pw`
+graphs ALSO contain `triton_poi_fused_mul_silu_slice_0` nodes (1 each in
+graph-100/101/...) and those 410 graphs rebuild + restore cleanly (410/410 OK,
+Paris ✓). So the kernel is not inherently un-rebuildable; the FULL-graph
+*instance* of that node is the one that faults.
+
+### Hypothesis "unmapped pointer / trajectory replay" (option a) — DISPROVEN (jobs 532436, 532446)
+
+Both graphs map the same single slab `[0x600000000000, 0x612000000000)`
+(4.6 GB, no holes). Per-arg pointer dump (`hip_graph.cpp` M3k probe) for the
+failing vs succeeding `triton_poi_fused_mul_silu_slice_0` node:
+```
+graph-A FAIL node#4:  a0=0x600f89c08000 a1=0x600f89980000  (both IN RANGE)
+                      a2=0x600 a3=0xc00 a4=0x30000 a5=0 a6=0  block=512 grid=96
+graph-B OK   node#4:  a0=0x600f85900000 a1=0x600f85be0000  (both IN RANGE)
+                      a2=0x600 a3=0xc00 a4=0x2a000 a5=0 a6=0  block=256 grid=168
+```
+All pointer args are **inside** the mapped region in BOTH cases → unmapped-
+pointer / trajectory mismatch is **disproven**. Option (a) replay is NOT the fix.
+
+### Sticky-error hypothesis — DISPROVEN (job 532446, `SNAPSHOT_REBUILD_STICKY_DBG`)
+
+`hipPeekAtLastError()` probed immediately before each node's `AddKernelNode`:
+```
+node#0 Cijk         block=256  pre-add peek=500(symbol)   rc=0 OK
+node#1 triton_red   block=512  pre-add peek=0(clean)       rc=0 OK
+node#2 Cijk         block=256  pre-add peek=0(clean)       rc=0 OK
+node#3 Cijk         block=256  pre-add peek=0(clean)       rc=0 OK
+node#4 triton_poi   block=512  pre-add peek=0(CLEAN)       rc=-1 FAIL
+```
+**node#4 enters `AddKernelNode` with a clean device state (`peek=0`) and faults
+immediately.** Not intra-graph sticky (peek=0), not cross-graph sticky (fresh
+process). `func_ok=1`, `shared=0`, args in range, argcnt=7=sigargc=7.
+
+### Actual root cause: num_warps=8 (block=512) HSACO rejected by AddKernelNode
+
+The ONE structural difference between FAIL (block=512 → Triton num_warps=8) and
+OK (block=256 → num_warps=4) is the **kernel code-object**: the FULL graphs'
+`triton_poi_fused_mul_silu_slice_0` was Triton-autotuned to 8 warps; the pw
+graphs' to 4 warps. `record-default-fb` was recorded under **ROCm 6.x** (login-
+node `.so.6` linkage, the pre-upgrade container); the restore now runs under the
+**ROCm 7.2.3** `glm-47-flash-rocm` image. The num_warps=8 HSACO compiled by
+ROCm-6 Triton is rejected by ROCm 7's `hipGraphAddKernelNode` validation; the
+num_warps=4 variant (pw) happens to remain compatible. This is a
+**record/restore ROCm-version skew** that breaks one Triton config variant.
+
+### Re-record hypothesis (option 2) — DISPROVEN (jobs 532460, 532505, 532507)
+
+To test version skew, the FULL decode graphs were **re-recorded from scratch
+under the current ROCm 7.2.3 image** with **fresh empty Triton/inductor caches**
+(`snapshot/cache7-rocm/`, verified populated 14:56 — Triton recompiled), then
+immediately rebuild-checked:
+```
+FRESH ROCm-7 graph-141716-2: node#14 triton_poi_fused_add_index_select_mul_slice
+      ..._split_split_with_sizes_stack_sub_unsqueeze_2  block=512 num_warps=8
+      -> hipGraphAddKernelNode rc=-1 FAIL
+OLD   ROCm-6 graph-66398-2:   node#4  triton_poi_fused_mul_silu_slice_0
+                             block=512 num_warps=8 -> rc=-1 FAIL
+```
+The freshly-recorded graph **STILL FAILS** (at a different node, but the same
+characteristic). So this is **NOT version skew** and re-recording is NOT the fix.
+
+### DEFINITIVE root cause (job 532641, `hipFuncGetAttribute` probe): recorded block.x exceeds the resolved kernel's MAX_THREADS_PER_BLOCK
+
+> **Correction of the earlier (wrong) hypothesis above.** The failure is NOT
+> "ROCm rejects num_warps=8" — a `triton_red` kernel runs fine at block=512.
+> The real rule is narrower and mechanistic, confirmed by querying each node's
+> resource footprint via `hipFuncGetAttribute`:
+
+```
+node        kernel            block   MAX_THREADS_PER_BLOCK   >?   rc
+old #0      Cijk GEMM         256     256                     no   OK
+old #1      triton_red        512     512                     no   OK
+old #4      triton_poi        512     256                     YES  FAIL
+fresh #4    triton_poi        256     256                     no   OK
+fresh #14   triton_poi        512     256                     YES  FAIL
+```
+**`hipGraphAddKernelNode` rejects a node when its recorded `block.x` exceeds the
+resolved kernel's declared `HIP_FUNC_ATTRIBUTE_MAX_THREADS_PER_BLOCK`.** Eager
+`hipModuleLaunchKernel` does NOT enforce this (the baseline serves these kernels
+correctly — Paris ok), so the inconsistency is invisible at record/serve time
+and only surfaces in the graph-add path.
+
+The recordings are **internally inconsistent**: the same kernel name appears at
+both block=256 (self-consistent: max=256) and block=512 (inconsistent: max=256 <
+512) across runs. When Triton autotunes a pointwise kernel to a 512-thread
+(num_warps=8) config, the embedded HSACO still declares
+`MAX_THREADS_PER_BLOCK=256`. So the snapshot faithfully records a 512-thread
+launch for a 256-max kernel — valid eagerly, rejected by graph-add. This is a
+**Triton-on-ROCm codegen inconsistency** (max_flat_workgroup_size metadata
+under-reports the real workgroup size for num_warps=8 pointwise kernels),
+exposed by the snapshot rebuild's graph path. Not version skew (re-record under
+ROCm 7 reproduced it); not fixable by re-recording; not a snapshot pointer/
+identity bug (func_ok=1, args in range, argcnt=sigargc, shared=0 all verified).
+
+**Fix options (snapshot-layer, ranked):**
+1. **Accept `shim_pw`** — restore PIECEWISE from snapshot, live-capture FULL.
+   Works now, ~4.5% projected cold-start win (M3i), zero serving overhead,
+   correct inference (M3j). Delivers a functional (modest) win immediately.
+2. **Patch the embedded HSACO's `max_flat_workgroup_size` at snapshot module
+   load** so it matches the recorded block.x (>= 512) before `hipModuleLoadData`,
+   making the code object self-consistent and `AddKernelNode` happy. The most
+   promising route to a FULL-graph restore + the larger win; requires code-
+   object/ELF metadata surgery in the loader.
+3. **File upstream** — the Triton/ROCm num_warps=8 max_threads metadata bug.
+   Out of scope for snapshot but the true origin of the inconsistency.
+(Clamping block.x at rebuild is NOT viable: a Triton kernel compiled for
+num_warps=8 cannot run with 256 threads — its warp scheduling is compile-time
+fixed — so halving block breaks correctness, and scaling grid won't help.)
+
+**Artifacts:**
+- `recipe/diag_full_rebuild.sbatch` — isolated per-graph rebuild-check + node trace
+- Code: `snapshot_record.cpp` sticky-error probe
+  (`SNAPSHOT_RESTORE_STICKY_DBG` / `SNAPSHOT_RESTORE_CLEAR_STICKY`) + position
+  identity recovery + HSA kernel_object lookup (correct but inert — identity was
+  already complete)
+- `csrc/backends/hip/hip_graph.cpp` M3k probes: per-arg value dump +
+  shared-mem/func dump + sticky-error peek/clear (`SNAPSHOT_REBUILD_STICKY_DBG` /
+  `SNAPSHOT_REBUILD_CLEAR_STICKY`), all gated behind env vars
+- Jobs: 531792 (isolation), 531829 (node trace), 532436 (pointer dump),
+  532446 (sticky probe), 532460 (ROCm-7 re-record), 532505/532507 (fresh-graph
+  rebuild-check), **532641 (`hipFuncGetAttribute` probe — the definitive
+  mechanism: block.x > MAX_THREADS_PER_BLOCK)**
+- Build note: the `glm-47-flash-rocm` EDF image is now **ROCm 7.2.3**
+  (`libamdhip64.so.7`); the login-node build links `.so.6`. Snapshot artifacts
+  must be rebuilt INSIDE the ROCm 7 container (the diag does this into `build7/`).
+  vLLM 0.23.0 in the image still works under the interposer.
+
+### M3k+ — HSACO max_flat_workgroup_size patch (the FIX for the AddKernelNode blocker)
+
+**Implemented + verified.** `patch_amdgpu_max_flat_workgroup_size()`
+(`csrc/core/record.cpp`, declared `include/snapshot/record.hpp`) rewrites every
+`amdhsa.kernels[].max_flat_workgroup_size` to `>= target` IN PLACE within the
+AMDGPU metadata note (same-width msgpack int rewrite — no ELF offset shifts).
+Wired into BOTH module-load paths, env-gated `SNAPSHOT_HSACO_PATCH_MAXWG=<n>`:
+  - CLI: `HipBackend::load_module` (hip_graph.cpp) — used by `rebuild-check`.
+  - Interposer: the hooked `hipModuleLoadData`/`hipModuleLoadDataEx`
+    (`snapshot_record.cpp` `maybe_patch_hsaco`) — covers the vLLM restore path
+    (all 3 restore call sites route through the hook).
+
+**Verification (job 532648, `hipFuncGetAttribute` + AddKernelNode rc):**
+| graph | node | block | max_threads OFF→ON | rc OFF→ON |
+|---|---|---|---|---|
+| fb g-2 (ROCm6) | triton_poi mul_silu_slice | 512 | 256→1024 | -1→**0** |
+| fb7 g-2 (ROCm7) | triton_poi add_index_select | 512 | 256→1024 | -1→**0** |
+All 17 nodes rc=0 on both graphs with patch ON. Build7 compiles clean.
+
+**End-to-end vLLM FULL restore (job 532661, shim mode + patch):** AddKernelNode
+failures = **0** (previously every FULL graph failed). The patch resolves the
+AddKernelNode blocker completely. The run then hit a **SEPARATE, pre-existing**
+blocker: `hipErrorStreamCaptureUnsupported` in inductor's `_sfdp_init()`
+lazy-init while a stream is capturing (RESULTS.md blocker #2, line ~1068) —
+fires when the restore queue exhausts and a FULL capture falls through to real
+`hipStreamBeginCapture`. NOT caused by / related to the HSACO patch.
+
+**Net:** the HSACO patch is the correct, verified fix for the root cause
+characterized in M3k (block.x > MAX_THREADS_PER_BLOCK). A clean cold-start
+benchmark of the FULL restore (the ~24% pure-shim path) remains gated on a fix
+for blocker #2 (stream-capture fallthrough), which is in the interposer's
+restore-queue logic — separate work from the HSACO metadata fix.
+
+**Note:** `_vllm_restore.sh` hardcodes `SNAPSHOT_RECORD_VERBOSE=0` (overrides
+the sbatch export), so the `[hsaco-patch]` per-module log is suppressed in
+vLLM runs; the rebuild-check CLI path (`SNAPSHOT_DEBUG=1`) does show it.
+
+### M3k++ — Blocker #2 (queue exhaustion / hipErrorStreamCaptureUnsupported) RESOLVED
+
+**Root cause — INCOMPLETE RECORDING, not a ROCm capture limitation.**
+`record-default-fb` held **800** snapshots but vLLM's default 19-size capture
+(FULL_AND_PIECEWISE) demands **923** graphs (measured): 19 PIECEWISE sizes ×
+~48 sub-graphs + 11 FULL decode graphs. Each capture size consumes ~48 graphs
+(confirmed from the restore log: 1/19→graph 49, 2/19→97, 3/19→145, … 48/size).
+The 800-graph recording covered only capture sizes up to ~112 (17/19); **sizes
+120 and 128 were never recorded.** When the restore queue exhausted at size 18,
+the interposer fell through to REAL `hipStreamBeginCapture`; the model forward
+under that real capture hit a stream-capture-incompatible op →
+`hipErrorStreamCaptureUnsupported`. RESULTS.md blocker #2's framing as a
+"FULL capture crash / ROCm limitation" was wrong — it was purely an
+under-sized recording forcing a real-capture fallthrough.
+
+**Proof (EMPTY probe, job 532683):** `SNAPSHOT_RESTORE_EMPTY_EXHAUSTED=1`
+returns an empty graph (no real capture) when the queue exhausts. Result:
+`AddKernelNode failed=0`, `StreamCaptureUnsupported=0`, server **READY at 419s**.
+The EMPTY run logged `EndCapture -> EMPTY graph (exhausted at N)` climbing to
+**923** — the exact demand. Demand 923 − supply 800 = **123 missing** (sizes 120,
+128).
+
+**Fix — complete recording (record-default-c, 923 graphs).** Re-recorded with
+`MAX_GRAPHS=3000 RUN_SECS=5400 CONVERGE_S=300` (job 532703, ~52 min). The namer
+named all 923 (no stall — record-default-fb's 800 was a premature cap, NOT the
+namer bottleneck of RESULTS.md #1) and converged cleanly at **923**.
+
+**End-to-end result (job 532728, functional FULL restore from record-default-c
++ HSACO patch):**
+| metric | value |
+|---|---|
+| pre-built graphs served | **923/923** |
+| EMPTY / fallthrough graphs | **0** |
+| `hipGraphAddKernelNode` failures | **0** |
+| `hipErrorStreamCaptureUnsupported` | **0** |
+| **READY (cold-start)** | **472s** |
+| baseline READY (live capture) | 671s |
+| **cold-start win (server-up)** | **−199s = ~30%** |
+
+Blocker #2 is **eliminated**. The pure-shim cold-start is now **MEASURED** at
+472s (30% win) — better than the earlier 509s/24% projection — with every graph
+served from snapshot and zero capture-path crashes.
+
+**Remaining blocker (pre-existing, NOT caused by the HSACO patch or recording
+completeness): FULL-decode-graph REPLAY fault.** At the FIRST `hipGraphLaunch`
+(post-startup inference) the EngineCore dies:
+`Memory access fault by GPU node-4 on address (nil). Reason: Unknown.`
+This fault reproduces at default 19-size scale (jobs 532728/532760). It is the
+long-standing default-scale replay blocker (the M3i/M3j "Paris ✓" results were
+all at **cs=1 only**, never at default scale — see table at line ~925).
+
+### M3k+++ — Replay-fault root-cause ISOLATION: graphs are CORRECT (cs=1 Paris ✓)
+
+**Decisive finding (job 532785): record-default-c's graphs are CORRECT.**
+Restoring from the default-scale recording (923 graphs) but restricting vLLM to
+`CAPTURE_SIZES=1` (49 captures served: graph[0..48]) gives **Paris ✓** (READY
+540s, `"text":" Paris"`, **0 faults**). The cs=1 FULL decode graph replays
+correctly. So the snapshot record→rebuild→replay mechanism is fundamentally
+SOUND — the HSACO patch + complete recording + FIXED_BASE produce correct,
+replayable graphs.
+
+**Therefore the default-scale nil fault is NOT a graph-correctness issue** — it
+is a **graph-slot mismatch**: the shim serves recorded graphs in sequential
+file order, but vLLM interleaves FULL captures mid-stream, so FULL decode slots
+receive PW fragments.
+
+### M3k++++ — DEFINITIVE ROOT CAUSE (launch-probe, job 533337)
+
+A launch-probe (interposer logs the first `hipGraphLaunch`'s graph identity)
+confirmed the fault:
+
+```
+[launch-probe] first hipGraphLaunch exec=.. graph=.. serve_idx=146 nodes=16 active_captures=0 (PW)
+```
+
+**The first decode launch replays `serve_idx=146` — a 16-node PW fragment, NOT
+a FULL decode graph (1124 nodes).** The shim serves graphs in sequential file
+order (nat-sorted), but the recording **interleaves FULL captures
+mid-stream**:
+  - `record-default-c` (19 sizes, 923 graphs): FULL graphs at indices
+    **902-909, 911, 912, 913** (NOT at the end).
+  - `record-cs124` (3 sizes, 147 graphs): FULL graphs at indices **49, 50, 51**.
+
+At restore, the PW capture phase consumes the early files (incl. the FULL
+graphs), so the FULL decode slots get served **leftover PW fragments**. Whether
+a run "works" or "faults" depends on *which PW fragment* lands in the first
+FULL slot and whether its kernel args happen to be valid at decode time —
+**pure luck, not correctness**:
+  - cs=1     → FULL slot gets serve_idx=48  (11-node PW) → benign → "Paris"
+  - cs=1,2   → FULL slot gets serve_idx=97  (16-node PW) → benign → "Paris"
+  - cs=1,2,4 → FULL slot gets serve_idx=146 (16-node PW) → nil-deref → FAULT
+
+**Consequences:**
+1. The "cs=1 Paris ✓" was a FALSE POSITIVE — it launched a benign PW fragment,
+   not a real FULL decode graph. It did NOT prove the snapshot mechanism sound.
+2. A real FULL decode graph (1124 nodes) has **never been cleanly replayed** —
+   every run either launched a PW fragment (by order-mismatch luck) or faulted.
+3. The clean matched recording (`record-cs124`, recorded at exactly cs=1,2,4)
+   ALSO faults (job 533307) — proving the mismatch is intrinsic to vLLM's
+   capture interleaving + sequential-file serve, NOT a record/restore
+   size-set difference.
+
+**The fix:** the restore must serve FULL graphs to FULL slots and PW graphs to
+PW slots, matched by **capture mode** (and ideally batch size), not by
+sequential file order. This requires (a) tagging each recorded graph with its
+capture mode in the `.snap` metadata, and (b) the shim learning the current
+EndCapture's mode (cg_skip knows it) to serve a matching graph. Until this is
+implemented, functional FULL-restore serving is blocked — but the blocker is
+now precisely understood and mechanistically clear.
+
+**Jobs:** 533337 (launch-probe — serve_idx=146 PW fragment confirmed),
+533307 (clean record-cs124 restore — also faults, mismatch is intrinsic),
+533281 (re-record cs=1,2,4 — FULL graphs at idx 49,50,51, interleaved).
+**Harness fix (important):** `build/libsnapshot_record.so` is a STALE real file
+(NOT a symlink to build7/); rebuilds must `cp build7/libsnapshot_record.so
+build/` to take effect at runtime.
+**Harness fix:** any multi-value `CAPTURE_SIZES` MUST use spaces
+(`CAPTURE_SIZES="1 2 4"`) in `--export`, never commas (sbatch splits on
+commas). Use `_m3k_restore_bisect.sh "<sizes>" [RDIR]` which exports it
+correctly.
+
+**Prior bisection data (corrected — all via the stale-but-consistent build/
+.so):** cs=1 ✓, cs=1,2 ✓, cs=1,2,4 ✗, cs=1,2,4,8 ✗, cs=1..64 ✗, default-19 ✗.
+The cs≤2 "works" is the luck-of-the-draw explained above, not a correctness
+proof.
+
+(Note: an earlier draft of this section attributed the fault to "scale-
+dependent capture-mapping" candidates — resource accumulation, exec→graph
+off-by-one, etc. The launch-probe disproved all of those: the fault is purely
+the PW-fragment-in-FULL-slot order mismatch.)
+
+**Net status:**
+- Server-up cold-start via FULL restore (default scale): **472s (30% win),
+  MEASURED, clean.**
+- Functional serving via FULL restore: **BLOCKED** by the graph-slot order
+  mismatch (PW fragments served to FULL decode slots). Fix = mode-aware serve.
+- The "cs=1 Paris ✓" results were false positives (benign PW fragments), not
+  correctness proofs.
+  scale-dependent capture-mapping / rebuild-state issue at 923 graphs.
+- Functional serving via shim_pw (PIECEWISE snapshot + FULL live): works now,
+  ~4.5% win.
+
+**Jobs:** 532683 (EMPTY demand probe), 532703 (complete record-default-c),
+532728 (functional FULL restore — READY 472s + replay fault), 532785 (cs=1
+Paris ✓ — DISPROVEN: was a benign PW fragment, not a correctness proof),
+533052 (space-separated bisection).
+**Recipes:** `_m3k_restore_empty.sh`, `_m3k_record_complete.sh`,
+`_m3k_restore_final.sh`, `_m3k_restore_cs1.sh`, `_m3k_restore_cs_range.sh`.
+**Harness fix:** any multi-value `CAPTURE_SIZES` MUST use spaces
+(`CAPTURE_SIZES="1 2 4 8"`) in `--export`, never commas.
+
 
 ---
 
-## N5b — vLLM-CUDA TP=4 record/restore + cold-start measurement (implementation complete; cluster gates pending)
+## N5b — vLLM-CUDA TP=4 record/restore + cold-start measurement (G1–G5 PASS; NCCL rebuild wall CRACKED — rebuild-execution is the remaining frontier)
 
-**Status (2026-06-27):** the full N5b implementation is committed (8 tasks) but
-the bristen cluster gates (G1–G6) have **not** been run from this environment —
-this session had no SLURM/`rcc` access, so every gate below is **pending a
-cluster run**. The measurement numbers are PLACEHOLDERS to be filled by the
-gates; the code, recipes, and the G6 regression invariant are done and verified
-offline. This section records exactly what was built and what to run.
+**Status (2026-06-28):** cluster gates RUN on bristen. **G2 record PASS**
+(job 72276: ranks=4 blind=0 complete=1, per-rank .snap+meta, Δ=0/rank).
+**G3/G4 restore PASS** (job 72272: READY 116s, token-identical output,
+0 CUDA errors, REDIRECT_fixed_base_honored=4). **CLI smoke all gates PASS**
+(job 72275: N5A G1-G4 + N5B_RT/FULL/TASK3/CGMETA — the .snap rebuild
+mechanism proven end-to-end with synthetic kernels, record→restore
+bit-identical, blind=0).
+
+**UPDATE (2026-06-28): the NCCL rebuild wall is CRACKED.** The original
+"4 paths all fail" analysis below was correct about the *symptom* but wrong
+about the *mechanism and cure*. Re-investigation proved the real mechanism and
+found the fix:
+
+  - **Real mechanism (dladdr caller-id):** NCCL/torch/libcudart resolve CUDA
+    driver fns via **libcudart-internal channels** — `cudaGetDriverEntryPoint`
+    is *implemented in* libcudart and called via the runtime ABI, not via
+    PLT/dlsym. `dladdr` on the dlsym hook shows the ONLY dlsym callers of
+    `cuLaunchKernel`/`cuModuleLoadData` are **cuBLASLt/cuSPARSELt** (which we
+    now redirect via dlsym + `cuGetProcAddress` + `cudaGetDriverEntryPoint`
+    hooks — correct, extends rebuild coverage to them). NCCL/torch/libcudart
+    never reach ANY interposable entry point. So launch-capture
+    (`capture_func_name`) and module hooks are inert for NCCL — a TRUE wall for
+    *interposition*, but NOT for *fatbin extraction*.
+  - **The fix (section-based fatbin extraction):** NCCL's kernels are STATICALLY
+    embedded in its `.nv_fatbin` ELF section, which IS readable at runtime. The
+    resolver now: (1) `dl_iterate_phdr` finds libnccl's load base + on-disk
+    path; (2) reads the on-disk ELF section headers → `.nv_fatbin` `sh_addr`/
+    `sh_size`; (3) scans ONLY that runtime range (base+sh_addr) at 8-byte stride
+    for the fatbin magic `0xBA55ED50`; (4) `cuModuleLoadFatBinary` each (the only
+    authoritative validator — the old `headerSize<=4096` pre-check rejected ALL
+    of NCCL's modern large-header fatbins, that *was* the wall), enumerate via
+    `cuModuleGetFunctionCount`/`cuModuleEnumerateFunctions` → `g_func_by_devname`.
+  - **Verified (job 72374):** `scan-fatbins 'libnccl' found=1 magics=16 fatbins=12
+    load_fails=4 funcs_added=85` — all NCCL kernels now in the map; the recorded
+    `ncclDevKernel_AllReduce` node **resolves** (no RESOLVE-FAIL, blind=0). A
+    standalone probe (`_probe/test_nccl_fatbin_extract.cpp`) independently
+    confirms: 12 fatbins load, `cuModuleGetFunction` resolves
+    `_Z40ncclDevKernel_AllReduce_Sum_bf16_RING_LL...` → module #11.
+
+**Remaining (new frontier): the rebuild-EXECUTION path.** With the NCCL kernel
+now resolvable, `SNAPSHOT_RECORD_CUDA_REBUILD=1` under vLLM reaches the rebuild
+(`rt_capture=1`) but the rebuilt graph crashes vLLM with `CUDA error: unknown
+error` (job 72374, exit 135s). This is the FIRST time the rebuild has ever been
+exercised with a resolvable NCCL kernel — the crash is a rebuild-correctness
+issue (rebuilt NCCL node kernargs/context), NOT the NCCL wall. Default restore
+stays **rebuild=OFF** (robust warm-cache cold start, G3/G4 PASS); the
+rebuild-execution fix is the next item and would deliver the ~35s win.
+
+--- Original analysis (superseded by the fix above, kept for provenance) ---
+
+**The .snap rebuild path for vLLM was blocked by a rigorously-proven
+architectural limitation, not a bug.** Analysis of the recorded snapshots
+(job 72276, `_n5b_scan_nccl.py`) showed **every** captured graph (2562/rank,
+100%) contains exactly **one** NCCL kernel — `ncclDevKernel_AllReduce_Sum_
+bf16_RING_LL` — and there are **zero** NCCL-free (rebuildable) graphs.
+Resolving this single kernel is the only thing between 0% and 100% rebuildable.
+Four resolution paths were tested; all fail:
+
+  1. **dlsym host stub** — NCCL exports no host stubs (`nm libnccl | grep
+     ncclDev` = 0); `dlsym(RTLD_DEFAULT, KNAME)` returns nil
+     (`_probe/test_nccl_dlsym.cpp`).
+  2. **`.nv_fatbin` ELF scan** — NCCL's fatbins use a modern large-header
+     format (headerSize=0x28088) that needs runtime relocation via
+     `__nv_relfatbin` (126 MiB); `cuModuleLoadFatBinary` fails on the on-disk
+     bytes (0/16 load) (`_probe/{diag,scan}_nccl_fatbin.py`).
+  3. **`__cudaRegisterFatBinary` hook** — captures 445 runtime fatbins (all of
+     torch/c10d) and loads them; **none** contains the NCCL kernel. NCCL
+     registers via a DIRECT driver handle, fully bypassing runtime
+     registration (`_probe/test_register_fatbin.cpp`).
+  4. **`cuLaunchKernel` name-capture** — NCCL caches a direct `cuLaunchKernel`
+     pointer, bypassing the launch hook too.
+
+The rebuild resolver handles every other kernel class: fatbin/torch (via
+`cudaGetFuncBySymbol`+`cuFuncGetName`), Triton (recursive `TRITON_CACHE_DIR`
+`.cubin` preload), and module-loaded (the `cuModuleLoadData` hook). A
+`dlsym`+`cudaGetFuncBySymbol` fallback was added (correct and free for any
+library that exports `__global__` host stubs; inert for NCCL). Only NCCL
+remains — its resolution requires version-specific ELF `__nv_relfatbin`
+relocation parsing or NCCL-internal hacking (out of scope).
+
+Consequently the restore gate runs **rebuild=OFF** by default
+(`SNAPSHOT_RECORD_CUDA_REBUILD=1` opts into the rebuild): restore is a REAL
+warm-cache cold start that is token-identical and robust. The rebuild is kept
+behind the flag and exercised by the CLI smoke (record→restore bit-identical,
+blind=0).
+
+### G5 — measured A/B/C cold-start + serving overhead (job 72304 + 72305)
+
+Warm-cache cold-start-to-/health, GLM-4.7-Flash TP=4, 1× A100 node (bristen):
+
+| variant | cold start (s) | serving (conc=8, n=32) |
+|---|---|---|
+| **A** baseline graph mode (no interposer) | **114** | 3.9 rps · p50 238 · p99 328 ms |
+| **B** restore (interposer+redirect, rebuild OFF) | **118** | 3.0 rps · p50 268 · p99 564 ms |
+| **C** eager (`--enforce-eager`, no interposer) | **79** | — |
+
+**Honest accounting.** The eliminable capture phase is **A−C ≈ 35 s** (graph
+mode costs 35 s more than eager at cold start) — consistent with the N3
+estimate (~32 s). Because the `.snap` rebuild is blocked by the NCCL wall
+(above), **B does NOT skip capture** (rebuild OFF → real capture, forward runs
+normally), so B ≈ A: the +4 s is the interposer+fixed-VMM-redirect startup
+overhead, **not** a capture skip. The would-be win (B reclaiming most of the
+~35 s to land near C while keeping graph-mode serving speed) is **unavailable**
+on vLLM-CUDA until NCCL resolution lands. The serving probe shows the
+interposer adds a measurable passive cost (3.0 vs 3.9 rps; fatter p99 tail)
+even with the launch hooks gated behind `restore_rebuild_enabled()` — n=32 so
+this is indicative, not precise; a full sweep is out of scope. The graphs
+served under B are identical to A (real capture), so this is pure interposer
+overhead, not a fidelity loss.
+
+**Net:** the snapshot/restore mechanism is implemented and proven end-to-end
+(CLI smoke: record→restore bit-identical, blind=0, all N5A/N5B gates PASS),
+but for vLLM-CUDA TP=4 specifically it currently delivers no cold-start win (rebuild-execution under investigation now that NCCL resolves)
+and a small serving overhead. The contribution is the mechanism + the rigorous
+characterization of the NCCL blocker (the path to the win once it is resolved).
+
+**Original note (2026-06-27):** the full N5b implementation is committed
+(8 tasks). This section records what was built and the cluster results.
 
 ### What was built (N5b)
 
@@ -1822,20 +2308,33 @@ serving-overhead.
 | G3 | `vllm_restore_cuda.sbatch` (`N5B_RESTORE_GATE`) | FULL-rebuild decision: rebuild-both (default) or the PIECEWISE+live-FULL fallback. |
 | G4 | `vllm_restore_cuda.sbatch` (`N5B_RESTORE_GATE`) | Restore serves token-identical vs the record-run reference; `fallthrough=0`, Δ=0 per rank. |
 | G5 | `vllm_abc_cuda.sbatch` (`N5B_ABC`) | A/B/C cold-start + serving overhead (restored vs baseline-graph). |
-| G6 | offline (this section) | HIP/core/N1/N2 byte-unchanged; N5a CLI gates still green. |
+| G6 | verified (this section) | HIP/core/N1 byte-unchanged; `snapshot_redirect_cuda.cpp` (N2) has 2 load-bearing TP=4/vLLM fixes (additive, backward-compatible); N5a CLI gates green (job 72275). |
 
-**G6 (verified offline this session):**
+**G6 (verified):** HIP (`backends/hip/*`), all `core/*`, `snapshot_record.cpp`,
+`snapshot_redirect.cpp`, and N1 (`backends/cuda/*`) are **byte-unchanged**
+from the pre-N5b baseline (pre-N5b parent `77385fd3` → HEAD):
 ```
-git diff --stat 0cc4a58 HEAD -- \
-  snapshot/csrc/backends/hip snapshot/csrc/preload/snapshot_record.cpp \
-  snapshot/csrc/preload/snapshot_redirect.cpp snapshot/csrc/core \
-  snapshot/csrc/backends/cuda snapshot/csrc/preload/snapshot_redirect_cuda.cpp
-# (empty) — N5b is additive; only snapshot_record_cuda.cpp (extended) + new *_cuda* files.
+$ git diff --stat 77385fd3 HEAD -- \
+    snapshot/csrc/backends/hip snapshot/csrc/preload/snapshot_record.cpp \
+    snapshot/csrc/preload/snapshot_redirect.cpp snapshot/csrc/core \
+    snapshot/csrc/backends/cuda snapshot/csrc/preload/snapshot_redirect_cuda.cpp
+ snapshot/csrc/preload/snapshot_redirect_cuda.cpp | 61 +++++++++++++++++++-----
+ 1 file changed, 49 insertions(+), 12 deletions(-)
 ```
-The three Python files `py_compile` clean; all recipes `bash -n` clean; the
-header-only `record_cuda_format.hpp` compiles standalone. The CUDA-dependent
-interposer/smoke could not be compiled here (no CUDA toolkit in this
-environment) — that is the first thing a cluster build validates.
+**One justified exception:** `snapshot_redirect_cuda.cpp` (N2) needed two
+TP=4-under-vLLM fixes that are **additive and backward-compatible** (the
+TP=1/single-process path is preserved via a fallback) but not byte-identical:
+  1. **Device-respect** — `ensure_init()` uses `cuCtxGetCurrent`/`cuCtxGetDevice`
+     so each TP worker reserves its fixed-VMM region on its OWN GPU; the prior
+     hardcoded device 0 made all 4 workers reserve on GPU 0 (1 succeeds, 3 OOM).
+     Load-bearing for G2/G4 (per-rank Δ=0).
+  2. **`cudaMemGetInfo` hook** — the reserved region is reported as free so
+     vLLM's startup memory probe (`request_memory`, gmu=0.85) doesn't refuse
+     with only ~5 GiB visible. Load-bearing for any vLLM serve under the redirect.
+Every other N5b change is in the additively-extended `snapshot_record_cuda.cpp`
+or in new files (`cg_meta_cuda.py`, the FULL/region-base CLI smokes, recipes).
+N5a CLI gates stay green (job 72275: G1–G4 + RT/FULL/TASK3/CGMETA all PASS).
+The three Python files `py_compile` clean; recipes `bash -n` clean.
 
 ### How to run the gates (bristen)
 ```

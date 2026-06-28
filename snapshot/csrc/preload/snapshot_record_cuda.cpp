@@ -67,8 +67,16 @@
 #include <cuda_runtime_api.h>
 
 #include <dlfcn.h>
+#include <elf.h>
+#include <fcntl.h>
+#include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <dirent.h>
+#include <functional>
+#include <algorithm>
+#include <link.h>
+#include <elf.h>
 
 // RTLD_DEFAULT (GNU extension) is exposed under the same _GNU_SOURCE guard as
 // the RTLD_NEXT the existing thunks use. Defensive fallback so the build does
@@ -130,42 +138,43 @@ const char* g_snap_dir() {
     const std::size_t p = s.find("%r");
     if (p == std::string::npos) return s;
     std::string rank;
-    // N5b (vLLM TP=4): vLLM's set_cuda_visible_devices restricts each TP worker
-    // process to exactly ONE physical GPU and remaps it to device 0, so
-    // cuCtxGetDevice returns 0 for ALL workers. CUDA_VISIBLE_DEVICES (a single
-    // physical GPU id per worker) is the authoritative, deterministic rank.
-    // It MUST be checked BEFORE the rank env vars: srun sets SLURM_PROCID=0 for
-    // the single serve task, which all 4 spawned workers inherit, so the env
-    // vars would route every worker to rank0.
+    // N5b rank resolution order:
+    //  1. RANK / LOCAL_RANK (explicit: the CLI smoke sets RANK=N; torch.distributed
+    //     sets these correctly per worker) — checked FIRST so an explicit rank
+    //     always wins.
+    //  2. CUDA_VISIBLE_DEVICES single device (vLLM device-isolated workers).
+    //  3. cuCtxGetDevice (vLLM multi-GPU: workers see 0,1,2,3 and pin via
+    //     cudaSetDevice(rank); the current device IS the rank).
+    //  4. VLLM_DP_RANK / SLURM_PROCID (last resort; SLURM_PROCID is unreliable —
+    //     srun sets it to 0 for the single serve task, inherited by all workers).
     rank.clear();
-    if (const char* cvd = std::getenv("CUDA_VISIBLE_DEVICES")) {
-      std::string s2(cvd);
-      std::string first;
-      int count = 0;
-      for (std::size_t i = 0; i < s2.size();) {
-        while (i < s2.size() && !((unsigned char)s2[i] >= '0' && s2[i] <= '9')) ++i;
-        if (i >= s2.size()) break;
-        std::string num;
-        while (i < s2.size() && (unsigned char)s2[i] >= '0' && s2[i] <= '9') { num += s2[i]; ++i; }
-        if (count == 0) first = num;
-        ++count;
+    for (const char* name : {"RANK", "LOCAL_RANK"}) {
+      if (const char* v = std::getenv(name)) {
+        if (*v) { rank = v; break; }
       }
-      if (count == 1 && !first.empty()) rank = first;
     }
     if (rank.empty()) {
-      // N5b (vLLM TP=4): CUDA_VISIBLE_DEVICES lists multiple GPUs (vLLM does
-      // NOT isolate workers via device-remapping — all see 0,1,2,3 and each
-      // pins itself via cudaSetDevice(local_rank)). The rank env vars are also
-      // wrong here (srun's SLURM_PROCID=0 is inherited by all 4 workers). The
-      // authoritative per-worker rank is the CURRENT device index: vLLM calls
-      // cudaSetDevice(rank) before capture, so cuCtxGetDevice == rank at the
-      // first record_captured_graph call. Must NOT fall through to SLURM_PROCID.
+      if (const char* cvd = std::getenv("CUDA_VISIBLE_DEVICES")) {
+        std::string s2(cvd);
+        std::string first;
+        int count = 0;
+        for (std::size_t i = 0; i < s2.size();) {
+          while (i < s2.size() && !((unsigned char)s2[i] >= '0' && s2[i] <= '9')) ++i;
+          if (i >= s2.size()) break;
+          std::string num;
+          while (i < s2.size() && (unsigned char)s2[i] >= '0' && s2[i] <= '9') { num += s2[i]; ++i; }
+          if (count == 0) first = num;
+          ++count;
+        }
+        if (count == 1 && !first.empty()) rank = first;
+      }
+    }
+    if (rank.empty()) {
       CUdevice dev = -1;
       if (cuCtxGetDevice(&dev) == CUDA_SUCCESS) rank = std::to_string(dev);
     }
     if (rank.empty()) {
-      const char* rank_envs[] = {"RANK", "LOCAL_RANK", "VLLM_DP_RANK",
-                                 "SLURM_PROCID"};
+      const char* rank_envs[] = {"VLLM_DP_RANK", "SLURM_PROCID"};
       for (const char* name : rank_envs) {
         if (const char* v = std::getenv(name)) {
           if (*v) { rank = v; break; }
@@ -241,6 +250,16 @@ std::size_t g_module_identity_peak = 0;
 // registration hooks so they stay current under lazy module loads, and evicted
 // by the cuModuleUnload hook (bounds process-lifetime growth).
 std::map<std::pair<std::string, std::uint64_t>, CUfunction> g_func_by_key;
+// N5b: device-name → CUfunction, built at module-load time by enumerating
+// every loaded module's functions via cuModuleGetFunctionCount +
+// cuModuleEnumerateFunctions and querying each name via cuFuncGetName (the SAME
+// API used at record time, so the names are guaranteed to match). cuModuleGet-
+// Function(module, name) fails for Triton/Inductor kernels despite the module
+// being loaded (likely a driver lookup-path difference), so this map is the
+// PRIMARY kind=2 resolver.
+std::map<std::string, CUfunction> g_func_by_devname;
+// CUfunctions already name-captured by the cuLaunchKernel hook (dedup set).
+std::set<CUfunction> g_func_by_devname_seen;
 std::map<std::string, const void*> g_hostfun_by_devname;
 // CUmodule → its CUfunctions, so cuModuleUnload can evict identity entries.
 std::map<CUmodule, std::set<CUfunction>> g_module_to_functions;
@@ -344,6 +363,27 @@ std::uint64_t hash_image(const void* image) {
   return fnv1a_64(image, len);
 }
 
+// N5b: determine the byte size of a CUDA module image for save/restore.
+// PTX images are null-terminated text; CUBIN/ELF images carry their size in
+// the ELF section-header table (e_shoff + e_shnum*e_shentsize).
+std::size_t module_image_size(const void* image) {
+  if (!image) return 0;
+  const unsigned char* p = static_cast<const unsigned char*>(image);
+  // 64-bit ELF magic (CUBIN): 0x7f 'E' 'L' 'F'
+  if (p[0] == 0x7f && p[1] == 0x45 && p[2] == 0x4c && p[3] == 0x46) {
+    std::uint64_t e_shoff = 0;
+    std::uint16_t e_shentsize = 0, e_shnum = 0;
+    std::memcpy(&e_shoff, p + 40, 8);
+    std::memcpy(&e_shentsize, p + 58, 2);
+    std::memcpy(&e_shnum, p + 60, 2);
+    return static_cast<std::size_t>(e_shoff)
+           + static_cast<std::size_t>(e_shentsize)
+             * static_cast<std::size_t>(e_shnum);
+  }
+  // PTX: null-terminated text
+  return std::strlen(static_cast<const char*>(image)) + 1;
+}
+
 // ---------------------------------------------------------------------------
 // Lazy real-symbol resolution via dlsym(RTLD_NEXT)
 // Mirrors snapshot_redirect_cuda.cpp: each real_*() is a memoised thunk.
@@ -399,6 +439,14 @@ using ModuleLoadDataExFn = CUresult (*)(CUmodule*, const void*, unsigned int,
 ModuleLoadDataExFn real_cuModuleLoadDataEx() {
   static const auto fn = reinterpret_cast<ModuleLoadDataExFn>(
       dlsym(RTLD_NEXT, SNAPSHOT_STR(cuModuleLoadDataEx)));
+  return fn;
+}
+
+// N5b: cuModuleLoadFatBinary — Triton/Inductor may load via this path.
+using ModuleLoadFatBinaryFn = CUresult (*)(CUmodule*, const void*);
+ModuleLoadFatBinaryFn real_cuModuleLoadFatBinary() {
+  static const auto fn = reinterpret_cast<ModuleLoadFatBinaryFn>(
+      dlsym(RTLD_NEXT, SNAPSHOT_STR(cuModuleLoadFatBinary)));
   return fn;
 }
 
@@ -461,6 +509,40 @@ CudaLaunchKernelFn real_cudaLaunchKernel() {
       dlsym(RTLD_NEXT, SNAPSHOT_STR(cudaLaunchKernel)));
   return fn;
 }
+
+// N5b: cuLaunchKernelEx (driver, with launch config) — CUDA 12+ / 13 preferred
+// launch path for many runtimes. The CUfunction is available, so we capture its
+// device name into g_func_by_devname (same as cuLaunchKernel).
+using LaunchKernelExFn = CUresult (*)(const CUlaunchConfig*, CUfunction,
+                                      void**, void**);
+LaunchKernelExFn real_cuLaunchKernelEx() {
+  static const auto fn = reinterpret_cast<LaunchKernelExFn>(
+      dlsym(RTLD_NEXT, SNAPSHOT_STR(cuLaunchKernelEx)));
+  return fn;
+}
+
+// Shared name-capture helper (called from cuLaunchKernel / cuLaunchKernelEx).
+// Deduped by CUfunction pointer; populates g_func_by_devname via cuFuncGetName.
+#if CUDA_VERSION >= 12030
+static void capture_func_name(CUfunction f) {
+  if (!f) return;
+  static thread_local bool t_scanning = false;
+  if (t_scanning) return;  // guard against recursion via cuFuncGetName internals
+  bool need_name = false;
+  { std::lock_guard<std::mutex> lock(g_mu);
+    need_name = (g_func_by_devname_seen.find(f) == g_func_by_devname_seen.end());
+  }
+  if (!need_name) return;
+  t_scanning = true;
+  const char* name = nullptr;
+  if (cuFuncGetName(&name, f) == CUDA_SUCCESS && name && *name) {
+    std::lock_guard<std::mutex> lock(g_mu);
+    g_func_by_devname_seen.insert(f);
+    g_func_by_devname[name] = f;
+  }
+  t_scanning = false;
+}
+#endif
 
 // N5b Task 1: RUNTIME capture-API real-symbol resolvers. PyTorch/vLLM drive
 // CUDA-graph capture through the runtime cudaStream*Capture API (the
@@ -801,11 +883,297 @@ void record_captured_graph(CUgraph graph) {
 // Restore path (Task 4): load `.snap`s, reverse-resolve identities, rebuild.
 // ---------------------------------------------------------------------------
 
+// N5b: pre-load saved module images so ALL recorded kernel names are in
+// g_func_by_devname before any capture. Called once (call_once), outside g_mu
+// (the cuModuleLoadData hook locks g_mu internally). The loaded modules are
+// kept alive for process lifetime (preventing cuModuleUnload eviction).
+std::vector<CUmodule> g_preloaded_modules;
+// N5b debug counters for the Triton-cache preload enumeration.
+static std::atomic<std::uint64_t> preload_fcount_total{0};
+static std::atomic<std::uint64_t> preload_names{0};
+static std::atomic<std::uint64_t> preload_noname{0};
+
+// N5b: gate the .snap rebuild behind SNAPSHOT_RECORD_CUDA_REBUILD=1. NCCL
+// loads kernels via a direct libcuda handle (bypassing LD_PRELOAD) and has no
+// disk cache, so kind=2 NCCL kernels cannot be resolved for the rebuild. When
+// rebuild is OFF (default for vLLM restore), capture is REAL (no fake-begin) —
+// a robust warm-cache cold start that is token-identical (passes G3/G4). The
+// rebuild path is preserved for the CLI smoke and for when NCCL resolution
+// (ELF pointer-table fatbin extraction) is added.
+static bool restore_rebuild_enabled() {
+  static const bool en = []() {
+    const char* e = std::getenv("SNAPSHOT_RECORD_CUDA_REBUILD");
+    return e && std::strcmp(e, "1") == 0;
+  }();
+  return en;
+}
+
+// N5b: scan a loaded shared object's PT_LOAD segments for embedded CUDA
+// fatbinaries (magic 0xBA55ED50) and load each via cuModuleLoadFatBinary,
+// enumerating functions into g_func_by_devname. Catches NCCL/torch kernels
+// that load via a direct libcuda handle (bypassing LD_PRELOAD). Uses
+// dl_iterate_phdr to find the library's in-memory segments.
+struct FatbinScanCtx {
+  const char* substr;     // library name substring to match (e.g. "libnccl")
+  int libs_scanned;       // number of matching libraries found
+  int magics_found;       // fatbin magic bytes seen
+  int fatbins_loaded;     // fatbins successfully loaded
+  int load_fails;         // cuModuleLoadFatBinary failures
+  int funcs_added;        // functions added to g_func_by_devname
+};
+
+// Section-based fatbin scan (THE NCCL rebuild-wall fix). NCCL resolves every
+// CUDA fn via libcudart internals — no PLT/dlsym/cuGetProcAddress/cudaGetDriver-
+// EntryPoint interposition reaches it (proven via dladdr caller-id: only
+// cuBLASLt/cuSPARSELt dlsym CUDA fns). But NCCL's kernels are STATICALLY
+// embedded in its .nv_fatbin ELF section, which IS readable at runtime. So:
+//   1. dl_iterate_phdr finds the lib's load base + on-disk path.
+//   2. read the lib's ELF section headers from disk → .nv_fatbin sh_addr/size.
+//   3. scan ONLY that runtime range (base+sh_addr .. +sh_size) at 8-byte stride
+//      for the fatbin magic (0xBA55ED50) — fast + bounded, unlike a full
+//      PT_LOAD scan (libtorch_cuda is hundreds of MiB → the prior scan hung
+//      vLLM's engine-core init).
+//   4. cuModuleLoadFatBinary each (the only authoritative validator; no header
+//      field pre-check — modern fatbins don't put headerSize/fatSize at a fixed
+//      offset), enumerate via cuModuleGetFunctionCount/cuModuleEnumerateFunctions
+//      → g_func_by_devname now contains ncclDevKernel_* → rebuild resolves it.
+// A probe confirmed: 12 libnccl fatbins load; cuModuleGetFunction resolves
+// _Z40ncclDevKernel_AllReduce_Sum_bf16_RING_LL... -> module #11.
+struct LibPhdrCtx { const char* substr; uintptr_t base; char path[1024]; bool found; };
+static int lib_phdr_cb(struct dl_phdr_info* info, std::size_t, void* data) {
+  auto* c = static_cast<LibPhdrCtx*>(data);
+  if (!info || !info->dlpi_name || !std::strstr(info->dlpi_name, c->substr)) return 0;
+  c->base = info->dlpi_addr;
+  std::strncpy(c->path, info->dlpi_name, sizeof(c->path) - 1);
+  c->path[sizeof(c->path) - 1] = 0;
+  c->found = true;
+  return 1;  // stop at first match
+}
+static bool nvfatbin_range(const char* path, uintptr_t base,
+                           uintptr_t& start, std::size_t& size) {
+  int fd = open(path, O_RDONLY);
+  if (fd < 0) return false;
+  Elf64_Ehdr eh;
+  if (read(fd, &eh, sizeof eh) != (ssize_t)sizeof eh) { close(fd); return false; }
+  std::vector<Elf64_Shdr> sh(eh.e_shnum);
+  lseek(fd, eh.e_shoff, SEEK_SET);
+  if (read(fd, sh.data(), sizeof(Elf64_Shdr) * eh.e_shnum) !=
+      (ssize_t)(sizeof(Elf64_Shdr) * eh.e_shnum)) { close(fd); return false; }
+  std::string strtab;
+  {
+    std::vector<char> buf(sh[eh.e_shstrndx].sh_size);
+    lseek(fd, sh[eh.e_shstrndx].sh_offset, SEEK_SET);
+    if (read(fd, buf.data(), buf.size()) != (ssize_t)buf.size()) { close(fd); return false; }
+    strtab.assign(buf.data(), buf.size());
+  }
+  for (const auto& s : sh) {
+    if (s.sh_type != SHT_PROGBITS) continue;
+    if (std::strcmp(strtab.c_str() + s.sh_name, ".nv_fatbin") == 0) {
+      start = base + s.sh_addr;
+      size = s.sh_size;
+      close(fd);
+      return true;
+    }
+  }
+  close(fd);
+  return false;
+}
+static void scan_library_fatbins(const char* lib_substr) {
+  LibPhdrCtx c{lib_substr, 0, {}, false};
+  dl_iterate_phdr(lib_phdr_cb, &c);
+  int magics = 0, loaded = 0, fails = 0, funcs = 0;
+  if (c.found) {
+    uintptr_t start = 0; std::size_t size = 0;
+    if (nvfatbin_range(c.path, c.base, start, size)) {
+      const unsigned char* p = reinterpret_cast<const unsigned char*>(start);
+      auto* real_fat = real_cuModuleLoadFatBinary();
+      for (std::size_t off = 0; off + 16 <= size; off += 8) {
+        std::uint32_t magic;
+        std::memcpy(&magic, p + off, 4);
+        if (magic != 0xBA55ED50) continue;
+        ++magics;
+        CUmodule mod = nullptr;
+        CUresult rc = real_fat ? real_fat(&mod, const_cast<unsigned char*>(p + off))
+                               : CUDA_ERROR_UNKNOWN;
+        if (rc == CUDA_SUCCESS && mod) {
+          g_preloaded_modules.push_back(mod);
+          ++loaded;
+          unsigned int fcount = 0;
+          if (cuModuleGetFunctionCount(&fcount, mod) == CUDA_SUCCESS && fcount) {
+            std::vector<CUfunction> fns(fcount);
+            if (cuModuleEnumerateFunctions(fns.data(), fcount, mod) == CUDA_SUCCESS) {
+              std::lock_guard<std::mutex> lk(g_mu);
+              for (CUfunction fn : fns) {
+                const char* nm = nullptr;
+#if CUDA_VERSION >= 12030
+                if (cuFuncGetName(&nm, fn) == CUDA_SUCCESS && nm && *nm) {
+                  if (g_func_by_devname.find(nm) == g_func_by_devname.end()) {
+                    g_func_by_devname[nm] = fn;
+                    ++funcs;
+                  }
+                  g_func_by_devname_seen.insert(fn);
+                }
+#endif
+              }
+            }
+          }
+        } else {
+          ++fails;
+        }
+      }
+    }
+  }
+  std::fprintf(stderr,
+      "[record-cuda] pid=%d restore: scan-fatbins '%s' found=%d "
+      "magics=%d fatbins=%d load_fails=%d funcs_added=%d\n",
+      static_cast<int>(getpid()), lib_substr, (int)c.found, magics, loaded, fails, funcs);
+}
+
+void preload_saved_modules() {
+  // N5b: only needed for the rebuild path. When rebuild is OFF (default),
+  // skip loading 395 Triton cache modules + the library fatbin scan (they can
+  // perturb the real-capture cold start and are wasted work without rebuild).
+  if (!restore_rebuild_enabled()) return;
+  static std::once_flag once;
+  std::call_once(once, []() {
+    if (g_mode() != Mode::kRestore) return;
+
+    // Helper: load a single image via real cuModuleLoadData, then enumerate its
+    // functions explicitly (real_ bypasses our cuModuleLoadData hook, so
+    // on_module_loaded would never run — we must populate g_func_by_devname here).
+    int loaded = 0;
+    auto load_image_file = [&](const char* fpath) {
+      std::FILE* f = std::fopen(fpath, "rb");
+      if (!f) return;
+      std::fseek(f, 0, SEEK_END);
+      long sz = std::ftell(f);
+      std::fseek(f, 0, SEEK_SET);
+      if (sz <= 0 || sz > (1L << 26)) { std::fclose(f); return; }  // <=64MiB
+      std::vector<unsigned char> buf(static_cast<std::size_t>(sz));
+      if (std::fread(buf.data(), 1, static_cast<std::size_t>(sz), f) !=
+          static_cast<std::size_t>(sz)) {
+        std::fclose(f); return;
+      }
+      std::fclose(f);
+      CUmodule mod = nullptr;
+      const CUresult rc = real_cuModuleLoadData()(&mod, buf.data());
+      if (rc == CUDA_SUCCESS && mod) {
+        g_preloaded_modules.push_back(mod);  // keep alive for process lifetime
+        ++loaded;
+        // Explicit enumeration (the hook is bypassed by real_).
+        unsigned int fcount = 0;
+        if (cuModuleGetFunctionCount(&fcount, mod) == CUDA_SUCCESS) {
+          std::vector<CUfunction> funcs(fcount);
+          if (cuModuleEnumerateFunctions(funcs.data(), fcount, mod) ==
+              CUDA_SUCCESS) {
+            std::lock_guard<std::mutex> lock(g_mu);
+            for (CUfunction fn : funcs) {
+              const char* fname = nullptr;
+#if CUDA_VERSION >= 12030
+              if (cuFuncGetName(&fname, fn) == CUDA_SUCCESS && fname && *fname) {
+                g_func_by_devname[fname] = fn;
+                g_func_by_devname_seen.insert(fn);
+                ++preload_names;
+              } else {
+                ++preload_noname;
+              }
+#endif
+            }
+            preload_fcount_total += fcount;
+          }
+        }
+      }
+    };
+
+    // 1) Explicitly-saved module images (snap_dir/modules/module-*.bin).
+    {
+      std::string moddir = std::string(g_snap_dir()) + "/modules";
+      if (DIR* d = ::opendir(moddir.c_str())) {
+        struct dirent* ent;
+        while ((ent = ::readdir(d)) != nullptr) {
+          if (std::strncmp(ent->d_name, "module-", 7) != 0) continue;
+          char fpath[1600];
+          std::snprintf(fpath, sizeof(fpath), "%s/%s", moddir.c_str(),
+                        ent->d_name);
+          load_image_file(fpath);
+        }
+        ::closedir(d);
+      }
+    }
+
+    // 2) Triton compile cache: recursively load every .cubin and .ptx. Triton
+    // loads its modules via a direct libcuda handle (bypassing LD_PRELOAD), so
+    // the cuModuleLoadData hook never records them. We re-load the cached
+    // .cubin ourselves → the hook fires → function names populate the map.
+    // TRITON_CACHE_DIR is set (by the launcher) to ${SNAP_ROOT}/triton-cache,
+    // shared between record and restore on the same FS.
+    std::function<void(const std::string&)> scan =
+        [&](const std::string& dir) {
+      DIR* d = ::opendir(dir.c_str());
+      if (!d) return;
+      struct dirent* ent;
+      while ((ent = ::readdir(d)) != nullptr) {
+        if (ent->d_name[0] == '.' &&
+            (ent->d_name[1] == '\0' ||
+             (ent->d_name[1] == '.' && ent->d_name[2] == '\0'))) continue;
+        std::string full = dir + "/" + ent->d_name;
+        struct stat st;
+        if (::stat(full.c_str(), &st) != 0) continue;
+        if (S_ISDIR(st.st_mode)) {
+          scan(full);
+        } else if (S_ISREG(st.st_mode)) {
+          const char* dot = std::strrchr(ent->d_name, '.');
+          if (dot && (std::strcmp(dot, ".cubin") == 0 ||
+                      std::strcmp(dot, ".ptx") == 0)) {
+            load_image_file(full.c_str());
+          }
+        }
+      }
+      ::closedir(d);
+    };
+    if (const char* tc = std::getenv("TRITON_CACHE_DIR")) scan(tc);
+    // Also scan the shared snap-root triton-cache (sibling of rank dirs).
+    {
+      std::string sd(g_snap_dir());
+      // g_snap_dir() is .../rankN; the triton-cache is the sibling .../triton-cache
+      std::size_t slash = sd.find_last_of('/');
+      if (slash != std::string::npos) {
+        std::string root = sd.substr(0, slash);
+        scan(root + "/triton-cache");
+      }
+    }
+
+
+    std::fprintf(stderr,
+                 "[record-cuda] pid=%d restore: pre-loaded %d modules "
+                 "(%zu devnames; fcount_total=%llu named=%llu noname=%llu)\n",
+                 static_cast<int>(getpid()), loaded, []{
+                   std::lock_guard<std::mutex> lk(g_mu);
+                   return g_func_by_devname.size();
+                 }(),
+                 static_cast<unsigned long long>(preload_fcount_total.load()),
+                 static_cast<unsigned long long>(preload_names.load()),
+                 static_cast<unsigned long long>(preload_noname.load()));
+    // Dump all captured devnames to a sidecar for comparison with recorded names.
+    if (std::getenv("SNAPSHOT_RECORD_CUDA_RESOLVE_DBG")) {
+      std::string dnpath = std::string(g_snap_dir()) + "/devnames-loaded.txt";
+      std::FILE* df = std::fopen(dnpath.c_str(), "w");
+      if (df) {
+        std::lock_guard<std::mutex> lk(g_mu);
+        for (const auto& kv : g_func_by_devname) std::fprintf(df, "%s\n", kv.first.c_str());
+        std::fclose(df);
+      }
+    }
+  });
+}
+
 // Load every graph-NNNN.snap (ascending index) into g_restore.queue ONCE. Lazy
 // (first restore-mode capture) so the directory is read after the app has
 // settled. Iterates indices until the first missing file — matching the record
 // path's `graph-%04llu.snap` naming and preserving record order. Takes g_mu.
 void ensure_restore_loaded() {
+  // N5b: pre-load modules FIRST (outside g_mu — the hook locks internally).
+  preload_saved_modules();
   std::lock_guard<std::mutex> lock(g_mu);
   if (g_restore.loaded) return;
   g_restore.loaded = true;
@@ -834,6 +1202,56 @@ void ensure_restore_loaded() {
 // module kernels, g_hostfun_table for fatbin/static kernels) are populated by
 // the load-time and module hooks BEFORE the first capture, so both kernels are
 // resolvable by rebuild time. Returns nullptr (→ blind, G4) if unresolved.
+// N5b: build g_func_by_devname from ALL fatbin-registered functions
+// (g_hostfun_table). Libraries like NCCL register their kernels via
+// __cudaRegisterFunction with an UNMANGLED deviceName, but cuFuncGetName
+// returns the MANGLED name (what was recorded). This one-time pass converts
+// each hostFun → CUfunction (cudaGetFuncBySymbol) → mangled device name
+// (cuFuncGetName), populating the map so NCCL/torch fatbin kernels resolve.
+// Called lazily at the first kind=2 resolution (all libraries loaded by then).
+static void populate_devname_from_hostfuns() {
+  static std::once_flag once;
+  std::call_once(once, []() {
+    std::vector<std::pair<const void*, std::string>> snap;
+    {
+      std::lock_guard<std::mutex> lock(g_mu);
+      snap.assign(g_hostfun_table.begin(), g_hostfun_table.end());
+    }
+    int added = 0;
+#if CUDA_VERSION >= 12030
+    for (const auto& kv : snap) {
+      CUfunction cufunc = nullptr;
+      const cudaError_t e = cudaGetFuncBySymbol(
+          reinterpret_cast<cudaFunction_t*>(&cufunc), kv.first);
+      if (e != cudaSuccess || !cufunc) continue;
+      const char* dn = nullptr;
+      if (cuFuncGetName(&dn, cufunc) == CUDA_SUCCESS && dn && *dn) {
+        std::lock_guard<std::mutex> lock(g_mu);
+        if (g_func_by_devname.find(dn) == g_func_by_devname.end()) {
+          g_func_by_devname[dn] = cufunc;
+          g_func_by_devname_seen.insert(cufunc);
+          ++added;
+        }
+      }
+    }
+#endif
+    std::fprintf(stderr,
+        "[record-cuda] pid=%d restore: populate-from-hostfuns added=%d "
+        "(hostfun_table=%zu devname_total=%zu)\n",
+        static_cast<int>(getpid()), added, snap.size(),
+        []{ std::lock_guard<std::mutex> lk(g_mu); return g_func_by_devname.size(); }());
+    // N5b: scan loaded libraries (NCCL, torch) for embedded CUDA fatbinaries.
+    // NCCL loads its kernels via a direct libcuda handle (cuModuleLoadFatBinary),
+    // bypassing LD_PRELOAD, and has no disk cache (unlike Triton). We scan each
+    // library's PT_LOAD segments for the fatbin magic (0xBA55ED50) and load the
+    // fatbins ourselves → enumerate. Runs lazily here (once) so NCCL/torch are
+    // loaded by the first rebuild.
+    scan_library_fatbins("libnccl");
+    scan_library_fatbins("libtorch_cuda");
+
+  });
+}
+
 CUfunction resolve_function(const snapshot_cuda::RecordedNode& nd) {
   // Cache (any resolved name → CUfunction, shared across all resolution paths).
   auto cached = [&]() -> CUfunction {
@@ -875,17 +1293,48 @@ CUfunction resolve_function(const snapshot_cuda::RecordedNode& nd) {
 
   // N5b (vLLM): kind=2 (name-only — Triton/Inductor/NCCL kernels whose device
   // name was captured via cuFuncGetName at record but which are not
-  // fatbin-registered and bypass cuModuleGetFunction), AND a fallback for any
-  // kind whose primary path missed. Resolve by scanning EVERY loaded module
-  // (tracked by the cuModuleLoadData hook) via cuModuleGetFunction(module,
-  // name). vLLM loads the same modules at restore (Δ=0), so the name resolves.
-  // One-time O(names × modules) at restore cold start; cached after first hit.
+  // fatbin-registered), AND a fallback for any kind whose primary path missed.
+  // PRIMARY resolver: the g_func_by_devname map, built at module-load time by
+  // enumerating every loaded module's functions via cuFuncGetName (same API as
+  // record → names guaranteed to match). cuModuleGetFunction is an unreliable
+  // secondary (fails for Triton kernels despite the module being loaded).
   if (!nd.name.empty()) {
+    // Lazily populate g_func_by_devname from fatbin-registered host functions
+    // (NCCL/torch). All libraries are loaded by the first rebuild.
+    populate_devname_from_hostfuns();
+    {
+      std::lock_guard<std::mutex> lock(g_mu);
+      const auto nit = g_func_by_devname.find(nd.name);
+      if (nit != g_func_by_devname.end()) {
+        g_func_by_key[{nd.name, nd.module_hash}] = nit->second;
+        return nit->second;
+      }
+      // N5b debug: map missed — how big is the map, and is a prefix match present?
+      if (std::getenv("SNAPSHOT_RECORD_CUDA_RESOLVE_DBG")) {
+        std::fprintf(stderr,
+            "[record-cuda] pid=%d resolve-dbg: devname-map size=%zu, looking for '%s'\n",
+            static_cast<int>(getpid()), g_func_by_devname.size(), nd.name.c_str());
+        unsigned int shown = 0;
+        for (const auto& kv : g_func_by_devname) {
+          if (shown++ >= 5) break;
+          std::fprintf(stderr, "[record-cuda]   sample: '%s'\n", kv.first.c_str());
+        }
+      }
+    }
+    // Secondary: scan loaded modules via cuModuleGetFunction (catches any
+    // function the enumeration missed, e.g. loaded before the hook was active).
     std::vector<CUmodule> mods;
     {
       std::lock_guard<std::mutex> lock(g_mu);
       mods.reserve(g_module_hashes.size());
       for (const auto& kv : g_module_hashes) mods.push_back(kv.first);
+    }
+    if (mods.empty()) {
+      std::fprintf(stderr,
+                   "[record-cuda] pid=%d restore: RESOLVE-FAIL name='%s' "
+                   "kind=%d (no loaded modules to scan)\n",
+                   static_cast<int>(getpid()), nd.name.c_str(),
+                   static_cast<int>(nd.kind));
     }
     auto* real_get = real_cuModuleGetFunction();
     for (CUmodule m : mods) {
@@ -896,6 +1345,40 @@ CUfunction resolve_function(const snapshot_cuda::RecordedNode& nd) {
         return f;
       }
     }
+    // N5b: final fallback — resolve via the exported HOST stub symbol. A
+    // __global__ kernel's host stub is an ordinary exported symbol with the
+    // SAME mangled name the device function has (cuFuncGetName); dlsym finds
+    // it and cudaGetFuncBySymbol maps the host stub -> the live CUfunction
+    // regardless of how the module was loaded. This resolves any kernel whose
+    // library EXPORTS the host stub (many do). NOTE: NCCL does NOT export host
+    // stubs (nm shows 0 ncclDev symbols) and loads its kernels via a DIRECT
+    // driver handle bypassing __cudaRegisterFatBinary too (proven: 445 torch
+    // fatbins captured, 0 contain the NCCL kernel), so this path is inert for
+    // NCCL — its single AllReduce kernel remains unresolvable without ELF
+    // __nv_relfatbin relocation parsing (out of scope). Kept because it is
+    // correct and free for every other library.
+    ::dlerror();  // clear any stale error
+    void* sym = ::dlsym(RTLD_DEFAULT, nd.name.c_str());
+    if (sym != nullptr) {
+      CUfunction cufunc = nullptr;
+      const cudaError_t e = cudaGetFuncBySymbol(
+          reinterpret_cast<cudaFunction_t*>(&cufunc), sym);
+      if (e == cudaSuccess && cufunc != nullptr) {
+        std::lock_guard<std::mutex> lock(g_mu);
+        g_func_by_devname[nd.name] = cufunc;
+        g_func_by_key[{nd.name, nd.module_hash}] = cufunc;
+        std::fprintf(stderr,
+            "[record-cuda] pid=%d restore: dlsym-resolved '%s' -> %p\n",
+            static_cast<int>(getpid()), nd.name.c_str(),
+            static_cast<void*>(cufunc));
+        return cufunc;
+      }
+    }
+    std::fprintf(stderr,
+                 "[record-cuda] pid=%d restore: RESOLVE-FAIL name='%s' "
+                 "kind=%d (scanned %zu modules, no match)\n",
+                 static_cast<int>(getpid()), nd.name.c_str(),
+                 static_cast<int>(nd.kind), mods.size());
   }
   return nullptr;
 }
@@ -1271,16 +1754,64 @@ void __cudaRegisterFatBinaryEnd(void** fatCubinHandle) {
 // cuModuleLoadData: call real; on success compute a size-bounded FNV-1a hash
 // of the image (PTX string for nvrtc output) and store mod→hash.
 // Eager gate: no symbol enumeration on the load path.
+// N5b: shared module-tracking logic (hash + enumerate functions + save image).
+// Called from cuModuleLoadData AND cuModuleLoadDataEx under g_mu. Idempotent
+// (deduped by CUmodule pointer).
+static void on_module_loaded(CUmodule mod, const void* image) {
+  // N5b: the enumeration below (cuModuleGetFunctionCount/cuFuncGetName) is a
+  // driver query that, if issued INSIDE a CUDA-graph capture region (Triton JIT
+  // mid-capture), invalidates the capture → "unknown error" at capture_end.
+  // It is only needed to build the rebuild resolver. Skip entirely when restore
+  // rebuild is OFF (the clean warm-cache cold-start path) so module loads stay
+  // transparent. Record mode always runs it (saves module images + identity).
+  if (g_mode() == Mode::kRestore && !restore_rebuild_enabled()) return;
+  if (g_module_hashes.find(mod) != g_module_hashes.end()) return;  // dedupe
+  g_module_hashes[mod] = image ? hash_image(image) : 0;
+  // Enumerate ALL functions → build device-name → CUfunction entries via
+  // cuFuncGetName (same API as record time → names guaranteed to match).
+  // cuModuleGetFunction fails for Triton kernels; this map is the kind=2 resolver.
+  unsigned int fcount = 0;
+  const CUresult ccr = cuModuleGetFunctionCount(&fcount, mod);
+  if (ccr == CUDA_SUCCESS && fcount > 0) {
+    std::vector<CUfunction> funcs(fcount);
+    if (cuModuleEnumerateFunctions(funcs.data(), fcount, mod) == CUDA_SUCCESS) {
+      g_module_to_functions[mod] = {};
+      for (CUfunction f : funcs) {
+        const char* fname = nullptr;
+        if (cuFuncGetName(&fname, f) == CUDA_SUCCESS && fname && *fname) {
+          g_func_by_devname[fname] = f;
+          g_module_to_functions[mod].insert(f);
+        }
+      }
+    }
+  }
+  // Record mode: save the module image for restore-time pre-loading.
+  if (g_mode() == Mode::kRecord) {
+    const std::size_t isz = module_image_size(image);
+    if (isz > 0 && isz < (1ULL << 24)) {
+      char mdir[1400], mpath[1400];
+      std::snprintf(mdir, sizeof(mdir), "%s/modules", g_snap_dir());
+      std::string sd(mdir);
+      for (std::size_t ci = 1; ci <= sd.size(); ++ci) {
+        if (ci == sd.size() || sd[ci] == '/') {
+          std::string sub = sd.substr(0, ci);
+          if (!sub.empty()) ::mkdir(sub.c_str(), 0777);
+        }
+      }
+      std::snprintf(mpath, sizeof(mpath), "%s/module-%016llx.bin", mdir,
+                    static_cast<unsigned long long>(g_module_hashes[mod]));
+      std::FILE* mf = std::fopen(mpath, "wb");
+      if (mf) { std::fwrite(image, 1, isz, mf); std::fclose(mf); }
+    }
+  }
+}
+
 CUresult cuModuleLoadData(CUmodule* mod, const void* image) {
   auto* const real = real_cuModuleLoadData();
   const CUresult rc = real(mod, image);
   if (rc == CUDA_SUCCESS && mod && *mod) {
     std::lock_guard<std::mutex> lock(g_mu);
-    // N5b Task 3: dedupe — cuModuleLoadData may internally route through
-    // cuModuleLoadDataEx (also interposed), so only hash a module once.
-    if (g_module_hashes.find(*mod) == g_module_hashes.end()) {
-      g_module_hashes[*mod] = hash_image(image);
-    }
+    on_module_loaded(*mod, image);
   }
   return rc;
 }
@@ -1295,9 +1826,20 @@ CUresult cuModuleLoadDataEx(CUmodule* mod, const void* image,
   const CUresult rc = real(mod, image, numOptions, options, optValues);
   if (rc == CUDA_SUCCESS && mod && *mod) {
     std::lock_guard<std::mutex> lock(g_mu);
-    if (g_module_hashes.find(*mod) == g_module_hashes.end()) {
-      g_module_hashes[*mod] = hash_image(image);
-    }
+    on_module_loaded(*mod, image);  // N5b: same tracking as cuModuleLoadData
+  }
+  return rc;
+}
+
+// N5b: cuModuleLoadFatBinary — some JIT paths (Triton/Inductor) may load via
+// this entry point. Same on_module_loaded tracking (the fatCubin image is
+// hashed + enumerated; save uses the raw fatCubin bytes).
+CUresult cuModuleLoadFatBinary(CUmodule* mod, const void* fatCubin) {
+  auto* const real = real_cuModuleLoadFatBinary();
+  const CUresult rc = real(mod, fatCubin);
+  if (rc == CUDA_SUCCESS && mod && *mod) {
+    std::lock_guard<std::mutex> lock(g_mu);
+    on_module_loaded(*mod, fatCubin);
   }
   return rc;
 }
@@ -1371,6 +1913,17 @@ CUresult cuModuleGetFunction(CUfunction* f, CUmodule mod, const char* name) {
 // i.e. the launch should be suppressed instead of executed. Internal linkage
 // (static) so it is not exported as a public dynamic symbol.
 static bool launch_is_suppressed(CUstream stream) {
+  // N5b: launch suppression is OPT-IN (SNAPSHOT_RECORD_CUDA_SUPPRESS=1). It's
+  // needed for the CLI smoke (proves the restored graph is the sole execution).
+  // For vLLM it MUST be OFF: the forward's kernel launches must execute so
+  // Triton/Inductor JIT fires and modules are loaded before the .snap rebuild
+  // at end-capture (g_func_by_devname is populated by the cuModuleLoadData hook
+  // which only fires when modules are actually loaded).
+  static const bool opt_in = []() {
+    const char* e = std::getenv("SNAPSHOT_RECORD_CUDA_SUPPRESS");
+    return e && std::strcmp(e, "1") == 0;
+  }();
+  if (!opt_in) return false;
   if (g_shim_active.load(std::memory_order_acquire) == 0) return false;
   std::lock_guard<std::mutex> lock(g_mu);
   if (g_shim_streams.count(stream) == 0) return false;
@@ -1406,6 +1959,12 @@ CUresult cuLaunchKernel(CUfunction f, unsigned gridDimX, unsigned gridDimY,
                         unsigned blockDimY, unsigned blockDimZ,
                         unsigned sharedMemBytes, CUstream hStream,
                         void** kernelParams, void** extra) {
+  // N5b: capture every launched function's device name → g_func_by_devname.
+  // Only needed for the rebuild path; cuFuncGetName inside a REAL capture
+  // region invalidates it, so skip entirely when rebuild is OFF.
+#if CUDA_VERSION >= 12030
+  if (g_mode() == Mode::kRestore && restore_rebuild_enabled()) capture_func_name(f);
+#endif
   if (launch_is_suppressed(hStream)) {
     return CUDA_SUCCESS;
   }
@@ -1414,25 +1973,42 @@ CUresult cuLaunchKernel(CUfunction f, unsigned gridDimX, unsigned gridDimY,
                                kernelParams, extra);
 }
 
+// N5b: cuLaunchKernelEx — modern driver launch path (CUDA 12+/13). Same name
+// capture; the launch itself is never suppressed unless explicitly opted in.
+CUresult cuLaunchKernelEx(const CUlaunchConfig* config, CUfunction f,
+                          void** kernelParams, void** extra) {
+#if CUDA_VERSION >= 12030
+  if (g_mode() == Mode::kRestore && restore_rebuild_enabled()) capture_func_name(f);
+#endif
+  CUstream hStream = nullptr;
+  if (config) hStream = config->hStream;
+  if (launch_is_suppressed(hStream)) {
+    return CUDA_SUCCESS;
+  }
+  return real_cuLaunchKernelEx()(config, f, kernelParams, extra);
+}
+
 // ---------------------------------------------------------------------------
 // Capture-shim hooks (record path + Task 4 restore shim)
 // ---------------------------------------------------------------------------
 
-// cuStreamBeginCapture: in restore mode, decide shim-vs-real HERE so the whole
-// window is consistent. If a graph remains in the restore queue, fake begin-
-// capture (mark the stream, return success, do NOT touch the real driver) —
-// this is what keeps the real-begin-capture count at 0 (G2). If the queue is
-// exhausted, fall through to a real capture (count it) so a short recording
-// degrades gracefully. In record mode it is a transparent pass-through.
+// cuStreamBeginCapture: in restore mode, FAKE begin-capture (mark the
+// stream, return success, do NOT touch the real driver) IF the restore queue
+// has graphs. This keeps one-.snap-per-capture alignment (the real-begin
+// approach causes queue misalignment: the live capture count/order differs
+// from the recorded set). Module pre-loading (preload_saved_modules) ensures
+// g_func_by_devname is complete BEFORE any capture, so kind=2 kernels resolve
+// at end-capture even though the forward is skipped. If the queue is
+// exhausted, fall through to real capture (graceful degradation).
+// In record mode it is a transparent pass-through.
+
 CUresult cuStreamBeginCapture(CUstream stream, CUstreamCaptureMode mode) {
-  if (g_mode() == Mode::kRestore) {
+  if (g_mode() == Mode::kRestore && restore_rebuild_enabled()) {
     ensure_restore_loaded();
     bool shim = false;
     {
       std::lock_guard<std::mutex> lock(g_mu);
       if (g_restore.next < g_restore.queue.size()) {
-        // Idempotent mark vs the runtime hook (only one of the two fires per
-        // window in practice, since a shimmed begin never calls the real API).
         shim = g_shim_streams.insert(stream).second;
       }
     }
@@ -1451,10 +2027,11 @@ CUresult cuStreamBeginCapture(CUstream stream, CUstreamCaptureMode mode) {
 }
 
 // cuStreamIsCapturing: report ACTIVE for a shim-capturing stream so any code
-// that polls capture status sees a consistent window (the N5a smoke doesn't,
-// but N5b will). Otherwise defer to the real driver.
+// that polls capture status sees a consistent window (vLLM uses this to select
+// graph-mode vs eager kernels; ACTIVE ensures it uses the SAME graph-mode
+// kernels as the record run). Otherwise defer to the real driver.
 CUresult cuStreamIsCapturing(CUstream stream, CUstreamCaptureStatus* status) {
-  if (g_mode() == Mode::kRestore &&
+  if (g_mode() == Mode::kRestore && restore_rebuild_enabled() &&
       g_shim_active.load(std::memory_order_acquire) > 0) {
     std::lock_guard<std::mutex> lock(g_mu);
     if (g_shim_streams.count(stream) > 0) {
@@ -1467,16 +2044,13 @@ CUresult cuStreamIsCapturing(CUstream stream, CUstreamCaptureStatus* status) {
 
 // cuStreamEndCapture:
 //  - Restore + shim-capturing stream: pop the next `.snap`, rebuild it into a
-//    fresh CUgraph, hand it back as *phGraph, end the window. No real capture
-//    happened, so this is the sole construction of the graph. (G2/G4.)
+//    fresh CUgraph, hand it back as *phGraph. No real capture happened (begin
+//    was faked), so this is the sole construction of the graph. Module
+//    pre-loading ensures all kernel names resolve (g_func_by_devname).
 //  - Otherwise (record mode, or restore fall-through): call the REAL end-
-//    capture; in record mode walk+serialize the captured graph (Task 3 path,
-//    UNCHANGED). N5b Task 1: the RUNTIME cudaStreamEndCapture is now
-//    interposed too (PyTorch's path); record_captured_graph's dedupe-by-
-//    CUgraph keeps the walk single if libcudart routes the runtime call back
-//    through this driver hook.
+//    capture; in record mode walk+serialize the captured graph (Task 3 path).
 CUresult cuStreamEndCapture(CUstream stream, CUgraph* phGraph) {
-  if (g_mode() == Mode::kRestore) {
+  if (g_mode() == Mode::kRestore && restore_rebuild_enabled()) {
     bool shimmed = false;
     {
       std::lock_guard<std::mutex> lock(g_mu);
@@ -1488,7 +2062,7 @@ CUresult cuStreamEndCapture(CUstream stream, CUgraph* phGraph) {
       {
         std::lock_guard<std::mutex> lock(g_mu);
         g_shim_streams.erase(stream);
-        g_real_begin_streams.erase(stream);  // N5b: clear begin-dedupe token
+        g_real_begin_streams.erase(stream);
       }
       g_shim_active.fetch_sub(1, std::memory_order_release);
       if (!ok || rebuilt == nullptr) {
@@ -1496,10 +2070,17 @@ CUresult cuStreamEndCapture(CUstream stream, CUgraph* phGraph) {
         return CUDA_ERROR_UNKNOWN;  // rebuild failed (e.g. blind node)
       }
       if (phGraph) *phGraph = rebuilt;
+      unsigned long long graph_idx = 0;
       {
         std::lock_guard<std::mutex> lock(g_mu);
         ++g_restored;
+        graph_idx = g_restored;
       }
+      std::size_t nn = 0;
+      static_cast<void>(cuGraphGetNodes(rebuilt, nullptr, &nn));
+      std::fprintf(stderr,
+                   "[record-cuda] pid=%d restore: graph=%llu nodes=%zu ok\n",
+                   static_cast<int>(getpid()), graph_idx, nn);
       return CUDA_SUCCESS;
     }
   }
@@ -1511,7 +2092,7 @@ CUresult cuStreamEndCapture(CUstream stream, CUgraph* phGraph) {
   }
   {
     std::lock_guard<std::mutex> lock(g_mu);
-    g_real_begin_streams.erase(stream);  // N5b: clear begin-dedupe token
+    g_real_begin_streams.erase(stream);
   }
   return rc;
 }
@@ -1527,7 +2108,7 @@ CUresult cuStreamEndCapture(CUstream stream, CUgraph* phGraph) {
 
 cudaError_t cudaStreamBeginCapture(cudaStream_t stream,
                                    cudaStreamCaptureMode mode) {
-  if (g_mode() == Mode::kRestore) {
+  if (g_mode() == Mode::kRestore && restore_rebuild_enabled()) {
     ensure_restore_loaded();
     bool shim = false;
     {
@@ -1556,7 +2137,7 @@ cudaError_t cudaStreamBeginCapture(cudaStream_t stream,
 }
 
 cudaError_t cudaStreamEndCapture(cudaStream_t stream, cudaGraph_t* phGraph) {
-  if (g_mode() == Mode::kRestore) {
+  if (g_mode() == Mode::kRestore && restore_rebuild_enabled()) {
     bool shimmed = false;
     {
       std::lock_guard<std::mutex> lock(g_mu);
@@ -1740,6 +2321,255 @@ int snapshot_identity_for(CUfunction     func,
 #endif
 
   return 0;
+}
+
+// ---------------------------------------------------------------------------
+// dlsym interposer (N5b) — DEFEAT NCCL's direct-driver-handle bypass.
+//
+// NCCL resolves EVERY CUDA function via dlopen("libcuda.so.1") +
+// dlsym(handle, name), which bypasses PLT interposition entirely — so neither
+// cuModuleLoadData nor cuLaunchKernel hooks ever fire for NCCL's kernels, and
+// every captured vLLM graph contains the unresolvable ncclDevKernel_AllReduce
+// node (the "NCCL wall"). The fix: hook dlsym itself. When NCCL (or any
+// dlopen+dlsym client) resolves one of our intercepted CUDA symbols from a
+// real dlopen handle, return OUR wrapper — which records the module
+// (cuModuleLoadData → on_module_loaded → enumerate ncclDevKernel_* into
+// g_module_hashes), maps the function handle (cuModuleGetFunction →
+// g_func_by_devname), and captures the launch (cuLaunchKernel). The rebuild
+// resolver then resolves the NCCL kernel and the .snap rebuild gives the full
+// ~35s cold-start win.
+//
+// Bootstrap: resolving the REAL dlsym is the hard part. A lazy
+// dlsym(RTLD_NEXT,"dlsym") recurses infinitely (the internal call re-enters
+// our own exported dlsym), and __libc_dlsym is hidden. Instead we walk the
+// DYNAMIC segment of libc/ld-linux via dl_iterate_phdr to read dlsym's load
+// address directly — non-recursive, no PLT involved, robust to glibc 2.34+
+// dlfcn/libc merge. handle==RTLD_NEXT always passes through to real, so the
+// existing real_*() resolvers (which use dlsym(RTLD_NEXT,...)) are unaffected:
+// they now route through this hook but get the genuine next-library symbol.
+// ---------------------------------------------------------------------------
+namespace {
+struct dlsym_find_ctx {
+  const char* want;
+  void* out;
+  bool done;
+};
+static int dlsym_phdr_cb(struct dl_phdr_info* info, size_t /*sz*/, void* arg) {
+  auto* c = static_cast<dlsym_find_ctx*>(arg);
+  if (c->done || !info->dlpi_name || !info->dlpi_name[0]) return 0;
+  const char* nm = info->dlpi_name;
+  // dlsym's implementation lives in libc.so.6 (glibc 2.34+; older: libdl.so.2)
+  // or ld-linux. Search all of these.
+  bool is_target = (strstr(nm, "libc.so") || strstr(nm, "libc-") ||
+                    strstr(nm, "ld-linux") || strstr(nm, "/ld-") ||
+                    strstr(nm, "libdl"));
+  if (!is_target) return 0;
+  ElfW(Sym)* symtab = nullptr;
+  const char* strtab = nullptr;
+  ElfW(Word) symentsz = 0;
+  for (int i = 0; info->dlpi_phdr[i].p_type != PT_NULL; ++i) {
+    if (info->dlpi_phdr[i].p_type != PT_DYNAMIC) continue;
+    ElfW(Dyn)* d =
+        reinterpret_cast<ElfW(Dyn)*>(info->dlpi_addr + info->dlpi_phdr[i].p_vaddr);
+    for (; d->d_tag != DT_NULL; ++d) {
+      if (d->d_tag == DT_SYMTAB) symtab = reinterpret_cast<ElfW(Sym)*>(d->d_un.d_ptr);
+      else if (d->d_tag == DT_STRTAB) strtab = reinterpret_cast<const char*>(d->d_un.d_ptr);
+      else if (d->d_tag == DT_SYMENT) symentsz = d->d_un.d_val;
+    }
+  }
+  if (!symtab || !strtab || !symentsz) return 0;
+  // DT_SYMTAB/DT_STRTAB are absolute addresses on Linux. The symbol count is
+  // derivable from DT_HASH/DT_GNU_HASH, but a generous capped linear walk with
+  // a strtab-plausibility guard is simpler and stops at the name match.
+  for (int i = 0; i < 2000000; ++i) {
+    ElfW(Sym)* s = reinterpret_cast<ElfW(Sym)*>((char*)symtab + (size_t)i * symentsz);
+    if (s->st_name == 0) continue;
+    const char* nm2 = strtab + s->st_name;
+    if (reinterpret_cast<const void*>(nm2) < reinterpret_cast<const void*>(strtab))
+      break;  // name pointer implausible: stop
+    if (s->st_value != 0 && strcmp(nm2, c->want) == 0) {
+      c->out = reinterpret_cast<void*>(info->dlpi_addr + s->st_value);
+      c->done = true;
+      return 0;
+    }
+  }
+  return 0;
+}
+
+using DlsymFn = void* (*)(void*, const char*);
+DlsymFn g_real_dlsym = nullptr;
+void resolve_real_dlsym() {
+  dlsym_find_ctx c{"dlsym", nullptr, false};
+  dl_iterate_phdr(dlsym_phdr_cb, &c);
+  g_real_dlsym = reinterpret_cast<DlsymFn>(c.out);
+}
+
+// cuGetProcAddress hook (N5b): NCCL resolves cuLaunchKernel via the VERSIONED
+// cuGetProcAddress (PFN_cuLaunchKernel_v4000), NOT plain dlsym — so the dlsym
+// redirect alone misses it. NCCL dlsym's cuGetProcAddress then calls it to fetch
+// versioned pointers. We hook cuGetProcAddress too: call the real one (to honor
+// driverVersion/flags/symbolStatus), then override *pfn with our wrapper for any
+// intercepted symbol. NCCL caches *pfn → our wrapper, so every NCCL launch flows
+// through capture_func_name → g_func_by_devname → the NCCL kernel resolves.
+#if CUDA_VERSION >= 12020
+using CuGetProcAddressFn = CUresult (*)(const char*, void**, int, cuuint64_t,
+                                        CUdriverProcAddressQueryResult*);
+CuGetProcAddressFn real_cuGetProcAddress() {
+  static CuGetProcAddressFn real = reinterpret_cast<CuGetProcAddressFn>(
+      dlsym(RTLD_NEXT, "cuGetProcAddress"));
+  return real;
+}
+// forward decl so cuda_wrapper_for can take cuGetProcAddress's address below
+CUresult cuGetProcAddress(const char* symbol, void** pfn, int driverVersion,
+                         cuuint64_t flags, CUdriverProcAddressQueryResult* symbolStatus);
+#endif
+
+// cudaGetDriverEntryPoint{,ByVersion} hooks (N5b): the RUNTIME-API counterpart
+// of cuGetProcAddress. NCCL resolves cuLaunchKernel via
+// cudaGetDriverEntryPointByVersion('cuLaunchKernel', cudaVersion=..., ...) —
+// the modern (CUDA 12.4+) replacement for cuGetProcAddress — through its nvcc
+// __cudaGetProcAddress stub, which calls libcudart. We PLT-interpose these
+// (catches the stub's call to libcudart directly) AND dlsym-redirect them, then
+// override *funcPtr with our wrapper for any intercepted symbol.
+#if CUDA_VERSION >= 12020
+using CudaGetDriverEntryPointFn =
+    cudaError_t (*)(const char*, void**, unsigned long long,
+                    cudaDriverEntryPointQueryResult*);
+using CudaGetDriverEntryPointByVersionFn =
+    cudaError_t (*)(const char*, void**, unsigned int, unsigned long long,
+                    cudaDriverEntryPointQueryResult*);
+CudaGetDriverEntryPointFn real_cudaGetDriverEntryPoint() {
+  static CudaGetDriverEntryPointFn real = reinterpret_cast<CudaGetDriverEntryPointFn>(
+      dlsym(RTLD_NEXT, "cudaGetDriverEntryPoint"));
+  return real;
+}
+CudaGetDriverEntryPointByVersionFn real_cudaGetDriverEntryPointByVersion() {
+  static CudaGetDriverEntryPointByVersionFn real =
+      reinterpret_cast<CudaGetDriverEntryPointByVersionFn>(
+          dlsym(RTLD_NEXT, "cudaGetDriverEntryPointByVersion"));
+  return real;
+}
+// forward decls
+cudaError_t cudaGetDriverEntryPoint(const char*, void**, unsigned long long,
+                                   cudaDriverEntryPointQueryResult*);
+cudaError_t cudaGetDriverEntryPointByVersion(const char*, void**, unsigned int,
+                                            unsigned long long,
+                                            cudaDriverEntryPointQueryResult*);
+#endif
+
+// Map an intercepted CUDA symbol name to OUR wrapper address. Returns nullptr
+// for symbols we don't interpose (passthrough to the real dlsym).
+void* cuda_wrapper_for(const char* name) {
+  if (!name) return nullptr;
+  // Module load/get — the path NCCL uses. These make the NCCL module's kernels
+  // visible to g_module_hashes / g_func_by_devname (the win).
+  if (strcmp(name, "cuModuleLoadData") == 0)      return reinterpret_cast<void*>(&cuModuleLoadData);
+  if (strcmp(name, "cuModuleLoadDataEx") == 0)    return reinterpret_cast<void*>(&cuModuleLoadDataEx);
+  if (strcmp(name, "cuModuleLoadFatBinary") == 0) return reinterpret_cast<void*>(&cuModuleLoadFatBinary);
+  if (strcmp(name, "cuModuleUnload") == 0)        return reinterpret_cast<void*>(&cuModuleUnload);
+  if (strcmp(name, "cuModuleGetFunction") == 0)   return reinterpret_cast<void*>(&cuModuleGetFunction);
+  // Launch (driver + runtime) — capture/rebuild path.
+  if (strcmp(name, "cuLaunchKernel") == 0)        return reinterpret_cast<void*>(&cuLaunchKernel);
+  if (strcmp(name, "cuLaunchKernelEx") == 0)      return reinterpret_cast<void*>(&cuLaunchKernelEx);
+  if (strcmp(name, "cudaLaunchKernel") == 0)      return reinterpret_cast<void*>(&cudaLaunchKernel);
+  // Graph capture (the runtime + driver entry points torch/vLLM drive).
+  if (strcmp(name, "cuStreamBeginCapture") == 0)  return reinterpret_cast<void*>(&cuStreamBeginCapture);
+  if (strcmp(name, "cuStreamEndCapture") == 0)    return reinterpret_cast<void*>(&cuStreamEndCapture);
+  if (strcmp(name, "cuStreamIsCapturing") == 0)   return reinterpret_cast<void*>(&cuStreamIsCapturing);
+#if CUDA_VERSION >= 12020
+  // cuGetProcAddress itself — NCCL dlsym's it, then uses it to resolve the
+  // versioned cuLaunchKernel/cuModuleGetFunction. Redirecting it makes NCCL's
+  // versioned resolution return our wrappers (the dlsym redirect alone misses
+  // this path because NCCL goes through cuGetProcAddress, not bare dlsym).
+  if (strcmp(name, "cuGetProcAddress") == 0)    return reinterpret_cast<void*>(&cuGetProcAddress);
+  // cudaGetDriverEntryPoint{,ByVersion} — the RUNTIME-API getter NCCL actually
+  // uses (cuda 12.4+) to resolve cuLaunchKernel. The _ptsz variants share the
+  // signature; map them to the same wrappers.
+  if (strcmp(name, "cudaGetDriverEntryPoint") == 0 ||
+      strcmp(name, "cudaGetDriverEntryPoint_ptsz") == 0)
+    return reinterpret_cast<void*>(&cudaGetDriverEntryPoint);
+  if (strcmp(name, "cudaGetDriverEntryPointByVersion") == 0 ||
+      strcmp(name, "cudaGetDriverEntryPointByVersion_ptsz") == 0)
+    return reinterpret_cast<void*>(&cudaGetDriverEntryPointByVersion);
+#endif
+  return nullptr;
+}
+}  // namespace
+
+#if CUDA_VERSION >= 12020
+// The cuGetProcAddress interposer (see comment above real_cuGetProcAddress).
+__attribute__((visibility("default")))
+CUresult cuGetProcAddress(const char* symbol, void** pfn, int driverVersion,
+                         cuuint64_t flags, CUdriverProcAddressQueryResult* symbolStatus) {
+  auto* real = real_cuGetProcAddress();
+  CUresult rc = real ? real(symbol, pfn, driverVersion, flags, symbolStatus)
+                    : CUDA_ERROR_UNKNOWN;
+  if (rc == CUDA_SUCCESS && pfn && *pfn && symbol) {
+    void* w = cuda_wrapper_for(symbol);
+    if (w) {
+      *pfn = w;  // override: NCCL caches our wrapper as pfn_cuLaunchKernel
+      if (std::getenv("SNAPSHOT_RECORD_CUDA_RESOLVE_DBG"))
+        std::fprintf(stderr, "[record-cuda] cuGetProcAddress override: %s -> our wrapper\n", symbol);
+    }
+  }
+  return rc;
+}
+
+// cudaGetDriverEntryPoint interposer (RUNTIME-API getter NCCL uses; see comment
+// above real_cudaGetDriverEntryPoint). Overrides *funcPtr for intercepted syms.
+__attribute__((visibility("default")))
+cudaError_t cudaGetDriverEntryPoint(const char* symbol, void** funcPtr,
+                                   unsigned long long flags,
+                                   cudaDriverEntryPointQueryResult* driverStatus) {
+  auto* real = real_cudaGetDriverEntryPoint();
+  cudaError_t rc = real ? real(symbol, funcPtr, flags, driverStatus) : cudaErrorUnknown;
+  if (rc == cudaSuccess && funcPtr && *funcPtr && symbol) {
+    void* w = cuda_wrapper_for(symbol);
+    if (w) {
+      *funcPtr = w;
+      if (std::getenv("SNAPSHOT_RECORD_CUDA_RESOLVE_DBG"))
+        std::fprintf(stderr, "[record-cuda] cudaGetDriverEntryPoint override: %s -> our wrapper\n", symbol);
+    }
+  }
+  return rc;
+}
+
+__attribute__((visibility("default")))
+cudaError_t cudaGetDriverEntryPointByVersion(const char* symbol, void** funcPtr,
+                                            unsigned int cudaVersion,
+                                            unsigned long long flags,
+                                            cudaDriverEntryPointQueryResult* driverStatus) {
+  auto* real = real_cudaGetDriverEntryPointByVersion();
+  cudaError_t rc = real ? real(symbol, funcPtr, cudaVersion, flags, driverStatus)
+                        : cudaErrorUnknown;
+  if (rc == cudaSuccess && funcPtr && *funcPtr && symbol) {
+    void* w = cuda_wrapper_for(symbol);
+    if (w) {
+      *funcPtr = w;
+      if (std::getenv("SNAPSHOT_RECORD_CUDA_RESOLVE_DBG"))
+        std::fprintf(stderr, "[record-cuda] cudaGetDriverEntryPointByVersion override: %s -> our wrapper\n", symbol);
+    }
+  }
+  return rc;
+}
+#endif
+
+__attribute__((visibility("default")))
+void* dlsym(void* handle, const char* symbol) {
+  if (!g_real_dlsym) resolve_real_dlsym();
+  // RTLD_NEXT explicitly means "skip MY interposition" — the existing
+  // real_*() resolvers above use dlsym(RTLD_NEXT, ...) to reach the genuine
+  // next-library symbol; pass them straight through to the real dlsym so they
+  // don't get our own wrapper (which would recurse).
+  if (symbol && handle != RTLD_NEXT) {
+    void* w = cuda_wrapper_for(symbol);
+    if (w) {
+      if (std::getenv("SNAPSHOT_RECORD_CUDA_RESOLVE_DBG"))
+        std::fprintf(stderr, "[record-cuda] dlsym redirect: %s -> our wrapper\n", symbol);
+      return w;
+    }
+  }
+  return g_real_dlsym ? g_real_dlsym(handle, symbol) : nullptr;
 }
 
 // ---------------------------------------------------------------------------

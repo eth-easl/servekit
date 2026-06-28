@@ -26,4 +26,18 @@ Status inspect_snapshot(const std::string& path, std::ostream& out);
 // for vLLM is M3b). Requires the HIP backend.
 Status rebuild_check_snapshot(const std::string& path, std::ostream& out);
 
+// GPU-free snapshot analysis: parses module ELF images for AMDGPU kernel
+// signatures (MessagePack metadata), reports per-node arg counts / pointer
+// offsets / signature matches, and validates the tagged kernarg blobs. Runs on
+// the login node (no HIP). Used to validate the msgpack parser + exact-arg-
+// count logic against real snapshots before spending a GPU allocation.
+Status analyze_snapshot(const std::string& path, std::ostream& out);
+
+// M3f: restore ALL snapshots in a directory in one process. Loads each unique
+// module image once (deduplicated by hash), then for each .snap file replays
+// the allocator, rebuilds the graph, and instantiates it. Reports per-graph and
+// aggregate timing. This is the "warm restore" time that replaces vLLM's cold
+// capture phase — the core cold-start win.
+Status restore_all_snapshots(const std::string& dir, std::ostream& out);
+
 }  // namespace snapshot::cli

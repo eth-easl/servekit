@@ -17,6 +17,8 @@ void usage(std::ostream& out) {
       << "  probe-base                           M1.0 fixed-base determinism\n"
       << "  inspect <file>                       M3a: parse a recorded snapshot, report identity\n"
       << "  rebuild-check <file>                 M3a: reload modules, rebuild, instantiate\n"
+      << "  analyze <file>                       GPU-free: parse kernel signatures, report arg counts\n"
+      << "  restore-all <dir>                   M3f: rebuild + instantiate ALL snapshots, time it\n"
       << "options:\n"
       << "  --scaled       use ~200 synthetic graph nodes\n"
       << "  --iters N      bench iterations (default: 10)\n";
@@ -34,6 +36,7 @@ int finish(const snapshot::Status& status) {
 }  // namespace
 
 int main(int argc, char** argv) {
+  setvbuf(stdout, nullptr, _IOLBF, 0);  // line-buffered so SLURM logs survive crashes
   if (argc < 2) {
     usage(std::cerr);
     return 2;
@@ -100,6 +103,12 @@ int main(int argc, char** argv) {
   }
   if (verb == "rebuild-check") {
     return finish(snapshot::cli::rebuild_check_snapshot(path, std::cout));
+  }
+  if (verb == "analyze") {
+    return finish(snapshot::cli::analyze_snapshot(path, std::cout));
+  }
+  if (verb == "restore-all") {
+    return finish(snapshot::cli::restore_all_snapshots(path, std::cout));
   }
 
   usage(std::cerr);

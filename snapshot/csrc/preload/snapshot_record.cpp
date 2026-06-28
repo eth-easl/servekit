@@ -49,20 +49,25 @@
 #include <csignal>
 #include <cstdint>
 #include <cstdio>
+#include <algorithm>
 #include <cstdlib>
 #include <cstring>
+#include <chrono>
 #include <deque>
+#include <dirent.h>
 #include <fstream>
 #include <map>
 #include <mutex>
 #include <set>
 #include <string>
 #include <thread>
+#include <unordered_map>
 #include <vector>
 
 #include "snapshot/allocator.hpp"
 #include "snapshot/gpu_backend.hpp"
 #include "snapshot/record.hpp"
+#include "snapshot/relocation.hpp"
 #include "snapshot/snapshot_format.hpp"
 
 namespace {
@@ -142,8 +147,9 @@ bool g_have_gpu_agent = false;
 // --- capture window state ---------------------------------------------------
 // Per-hook launch counts snapshot (forward decl: PendingGraph embeds one).
 struct CaptureHookCount {
-  std::uint64_t mod = 0, host = 0, ext = 0, exc = 0, coop_host = 0,
-      coop_mod = 0, addnode = 0;
+  std::uint64_t mod = 0, host = 0, ext = 0, hcc = 0, exc = 0, coop_host = 0,
+      coop_mod = 0, addnode = 0, drvex = 0, extlk = 0, byptr = 0,
+      graphlaunch = 0;
 };
 struct CaptureWindow {
   std::vector<snapshot::RecordedLaunch> launches;
@@ -162,6 +168,22 @@ struct CaptureWindow {
 };
 std::map<void*, CaptureWindow> g_windows;  // stream -> in-progress launches
 
+// --- child-graph provenance diagnostics (M3c) -------------------------------
+// Nodes inlined from a child graph (launched via hipGraphLaunch during a parent
+// capture) never go through hipLaunchKernel, so their args are absent from the
+// parent window. To recover them we need to know HOW the child graph was built:
+//   (a) via stream capture we intercepted  -> its EndCapture window has the args
+//   (b) via direct hipGraphAddKernelNode    -> the app passed params to AddNode
+// g_finalized_graph_argcache maps a finalized graph ptr (from EndCapture) to its
+// arg_blobs (provenance a). g_addnode_params maps a graph ptr to the param
+// blobs passed at AddKernelNode time (provenance b). hipGraphLaunch consults
+// both during a capture to backfill child nodes.
+std::map<void*, std::vector<std::vector<std::byte>>> g_finalized_graph_argcache;
+std::map<void*, std::vector<std::vector<std::byte>>> g_addnode_params;
+std::map<void*, void*> g_exec_to_graph;  // hipGraphExec_t -> hipGraph_t
+std::atomic<std::uint64_t> g_graphlaunch_in_capture{0};
+std::atomic<std::uint64_t> g_graphlaunch_backfilled{0};
+
 // --- M3b deferred snapshots -------------------------------------------------
 // A captured graph cannot be named inline (hipKernelNameRef deadlocks on the HIP
 // capture lock), so EndCapture parks the graph's structure + per-node funcs here
@@ -172,6 +194,14 @@ struct PendingGraph {
   std::string arch;         // captured on the main thread (namer ctx is unsure)
   std::vector<snapshot::RecordedLaunch> nodes;
   std::vector<std::uintptr_t> node_funcs;
+  // Launch-time function identities in issue order (from record_issue via the
+  // hipLaunchKernel / hipModuleLaunchKernel hooks). Each entry is a launch-time
+  // function_id (g_functions[f].id or g_host_functions[f].id), resolved when we
+  // still held the REAL handle — before stream capture turned it into an opaque
+  // device handle. Index-aligned 1:1 with the introspected nodes (both are the
+  // stream's issue sequence), so reconcile_identity_by_position can fill each
+  // node's identity without needing the opaque capture-time func handle at all.
+  std::vector<std::uint64_t> issue_ids;
   // Launch-time kernarg blobs, index-aligned with nodes. Merged into
   // nodes[i].param_blob at FLUSH when counts match (see merge_arg_blobs).
   std::vector<std::vector<std::byte>> arg_blobs;
@@ -208,12 +238,30 @@ struct CaptureHookStats {
   std::atomic<std::uint64_t> mod{0};          // hipModuleLaunchKernel
   std::atomic<std::uint64_t> host{0};         // hipLaunchKernel
   std::atomic<std::uint64_t> ext{0};          // hipExtModuleLaunchKernel
+  std::atomic<std::uint64_t> hcc{0};          // hipHccModuleLaunchKernel (legacy)
   std::atomic<std::uint64_t> exc{0};          // hipLaunchKernelExC
   std::atomic<std::uint64_t> coop_host{0};    // hipLaunchCooperativeKernel
   std::atomic<std::uint64_t> coop_mod{0};     // hipModuleLaunchCooperativeKernel
   std::atomic<std::uint64_t> addnode{0};     // hipGraphAddKernelNode (capture)
+  std::atomic<std::uint64_t> drvex{0};       // hipDrvLaunchKernelEx
+  std::atomic<std::uint64_t> extlk{0};       // hipExtLaunchKernel
+  std::atomic<std::uint64_t> byptr{0};       // hipLaunchByPtr
+  std::atomic<std::uint64_t> graphlaunch{0}; // hipGraphLaunch (capture)
+};
+// Un-gated API census: counts EVERY call (not just during capture) so we can
+// see which capture/graph-build APIs fire at all — diagnosing nodes that appear
+// in the finalized graph but not in any capture window (piecewise capture,
+// generic AddNode, etc.).
+struct ApiCensus {
+  std::atomic<std::uint64_t> begin_capture{0};
+  std::atomic<std::uint64_t> begin_capture_to_graph{0};
+  std::atomic<std::uint64_t> end_capture{0};
+  std::atomic<std::uint64_t> add_kernel_node{0};
+  std::atomic<std::uint64_t> add_node{0};
+  std::atomic<std::uint64_t> graph_launch{0};
 };
 CaptureHookStats g_cap_hooks;
+ApiCensus g_census;
 
 // --- deterministic-memory region (for the snapshot header + synthetic allocs) -
 std::uint64_t g_region_base = 0;
@@ -243,6 +291,26 @@ std::string out_dir() {
     return e != nullptr ? std::string(e) : std::string();
   }();
   return d;
+}
+
+// Eagerly true when SNAPSHOT_RESTORE_DIR is set. Disables ALL record-side hooks
+// (__hipRegisterFatBinary's up-to-256-MiB AMDGPU ELF scan + hash, hipModuleLoad
+// image copy, __hipRegisterFunction map inserts, etc.) from the very first
+// call. init_restore_graphs() is lazy (fires only at the first
+// hipStreamBeginCapture), so without this eager gate the hooks stay hot during
+// the entire import phase — hundreds of fatbin registrations during
+// `import torch` / `import vllm` — which was the dominant cold-start overhead
+// (~+210s) in restore runs.
+static const bool g_will_restore = [] {
+  const char* d = std::getenv("SNAPSHOT_RESTORE_DIR");
+  return d != nullptr && d[0] != '\0';
+}();
+
+// True only when we actually need to record module/fatbin/function identity.
+static inline bool recording_active() {
+  if (g_will_restore) return false;
+  return g_graphs_written.load(std::memory_order_relaxed) < max_graphs() ||
+         g_active_captures.load(std::memory_order_relaxed) > 0;
 }
 
 // M3b: when to drain the off-path namer. hipKernelNameRef SEGFAULTS if a stream
@@ -297,6 +365,38 @@ std::uint64_t env_u64(const char* name, std::uint64_t fallback) {
     return std::strtoull(e, nullptr, 16);  // hex for addresses
   }
   return std::strtoull(e, nullptr, 10);
+}
+
+// M3g: in arena mode the redirect shim owns the true region base/size (its one
+// big hipMalloc). g_region_base is only set by hipMemAddressReserve (the VMM
+// path), which in arena mode instead latches onto PyTorch/HIP-runtime internal
+// VA reserves -- a region our captured pointers do NOT live in. That made
+// snapshots store a garbage region_base (e.g. 0x23029174239232 instead of the
+// arena 0x14f1e5c00000), so restore-time relocation found 0 in-region pointers
+// even though the kernarg blobs held 26+ valid arena pointers. Prefer the
+// redirect's exported base/size (resolved via dlsym; record and redirect are
+// separate .so's) when present.
+std::uint64_t redirect_region_base() {
+  using Fn = std::uint64_t (*)();
+  static Fn f = reinterpret_cast<Fn>(
+      dlsym(RTLD_DEFAULT, "snapshot_redirect_region_base"));
+  return f ? f() : 0;
+}
+std::uint64_t redirect_region_size() {
+  using Fn = std::uint64_t (*)();
+  static Fn f = reinterpret_cast<Fn>(
+      dlsym(RTLD_DEFAULT, "snapshot_redirect_region_size"));
+  return f ? f() : 0;
+}
+std::uint64_t recorded_region_base() {
+  const std::uint64_t arena = redirect_region_base();
+  if (arena != 0) return arena;
+  return env_u64("SNAPSHOT_RECORD_REGION_BASE", g_region_base);
+}
+std::uint64_t recorded_region_size() {
+  const std::uint64_t s = redirect_region_size();
+  if (s != 0) return s;
+  return env_u64("SNAPSHOT_RECORD_REGION_SIZE", g_region_size);
 }
 
 template <typename Fn>
@@ -770,9 +870,11 @@ void enqueue_for_naming(std::uintptr_t f) {
 // init, repeatedly). So in IDLE mode we drain the naming queue INLINE from the
 // inference launch path (hipLaunchKernel / hipExtModuleLaunchKernel): that runs
 // on the main thread, past the capture phase, after the recipe touches the
-// sentinel (post-/health) and sends a request to drive inference. We resolve
-// ONE func per launch (see drain_naming_inline).
-
+// sentinel (post-/health) and sends a request to drive inference.
+//
+// To handle full-scale captures (hundreds of graphs, thousands of unnamed
+// funcs), drain a BATCH per call rather than one. The batch size is controlled
+// by SNAPSHOT_RECORD_DRAIN_BATCH (default 64).
 void drain_naming_inline() {
   if (!drain_idle_mode() || !drain_sentinel_exists()) {
     return;
@@ -782,82 +884,94 @@ void drain_naming_inline() {
   if (g_active_captures.load(std::memory_order_relaxed) > 0) {
     return;
   }
-  // Resolve ONE func per launch (spread across inference launches). try_flush_
-  // pending FLUSHes once every func in a pending graph is resolved.
-  std::uintptr_t f = 0;
-  {
-    const std::lock_guard<std::mutex> lock(g_namer_mu);
-    while (!g_namer_queue.empty()) {
-      std::uintptr_t cand = g_namer_queue.front();
-      g_namer_queue.pop_front();
-      if (g_resolved_names.find(cand) == g_resolved_names.end()) {
-        f = cand;
-        break;
+  static const int batch = [] {
+    const char* e = std::getenv("SNAPSHOT_RECORD_DRAIN_BATCH");
+    return e && *e ? std::atoi(e) : 64;
+  }();
+  int resolved_this_call = 0;
+  while (resolved_this_call < batch) {
+    std::uintptr_t f = 0;
+    {
+      const std::lock_guard<std::mutex> lock(g_namer_mu);
+      while (!g_namer_queue.empty()) {
+        std::uintptr_t cand = g_namer_queue.front();
+        g_namer_queue.pop_front();
+        if (g_resolved_names.find(cand) == g_resolved_names.end()) {
+          f = cand;
+          break;
+        }
+      }
+      if (f == 0) break;  // queue drained
+    }
+    std::string name;
+    std::string source;
+    // (1) Module kernels: entry name captured at hipModuleGetFunction time.
+    {
+      const std::lock_guard<std::mutex> lock(g_mu);
+      auto it = g_functions.find(f);
+      if (it != g_functions.end() && !it->second.entry.empty()) {
+        name = it->second.entry;
+        source = "module-map";
       }
     }
-    if (f == 0) {
-      return;
+    // (2) Host-launched kernels (PyTorch/ATen <<<>>>): look up in g_host_functions.
+    if (name.empty()) {
+      const std::lock_guard<std::mutex> lock(g_mu);
+      auto it = g_host_functions.find(f);
+      if (it != g_host_functions.end() && !it->second.device_name.empty()) {
+        name = it->second.device_name;
+        source = "host-map";
+      }
     }
-  }
-  std::string name;
-  std::string source;
-  // (1) Module kernels: the entry name was already captured at
-  // hipModuleGetFunction time (g_functions) — use it directly, no hipKernelNameRef.
-  {
-    const std::lock_guard<std::mutex> lock(g_mu);
-    auto it = g_functions.find(f);
-    if (it != g_functions.end() && !it->second.entry.empty()) {
-      name = it->second.entry;
-      source = "module-map";
+    // (3) HSA kernel_object: the captured func might numerically match an
+    // HSA kernel_object (device code address) indexed at
+    // hsa_executable_freeze. This names kernels whose func handle doesn't
+    // appear in g_functions/g_host_functions (the common case for captured
+    // nodes, whose func is an opaque handle that matches nothing).
+    if (name.empty()) {
+      const std::lock_guard<std::mutex> lock(g_mu);
+      auto it = g_hsa_kernels.find(static_cast<std::uint64_t>(f));
+      if (it != g_hsa_kernels.end() && !it->second.empty()) {
+        name = it->second;
+        source = "hsa-kernel-object";
+      }
     }
-  }
-  // (2) Host-launched kernels (PyTorch/ATen <<<>>>): a captured node's func IS
-  // the host function pointer __hipRegisterFunction took (observed: handles in
-  // the host VA range like 0x14c…/0x149c…). So look it up in g_host_functions
-  // (device_name) — free and safe; hipKernelNameRef is the WRONG tool here (it
-  // expects a device hipFunction_t and faults on a host pointer).
-  if (name.empty()) {
-    const std::lock_guard<std::mutex> lock(g_mu);
-    auto it = g_host_functions.find(f);
-    if (it != g_host_functions.end() && !it->second.device_name.empty()) {
-      name = it->second.device_name;
-      source = "host-map";
-    }
-  }
-  // (3) Device-handle nodes (Triton JIT, aiter/CK via a path we don't hook):
-  // only hipKernelNameRef names these from the live handle. On this ROCm stack
-  // it SEGFAULTS on the 2nd distinct handle (jobs 509282..509295), so the
-  // default is to isolate each query in a forked child (crash is confined and
-  // the parent never dies). SNAPSHOT_RECORD_NAMEREF_MODE = fork|cap|off.
-  if (name.empty()) {
-    const NameRefMode mode = nameref_mode();
-    if (mode == NameRefMode::kFork) {
-      name = kernel_name_via_fork(reinterpret_cast<void*>(f));
-      source = name.empty() ? "nameref:fork(crash/timeout)" : "nameref:fork";
-    } else if (mode == NameRefMode::kCap) {
-      const int limit = nameref_limit();
-      const int seen =
-          g_nameref_calls.fetch_add(1, std::memory_order_relaxed) + 1;
-      if (seen <= limit) {
-        bool crashed = false;
-        name = kernel_name_via_hip(reinterpret_cast<void*>(f), &crashed);
-        source = crashed ? "nameref:CRASHED" : "nameref";
-        if (crashed) name.clear();
+    // (4) Device-handle nodes: hipKernelNameRef via fork isolation.
+    if (name.empty()) {
+      const NameRefMode mode = nameref_mode();
+      if (mode == NameRefMode::kFork) {
+        name = kernel_name_via_fork(reinterpret_cast<void*>(f));
+        source = name.empty() ? "nameref:fork(crash/timeout)" : "nameref:fork";
+      } else if (mode == NameRefMode::kCap) {
+        const int limit = nameref_limit();
+        const int seen =
+            g_nameref_calls.fetch_add(1, std::memory_order_relaxed) + 1;
+        if (seen <= limit) {
+          bool crashed = false;
+          name = kernel_name_via_hip(reinterpret_cast<void*>(f), &crashed);
+          source = crashed ? "nameref:CRASHED" : "nameref";
+          if (crashed) name.clear();
+        } else {
+          source = "nameref:SKIPPED(cap)";
+        }
       } else {
-        source = "nameref:SKIPPED(cap)";
+        source = "nameref:OFF";
       }
-    } else {
-      source = "nameref:OFF";
     }
+    {
+      const std::lock_guard<std::mutex> lock(g_namer_mu);
+      g_resolved_names[f] = name;
+    }
+    if (verbose()) {
+      std::fprintf(stderr, "[record] NAMER(main) func=0x%llx -> '%.80s' [%s]\n",
+                   static_cast<unsigned long long>(f), name.c_str(), source.c_str());
+      std::fflush(stderr);
+    }
+    ++resolved_this_call;
   }
-  {
-    const std::lock_guard<std::mutex> lock(g_namer_mu);
-    g_resolved_names[f] = name;  // empty for unknown/crashed -> still "resolved"
+  if (resolved_this_call > 0) {
+    try_flush_pending();
   }
-  std::fprintf(stderr, "[record] NAMER(main) func=0x%llx -> '%.80s' [%s]\n",
-               static_cast<unsigned long long>(f), name.c_str(), source.c_str());
-  std::fflush(stderr);
-  try_flush_pending();
 }
 
 // Reconcile introspected node identity with the issue-order identities recorded
@@ -1314,9 +1428,7 @@ void probe_once(const char* name) {
 // hipModuleLoad): recover the HSACO/ELF length from the header (the load API
 // passes no size), copy the image, hash it for later (module, entry) lookup.
 void record_module_image(hipModule_t* module, const void* image) {
-  const bool want = g_graphs_written.load(std::memory_order_relaxed) <
-                        max_graphs() ||
-                    g_active_captures.load(std::memory_order_relaxed) > 0;
+  const bool want = recording_active();
   if (!want) {
     return;
   }
@@ -1404,7 +1516,15 @@ std::size_t introspect_graph_nodes(hipGraph_t graph,
     rec.grid = snapshot::Dim3{p.gridDim.x, p.gridDim.y, p.gridDim.z};
     rec.block = snapshot::Dim3{p.blockDim.x, p.blockDim.y, p.blockDim.z};
     rec.shared_mem_bytes = p.sharedMemBytes;
-    rec.param_blob = extract_param_blob(p.extra);
+    rec.param_blob = pack_kernel_args_buffer(p.extra);
+    // ROCm returns extra=NULL for captured nodes, but may still populate
+    // kernelParams (the array-format arg pointers). Try it as a fallback so
+    // nodes launched via APIs we don't hook still get their args from the
+    // graph itself. pack_kernel_args_array probes readability (the original
+    // launch buffer may be freed by now) so stale pointers yield empty safely.
+    if (rec.param_blob.empty() && p.kernelParams != nullptr) {
+      rec.param_blob = pack_kernel_args_array(p.kernelParams);
+    }
     out.push_back(std::move(rec));
     out_funcs.push_back(fkey);
     ++kept;
@@ -1428,31 +1548,45 @@ void try_flush_pending() {
   if (dir.empty()) {
     return;
   }
+  // Check readiness IN-PLACE and only copy graphs that are fully named.
+  // The old code copied ALL unwritten graphs on every call (O(N) copies per
+  // launch hook), creating an O(N^2) bottleneck at default capture scale
+  // (~900 pending graphs x hundreds of calls/sec). This version locks both
+  // mutexes, checks each graph's node_funcs against g_resolved_names, marks
+  // ready ones as written immediately, and only copies those out for I/O.
   std::vector<PendingGraph> todo;
+  todo.reserve(64);
   {
-    const std::lock_guard<std::mutex> lock(g_pending_mu);
-    for (const PendingGraph& pg : g_pending) {
-      if (!pg.written) {
-        todo.push_back(pg);
+    const std::lock_guard<std::mutex> lock_p(g_pending_mu);
+    const std::lock_guard<std::mutex> lock_n(g_namer_mu);
+    for (auto& pg : g_pending) {
+      if (pg.written) {
+        continue;
+      }
+      bool ready = true;
+      for (std::size_t i = 0; i < pg.node_funcs.size(); ++i) {
+        if (g_resolved_names.find(pg.node_funcs[i]) == g_resolved_names.end()) {
+          ready = false;
+          break;
+        }
+      }
+      if (ready) {
+        pg.written = true;  // prevent re-check on future calls
+        todo.push_back(std::move(pg));
       }
     }
   }
   for (PendingGraph& g : todo) {
     std::vector<std::string> names(g.node_funcs.size());
-    bool ready = true;
     {
       const std::lock_guard<std::mutex> lock(g_namer_mu);
       for (std::size_t i = 0; i < g.node_funcs.size(); ++i) {
         auto it = g_resolved_names.find(g.node_funcs[i]);
         if (it == g_resolved_names.end()) {
-          ready = false;
           break;
         }
         names[i] = it->second;
       }
-    }
-    if (!ready) {
-      continue;  // some funcs not named yet; a later resolution will retry
     }
 
     snapshot::RecordAssembly a;
@@ -1545,6 +1679,47 @@ void try_flush_pending() {
       }
       n_funcs_seen = g_functions.size();
       n_hostfuncs_seen = g_host_functions.size();
+      // M3k: position-based identity recovery. The off-path namer resolves
+      // names from the captured node's opaque func handle, but that handle
+      // matches no registered map on ROCm (hipKernelNameRef returns empty for
+      // most graph-internal handles). However, at LAUNCH time the hooks held
+      // the REAL handle and recorded its function_id in issue_ids. When the
+      // issue list aligns 1:1 with the introspected nodes, position[i] gives
+      // each node's identity — bypassing the opaque handle entirely.
+      std::map<std::uint64_t, std::string> fid_to_name;
+      for (const auto& [handle, fr] : g_functions) {
+        (void)handle;
+        if (fr.id != 0 && !fr.entry.empty()) {
+          fid_to_name.emplace(fr.id, fr.entry);
+        }
+      }
+      for (const auto& [handle, hf] : g_host_functions) {
+        (void)handle;
+        if (hf.id != 0 && !hf.device_name.empty()) {
+          fid_to_name.emplace(hf.id, hf.device_name);
+        }
+      }
+      reconcile_identity_by_position(g.nodes, g.issue_ids);
+      std::size_t pos_filled = 0;
+      for (std::size_t i = 0; i < g.nodes.size() && i < names.size(); ++i) {
+        if (names[i].empty()) {
+          const std::uint64_t fid = g.nodes[i].function_id;
+          if (fid != 0) {
+            auto nit = fid_to_name.find(fid);
+            if (nit != fid_to_name.end() && !nit->second.empty()) {
+              names[i] = nit->second;
+              ++pos_filled;
+            }
+          }
+        }
+      }
+      if (verbose() && pos_filled > 0) {
+        std::fprintf(stderr,
+                     "[record] FLUSH identity: position_filled=%zu "
+                     "namer_resolved=%zu total_nodes=%zu\n",
+                     pos_filled, names.size() - pos_filled, g.nodes.size());
+        std::fflush(stderr);
+      }
       std::set<std::uint64_t> needed;
       for (std::size_t i = 0; i < g.nodes.size(); ++i) {
         snapshot::RecordedLaunch rl = g.nodes[i];
@@ -1721,15 +1896,49 @@ void try_flush_pending() {
     // have args (e.g. mod+host=3 but nodes=6 means 3 nodes were added via a
     // non-launch path like hipGraphAddKernelNode, shown by addnode).
     std::fprintf(stderr,
-                 "[record] FLUSH hooks: mod=%llu host=%llu ext=%llu exc=%llu "
-                 "coop_host=%llu coop_mod=%llu addnode=%llu\n",
+                 "[record] FLUSH hooks: mod=%llu host=%llu ext=%llu hcc=%llu "
+                 "exc=%llu coop_host=%llu coop_mod=%llu addnode=%llu drvex=%llu "
+                 "extlk=%llu byptr=%llu graphlaunch=%llu\n",
                  static_cast<unsigned long long>(g.hooks.mod),
                  static_cast<unsigned long long>(g.hooks.host),
                  static_cast<unsigned long long>(g.hooks.ext),
+                 static_cast<unsigned long long>(g.hooks.hcc),
                  static_cast<unsigned long long>(g.hooks.exc),
                  static_cast<unsigned long long>(g.hooks.coop_host),
                  static_cast<unsigned long long>(g.hooks.coop_mod),
-                 static_cast<unsigned long long>(g.hooks.addnode));
+                 static_cast<unsigned long long>(g.hooks.addnode),
+                 static_cast<unsigned long long>(g.hooks.drvex),
+                 static_cast<unsigned long long>(g.hooks.extlk),
+                 static_cast<unsigned long long>(g.hooks.byptr),
+                 static_cast<unsigned long long>(g.hooks.graphlaunch));
+    std::fflush(stderr);
+    std::fprintf(stderr,
+                 "[record] FLUSH childgraph: graphlaunch_in_capture=%llu "
+                 "backfilled=%llu finalized_cache=%zu addnode_cache=%zu\n",
+                 static_cast<unsigned long long>(
+                     g_graphlaunch_in_capture.load(std::memory_order_relaxed)),
+                 static_cast<unsigned long long>(
+                     g_graphlaunch_backfilled.load(std::memory_order_relaxed)),
+                 g_finalized_graph_argcache.size(),
+                 g_addnode_params.size());
+    std::fflush(stderr);
+    std::fprintf(stderr,
+                 "[record] FLUSH census: begin_capture=%llu "
+                 "begin_capture_to_graph=%llu end_capture=%llu "
+                 "add_kernel_node=%llu add_node=%llu graph_launch=%llu\n",
+                 static_cast<unsigned long long>(
+                     g_census.begin_capture.load(std::memory_order_relaxed)),
+                 static_cast<unsigned long long>(
+                     g_census.begin_capture_to_graph.load(
+                         std::memory_order_relaxed)),
+                 static_cast<unsigned long long>(
+                     g_census.end_capture.load(std::memory_order_relaxed)),
+                 static_cast<unsigned long long>(
+                     g_census.add_kernel_node.load(std::memory_order_relaxed)),
+                 static_cast<unsigned long long>(
+                     g_census.add_node.load(std::memory_order_relaxed)),
+                 static_cast<unsigned long long>(
+                     g_census.graph_launch.load(std::memory_order_relaxed)));
     std::fflush(stderr);
     {
       const std::lock_guard<std::mutex> lock(g_pending_mu);
@@ -1764,8 +1973,8 @@ void write_window_snapshot(const CaptureWindow& window) {
     // window's function_ids to their (module_hash, entry) and include just
     // those modules.
     const std::lock_guard<std::mutex> lock(g_mu);
-    a.region_base = env_u64("SNAPSHOT_RECORD_REGION_BASE", g_region_base);
-    a.region_size = env_u64("SNAPSHOT_RECORD_REGION_SIZE", g_region_size);
+    a.region_base = recorded_region_base();
+    a.region_size = recorded_region_size();
     a.granularity = g_granularity;
     a.alloc_events = g_alloc_events;
 
@@ -1883,6 +2092,38 @@ Summary g_summary;
 
 }  // namespace
 
+// If SNAPSHOT_HSACO_PATCH_MAXWG is set, return a heap copy of `image` (kept
+// alive in `storage`) with every amdhsa.kernels[].max_flat_workgroup_size
+// rewritten to >= target, so hipGraphAddKernelNode stops rejecting pointwise
+// kernels launched at block=512 whose HSACO declared max_threads=256
+// (Triton-on-ROCm codegen bug: eager launch ignores the field, graph-add does
+// not). Returns `image` unchanged when the patch is disabled, the image is not
+// a patchable ELF, or no field was rewritable. `storage` (caller-owned) holds
+// the patched bytes alive for the duration of the load call. Env-gated so it is
+// inert at record time (env unset) and active only on the restore path.
+static const void* maybe_patch_hsaco(const void* image,
+                                     std::vector<std::byte>& storage) {
+  if (image == nullptr) return image;
+  const char* t = std::getenv("SNAPSHOT_HSACO_PATCH_MAXWG");
+  if (t == nullptr || t[0] == '\0') return image;  // patch disabled
+  const long targetl = std::strtol(t, nullptr, 10);
+  if (targetl <= 0) return image;
+  const auto* bytes = static_cast<const std::byte*>(image);
+  const std::uint64_t size = snapshot::elf_code_object_size(bytes, 1ULL << 30);
+  if (size == 0) return image;  // not a parseable ELF
+  storage.assign(bytes, bytes + size);
+  const std::size_t cnt = snapshot::patch_amdgpu_max_flat_workgroup_size(
+      storage.data(), storage.size(), static_cast<std::uint32_t>(targetl));
+  if (cnt == 0) return image;  // nothing rewritable
+  if (verbose()) {
+    std::fprintf(stderr,
+                 "[hsaco-patch] interposer module: rewrote %zu "
+                 "max_flat_workgroup_size fields -> %ld\n",
+                 cnt, targetl);
+  }
+  return storage.data();
+}
+
 extern "C" {
 
 // ---- module load / unload --------------------------------------------------
@@ -1891,9 +2132,11 @@ hipError_t hipModuleLoadData(hipModule_t* module, const void* image) {
   probe_once("hipModuleLoadData");
   using Fn = hipError_t (*)(hipModule_t*, const void*);
   static Fn real = resolve<Fn>("hipModuleLoadData");
-  const hipError_t status = real(module, image);
+  std::vector<std::byte> patched;
+  const void* load = maybe_patch_hsaco(image, patched);
+  const hipError_t status = real(module, load);
   if (status == hipSuccess && module != nullptr && image != nullptr) {
-    record_module_image(module, image);
+    record_module_image(module, image);  // record ORIGINAL (patch is restore-only)
   }
   return status;
 }
@@ -1910,10 +2153,12 @@ hipError_t hipModuleLoadDataEx(hipModule_t* module, const void* image,
   using Fn = hipError_t (*)(hipModule_t*, const void*, unsigned int,
                             hipJitOption*, void**);
   static Fn real = resolve<Fn>("hipModuleLoadDataEx");
+  std::vector<std::byte> patched;
+  const void* load = maybe_patch_hsaco(image, patched);
   const hipError_t status =
-      real(module, image, numOptions, options, optionValues);
+      real(module, load, numOptions, options, optionValues);
   if (status == hipSuccess && module != nullptr && image != nullptr) {
-    record_module_image(module, image);
+    record_module_image(module, image);  // record ORIGINAL (patch is restore-only)
   }
   return status;
 }
@@ -1924,9 +2169,7 @@ hipError_t hipModuleLoad(hipModule_t* module, const char* fname) {
   static Fn real = resolve<Fn>("hipModuleLoad");
   const hipError_t status = real(module, fname);
   if (status == hipSuccess && module != nullptr && fname != nullptr) {
-    const bool want = g_graphs_written.load(std::memory_order_relaxed) <
-                          max_graphs() ||
-                      g_active_captures.load(std::memory_order_relaxed) > 0;
+    const bool want = recording_active();
     if (want) {
       std::vector<std::byte> bytes = read_file_bytes(fname);
       ModRec rec;
@@ -1995,10 +2238,778 @@ hipError_t hipModuleGetFunction(hipFunction_t* function, hipModule_t module,
   return status;
 }
 
+// ---- restore mode: skip capture, return pre-built graphs ----------------
+// When SNAPSHOT_RESTORE_DIR is set, the interposer enters restore mode at the
+// first hipStreamBeginCapture: it loads all .snap files from that directory,
+// rebuilds every graph (module load + function resolve + hipGraphAddKernelNode),
+// and queues the rebuilt hipGraph_t handles. Subsequent BeginCapture calls
+// return hipSuccess WITHOUT starting a real capture (the model forward between
+// Begin and End runs eagerly — kernels execute but aren't recorded). EndCapture
+// returns the next pre-built graph instead of the real capture result.
+// hipGraphInstantiate then creates an exec from our graph as usual. This
+// eliminates vLLM's entire graph-capture warmup phase.
+
+static bool g_restore_mode = false;
+static std::once_flag g_restore_once;
+static std::vector<hipGraph_t> g_restore_graphs;
+// Parallel node-count per rebuilt graph (aligned with g_restore_graphs), used
+// to partition graphs into PW/FULL pools by node count at restore init.
+static std::vector<std::size_t> g_restore_nodecounts;
+static std::atomic<std::size_t> g_restore_idx{0};
+// Mode-aware serve: vLLM interleaves FULL decode captures (many nodes) with
+// PIECEWISE captures in the recording. Serving graphs in naive file order
+// puts a PW fragment into a FULL decode slot -> nil deref at first decode.
+// We partition rebuilt graphs into two pools by node count and serve each
+// EndCapture a graph from the pool matching the CURRENT capture phase. The
+// phase is signalled in-process by cg_skip.py via env var
+// SNAPSHOT_RESTORE_PHASE ("PIECEWISE"/"FULL"), re-read at every serve.
+static std::vector<std::size_t> g_pw_pool;    // indices into g_restore_graphs (small/PW)
+static std::vector<std::size_t> g_full_pool;  // indices into g_restore_graphs (large/FULL)
+static std::atomic<std::size_t> g_pw_cursor{0};
+static std::atomic<std::size_t> g_full_cursor{0};
+static std::size_t g_full_threshold = 256;    // node count > this => FULL
+// M3k launch-probe: map a served hipGraph_t -> (serve_idx, node_count) so the
+// first decode-time hipGraphLaunch can log WHICH rebuilt graph is replayed.
+static std::unordered_map<void*, std::size_t> g_graph_serve_idx;
+static std::unordered_map<void*, std::size_t> g_graph_nodecount;
+static std::once_flag g_launchprobe_done;
+// Tracks which stream is "fake-capturing" so hipStreamIsCapturing can lie.
+static std::atomic<std::uintptr_t> g_restore_stream{0};
+static std::atomic<bool> g_restore_capturing{false};
+
+static void init_restore_graphs() {
+  const char* dir = std::getenv("SNAPSHOT_RESTORE_DIR");
+  if (!dir || !*dir) return;
+  g_restore_mode = true;
+  // Disable recording hooks so the rebuild's HIP calls pass through cleanly.
+  g_graphs_written.store(max_graphs());
+
+  // Collect sorted .snap files.
+  std::vector<std::string> files;
+  DIR* dh = opendir(dir);
+  if (!dh) {
+    std::fprintf(stderr, "[restore] cannot open %s: %s\n", dir,
+                 std::strerror(errno));
+    return;
+  }
+  struct dirent* ent;
+  while ((ent = readdir(dh)) != nullptr) {
+    std::string name = ent->d_name;
+    if (name.size() >= 5 && name.substr(name.size() - 5) == ".snap")
+      files.push_back(std::string(dir) + "/" + name);
+  }
+  closedir(dh);
+  // Natural sort: graph-PID-N.snap must sort N numerically (1,2,...,10,11),
+  // NOT lexicographically (1,10,11,...,19,2,20). Lexicographic sort scrambles
+  // the graph-to-capture-slot mapping (slot 1 = FULL graph would get graph-10
+  // instead of graph-2), so rebuilt graphs don't match what vLLM expects at each
+  // EndCapture -> launch faults on the first hipGraphLaunch.
+  auto nat_cmp = [](const std::string& a, const std::string& b) {
+    auto isdig = [](char c) { return c >= '0' && c <= '9'; };
+    std::size_t i = 0, j = 0;
+    while (i < a.size() && j < b.size()) {
+      if (isdig(a[i]) && isdig(b[j])) {
+        // Compare numeric runs by value, then by length (tie-break).
+        std::size_t ai = i, bj = j;
+        while (ai < a.size() && isdig(a[ai])) ++ai;
+        while (bj < b.size() && isdig(b[bj])) ++bj;
+        std::uint64_t va = 0, vb = 0;
+        for (std::size_t k = i; k < ai; ++k) va = va * 10 + (a[k] - '0');
+        for (std::size_t k = j; k < bj; ++k) vb = vb * 10 + (b[k] - '0');
+        if (va != vb) return va < vb;
+        if (ai - i != bj - j) return (ai - i) < (bj - j);
+        i = ai; j = bj;
+      } else {
+        if (a[i] != b[j]) return a[i] < b[j];
+        ++i; ++j;
+      }
+    }
+    return a.size() < b.size();
+  };
+  std::sort(files.begin(), files.end(), nat_cmp);
+  if (files.empty()) {
+    std::fprintf(stderr, "[restore] no .snap files in %s\n", dir);
+    return;
+  }
+
+  auto t0 = std::chrono::steady_clock::now();
+  std::fprintf(stderr, "[restore] loading %zu snapshots from %s\n",
+               files.size(), dir);
+
+  // A/B gate for the drift-immune snapshot-module fallback. Default on; set
+  // SNAPSHOT_RESTORE_SNAP_MODULES=0 to resolve ONLY from the live run (the
+  // pre-fix behavior) so the two paths can be compared in isolation.
+  const char* snap_gate = std::getenv("SNAPSHOT_RESTORE_SNAP_MODULES");
+  bool snap_fallback_on =
+      snap_gate == nullptr || snap_gate[0] != '0';
+
+  // Read all snapshots.
+  std::vector<snapshot::SnapshotData> snapshots;
+  for (const std::string& f : files) {
+    snapshot::SnapshotData snap;
+    if (snapshot::read_snapshot_file(f, &snap).ok()) {
+      snapshots.push_back(std::move(snap));
+    }
+  }
+
+  // Create backend for rebuild (only calls hipGraphAddKernelNode, NOT
+  // hipModuleLoadData).  We deliberately do NOT load modules from the
+  // snapshot — that would create DUPLICATE HIP modules conflicting with
+  // vLLM's own, causing "named symbol not found" during the capture forward.
+  // Instead we resolve function handles from vLLM's already-loaded modules
+  // (tracked by our hooks in g_functions / g_host_functions).
+  auto backend = snapshot::make_backend();
+
+  // Build module_hash -> hipModule_t from g_modules for direct resolution.
+  // Also collect HSA images (Triton kernels loaded via ROCr) to load as HIP
+  // modules for function resolution.
+  std::map<std::string, std::uintptr_t> entry_to_fn;
+  std::map<std::pair<std::uint64_t, std::string>, std::uintptr_t> hash_entry_to_fn;
+  std::map<std::uint64_t, hipModule_t> hash_to_module;
+  std::map<std::uint64_t, std::vector<std::byte>> hsa_images_by_hash;  // for lazy load
+  // Drift-immune live resolution: name -> live HSACO image bytes. We extract
+  // kernel names from each LIVE HSACO image (the same code object the live run
+  // loaded via HSA), and for a drifting Triton node we load that image ONCE as
+  // a HIP module (cached in hsa_name_to_module) then hipModuleGetFunction to
+  // get a VALID hipFunction_t. This avoids BOTH the kernel_object hang (raw
+  // device addr is not a hipFunction_t) AND snap_fb's snapshot-image signature
+  // mismatch (we use the LIVE code object so signatures match the live graph).
+  std::map<std::string, hipModule_t> hsa_name_to_module;
+  std::map<std::string, const std::vector<std::byte>*> hsa_name_to_image;
+  std::vector<std::pair<std::uint64_t, const std::vector<std::byte>*>> hsa_image_list;
+  // Snapshot-embedded modules loaded on-demand for nodes the live run could
+  // not resolve (HSACO/entry-name drift across cold starts). Cached across
+  // graphs so each distinct module loads at most once.
+  std::map<std::uint64_t, hipModule_t> snap_modules_loaded;
+  {
+    const std::lock_guard<std::mutex> lock(g_mu);
+    for (const auto& [fptr, rec] : g_functions) {
+      if (!rec.entry.empty()) {
+        entry_to_fn.try_emplace(rec.entry, fptr);
+        hash_entry_to_fn[{rec.module_hash, rec.entry}] = fptr;
+      }
+    }
+    for (const auto& [fptr, rec] : g_host_functions) {
+      if (!rec.device_name.empty())
+        entry_to_fn.try_emplace(rec.device_name, fptr);
+    }
+    for (const auto& [handle, mod] : g_modules) {
+      if (mod.hash != 0)
+        hash_to_module.try_emplace(mod.hash,
+            reinterpret_cast<hipModule_t>(handle));
+    }
+    for (const auto& [rhandle, hsa] : g_hsa_images) {
+      if (hsa.hash != 0 && !hsa.image.empty()) {
+        hsa_images_by_hash.try_emplace(hsa.hash, hsa.image);
+        hsa_image_list.emplace_back(hsa.hash, &hsa.image);
+      }
+    }
+  }
+  // Extract kernel names from each live HSACO image's AMDGPU metadata. Names
+  // from the metadata note are the SAME unmangled form the snapshot stored
+  // (hipKernelNameRef-derived). The actual HIP-module load is deferred to
+  // first lookup (below) to avoid loading all 10k+ CK library images.
+  std::size_t hsa_named_kernels = 0;
+  for (const auto& [hash, imgp] : hsa_image_list) {
+    for (const std::string& kn :
+         snapshot::extract_elf_symbols(imgp->data(), imgp->size())) {
+      // Strip AMDGPU ABI suffix (.kd/.ke) so HSA symbol names match the
+      // hipKernelNameRef-derived entry_name (no suffix).
+      std::string key = kn;
+      if (key.size() > 3 && key[key.size() - 3] == '.' &&
+          key[key.size() - 2] == 'k' &&
+          (key.back() == 'd' || key.back() == 'e'))
+        key.resize(key.size() - 3);
+      if (!key.empty()) {
+        hsa_name_to_image.try_emplace(std::move(key), imgp);
+        ++hsa_named_kernels;
+      }
+    }
+  }
+  if (hsa_named_kernels > 0) {
+    std::fprintf(stderr,
+                 "[restore] live-hsaco kernels=%zu images=%zu (lazy HIP-module load by name)\n",
+                 hsa_named_kernels, hsa_image_list.size());
+  }
+
+  // Parse kernel signatures (arg count, pointer arg offsets) from ALL HSACO
+  // images. These populate node.kernel.ptr_offsets so relocation is PRECISE
+  // (only actual pointer args are shifted), replacing the corrupting blind-
+  // scan that touches every 8-byte value in the param_blob.
+  //
+  // PRIORITY: snapshot-embedded HSACO signatures win over live. The param_
+  // blob was captured from the RECORD run, so it matches the RECORD run's
+  // HSACO arg layout EXACTLY. The live HSACO may have drifted (inductor
+  // codegen nondeterminism), giving a different arg count / pointer offsets
+  // that don't align with the captured blob -> stale pointers left unpatched.
+  std::map<std::string, snapshot::KernelSig> sig_by_name;
+  auto add_sigs = [&](const std::byte* img, std::size_t sz) {
+    for (const auto& ks : snapshot::extract_amdgpu_kernels(img, sz)) {
+      std::string key = ks.name;
+      if (key.size() > 3 && key[key.size() - 3] == '.' &&
+          key[key.size() - 2] == 'k' &&
+          (key.back() == 'd' || key.back() == 'e'))
+        key.resize(key.size() - 3);
+      sig_by_name.emplace(std::move(key), ks);  // OVERWRITE (snapshot wins)
+    }
+  };
+  // Live images first (low priority); snapshot modules overwrite per-graph.
+  for (const auto& [hash, imgp] : hsa_image_list)
+    add_sigs(imgp->data(), imgp->size());
+  // Snapshot module signatures are added per-graph inside the rebuild loop
+  // (each graph embeds its own modules).
+  std::fprintf(stderr, "[restore] kernel signatures parsed=%zu\n",
+               sig_by_name.size());
+
+  // M3g: resolve THIS process's live arena base from the redirect shim. The
+  // two are separate .so's (record is not linked against redirect), so we go
+  // through the dynamic linker: redirect exports snapshot_redirect_region_base()
+  // for exactly this purpose. delta = live_base - snap.allocator.region_base is
+  // applied to every captured device pointer below; without it, the
+  // driver-chosen arena base differs across cold starts and every kernel arg
+  // points at memory shifted by delta -> hipErrorLaunchFailure on launch.
+  using BaseFn = std::uint64_t (*)();
+  BaseFn base_fn = reinterpret_cast<BaseFn>(
+      dlsym(RTLD_DEFAULT, "snapshot_redirect_region_base"));
+  const std::uint64_t live_base = base_fn ? base_fn() : 0;
+  if (base_fn == nullptr || live_base == 0) {
+    std::fprintf(stderr,
+                 "[restore] WARNING redirect base unavailable (found=%d "
+                 "base=0x%llx); captured pointers will NOT relocate -> launch "
+                 "will fault\n",
+                 base_fn ? 1 : 0,
+                 static_cast<unsigned long long>(live_base));
+  }
+
+  // Rebuild each graph.
+  std::size_t ok = 0;
+  std::size_t unresolved = 0;
+  std::size_t idx = 0;
+  int fail_dbg = 0;
+  std::uint64_t reloc_known = 0;
+  std::uint64_t reloc_blind = 0;
+  int dbg_count = 0;
+  std::size_t resolved_from_snapshot = 0;  // drift-immune fallback hits
+  std::size_t resolved_from_hsa = 0;       // live HSACO name-resolution hits
+  for (const auto& snap : snapshots) {
+    snapshot::GraphIR ir = snap.graph;
+    ++idx;
+    // Index this graph's SNAPSHOT-embedded modules by hash. This is the
+    // drift-immune fallback: the live run's module_hash may differ (Triton
+    // HSACO drift) and the inductor entry-name counter suffix may differ, but
+    // the snapshot's own image + entry_name are always mutually consistent
+    // (both captured in the SAME record run).
+    std::map<std::uint64_t, const snapshot::ModuleImage*> snap_mod_by_hash;
+    for (const auto& m : snap.modules) {
+      if (m.hash != 0 && !m.image.empty())
+        snap_mod_by_hash.try_emplace(m.hash, &m);
+      // Parse signatures from this snapshot module too (fallback for kernels
+      // absent from the live images).
+      add_sigs(m.image.data(), m.image.size());
+    }
+    // Resolve entries using vLLM's function handles.
+    bool good = true;
+    for (auto& node : ir.nodes) {
+      if (node.type != snapshot::GraphNodeType::kKernel ||
+          node.entry_name.empty())
+        continue;
+      // Try precise (module_hash, entry) match first, then entry-only.
+      std::uintptr_t fptr = 0;
+      auto hit = hash_entry_to_fn.find({node.module_hash, node.entry_name});
+      if (hit != hash_entry_to_fn.end()) {
+        fptr = hit->second;
+      } else {
+        auto eit = entry_to_fn.find(node.entry_name);
+        if (eit != entry_to_fn.end()) fptr = eit->second;
+      }
+      if (fptr != 0) {
+        node.kernel.function.value = fptr;
+      } else {
+        // Drift-immune live-HSACO name resolution (PREFERRED over snap_fb):
+        // the live run compiled the same Triton kernel (deterministic fusion
+        // under PYTHONHASHSEED=0) but with a different module_hash (HSACO
+        // codegen drift). The NAME is stable. We load the LIVE run's own HSACO
+        // image (extracted-name -> image map built above) as a HIP module ONCE
+        // (cached), then hipModuleGetFunction yields a VALID hipFunction_t that
+        // matches the live graph's signatures. This avoids BOTH the
+        // kernel_object hang (raw device addr is not a hipFunction_t) AND
+        // snap_fb's snapshot-image signature mismatch.
+        if (!node.entry_name.empty()) {
+          std::string lookup = node.entry_name;
+          if (lookup.size() > 3 && lookup[lookup.size() - 3] == '.' &&
+              lookup[lookup.size() - 2] == 'k' &&
+              (lookup.back() == 'd' || lookup.back() == 'e'))
+            lookup.resize(lookup.size() - 3);
+          // Check the module cache first, else lazy-load the live HSACO image.
+          auto cit = hsa_name_to_module.find(lookup);
+          hipModule_t mod = (cit != hsa_name_to_module.end()) ? cit->second
+                                                              : nullptr;
+          if (mod == nullptr) {
+            auto nit = hsa_name_to_image.find(lookup);
+            if (nit != hsa_name_to_image.end()) {
+              hipError_t rc = hipModuleLoadDataEx(&mod, nit->second->data(), 0,
+                                                  nullptr, nullptr);
+              if (rc == hipSuccess && mod != nullptr)
+                hsa_name_to_module[lookup] = mod;
+            }
+          }
+          if (mod != nullptr) {
+            hipFunction_t fn = nullptr;
+            // entry_name has no ABI suffix; HSA symbol might. Try the raw name
+            // then with common ABI suffixes.
+            hipError_t rc = hipModuleGetFunction(&fn, mod, lookup.c_str());
+            if (rc != hipSuccess || fn == nullptr)
+              rc = hipModuleGetFunction(&fn, mod, node.entry_name.c_str());
+            if (rc != hipSuccess || fn == nullptr) {
+              std::string kd = lookup + ".kd";
+              rc = hipModuleGetFunction(&fn, mod, kd.c_str());
+            }
+            if (rc == hipSuccess && fn != nullptr) {
+              node.kernel.function.value =
+                  reinterpret_cast<std::uintptr_t>(fn);
+              ++resolved_from_hsa;
+              continue;  // resolved from LIVE HSACO!
+            }
+          }
+        }
+        // Fallback: call hipModuleGetFunction directly on vLLM's loaded module.
+        // This resolves Triton/HSA-loaded kernels that bypassed our GetFunction hook.
+        auto mit = hash_to_module.find(node.module_hash);
+        if (mit == hash_to_module.end()) {
+          // Triton modules are in g_hsa_images, not g_modules.  Load the HSA
+          // image as a HIP module on-demand (only once per hash).
+          auto hit = hsa_images_by_hash.find(node.module_hash);
+          if (hit != hsa_images_by_hash.end()) {
+            hipModule_t mod = nullptr;
+            hipError_t rc2 = hipModuleLoadDataEx(&mod, hit->second.data(), 0,
+                                                 nullptr, nullptr);
+            if (rc2 == hipSuccess && mod != nullptr) {
+              hash_to_module[node.module_hash] = mod;
+              mit = hash_to_module.find(node.module_hash);
+            }
+          }
+        }
+        if (mit != hash_to_module.end()) {
+          hipFunction_t fn = nullptr;
+          hipError_t rc = hipModuleGetFunction(&fn, mit->second,
+                                               node.entry_name.c_str());
+          if (rc == hipSuccess && fn != nullptr) {
+            node.kernel.function.value =
+                reinterpret_cast<std::uintptr_t>(fn);
+            continue;  // resolved!
+          }
+        }
+        // Drift-immune fallback: load the kernel from the SNAPSHOT's own
+        // embedded HSACO image. The record-time module_hash / entry_name are
+        // guaranteed consistent with this image because both were serialized
+        // in the same capture, so this sidesteps all cross-run identity drift
+        // (Triton HSACO bytes, inductor name-counter suffixes).
+        if (snap_fallback_on && node.module_hash != 0) {
+          auto spit = snap_mod_by_hash.find(node.module_hash);
+          if (spit != snap_mod_by_hash.end()) {
+            hipModule_t mod = nullptr;
+            auto lit = snap_modules_loaded.find(node.module_hash);
+            if (lit != snap_modules_loaded.end()) {
+              mod = lit->second;
+            } else {
+              hipError_t rc2 = hipModuleLoadDataEx(
+                  &mod, spit->second->image.data(), 0, nullptr, nullptr);
+              if (rc2 == hipSuccess && mod != nullptr)
+                snap_modules_loaded[node.module_hash] = mod;
+            }
+            if (mod != nullptr) {
+              hipFunction_t fn = nullptr;
+              hipError_t rc = hipModuleGetFunction(&fn, mod,
+                                                   node.entry_name.c_str());
+              // Single-kernel modules (common for Triton): if the recorded
+              // entry_name does not resolve, the one embedded entry name is
+              // authoritative for this module.
+              if (rc != hipSuccess || fn == nullptr) {
+                for (const auto& en : spit->second->entry_names) {
+                  rc = hipModuleGetFunction(&fn, mod, en.c_str());
+                  if (rc == hipSuccess && fn != nullptr) break;
+                }
+              }
+              if (rc == hipSuccess && fn != nullptr) {
+                node.kernel.function.value =
+                    reinterpret_cast<std::uintptr_t>(fn);
+                ++resolved_from_snapshot;
+                continue;  // resolved from snapshot!
+              }
+            }
+          }
+        }
+        good = false;
+        ++unresolved;
+        if (dbg_count < 10) {
+          std::fprintf(stderr,
+                       "[restore] UNRESOLVED entry='%s' module_hash=0x%llx\n",
+                       node.entry_name.c_str(),
+                       static_cast<unsigned long long>(node.module_hash));
+          ++dbg_count;
+        }
+      }
+    }
+    if (!good) continue;
+
+    // Populate precise pointer offsets from parsed kernel signatures so
+    // relocation touches ONLY actual pointer args (not scalar/dimension
+    // values that blind-scan would corrupt). Uses the name -> KernelSig map
+    // built from live + snapshot HSACO images above.
+    //
+    // Gate: SNAPSHOT_RESTORE_NO_SIG=1 disables signature-based offsets AND
+    // the struct scan, falling back to pure whole-blob blind-scan. With the
+    // recorded arena range (high address), non-pointer scalars are never in
+    // range, so blind-scan has ~0 false positives — this isolates whether
+    // the (nil) fault is from struct-scan false positives or elsewhere.
+    static const bool no_sig = [] {
+      const char* e = std::getenv("SNAPSHOT_RESTORE_NO_SIG");
+      return e && e[0] == '1';
+    }();
+    //
+    // ALSO compute non-pointer arg byte ranges (struct args may contain
+    // EMBEDDED device pointers the signature doesn't advertise). Those are
+    // blind-scanned separately below (struct_scan) so struct-embedded pointers
+    // get relocated WITHOUT whole-blob blind-scan corrupting scalars.
+    // Per-node struct ranges are stashed here and consumed in the reloc block.
+    std::map<std::size_t,
+             std::vector<std::pair<std::vector<std::byte>*,
+                                   std::vector<std::pair<std::uint32_t,
+                                                          std::uint32_t>>>>>
+        per_node_struct_ranges;
+    std::size_t sig_hits = 0;
+    std::size_t nidx = 0;
+    for (auto& node : ir.nodes) {
+      if (node.type != snapshot::GraphNodeType::kKernel || no_sig) {
+        ++nidx;
+        continue;
+      }
+      std::string key = node.entry_name;
+      if (key.size() > 3 && key[key.size() - 3] == '.' &&
+          key[key.size() - 2] == 'k' &&
+          (key.back() == 'd' || key.back() == 'e'))
+        key.resize(key.size() - 3);
+      auto sit = sig_by_name.find(key);
+      if (sit == sig_by_name.end()) sit = sig_by_name.find(node.entry_name);
+      if (sit != sig_by_name.end()) {
+        auto offs = snapshot::tag1_blob_ptr_offsets(node.kernel.param_blob,
+                                                    sit->second);
+        if (!offs.empty()) {
+          node.kernel.ptr_offsets = std::move(offs);
+          ++sig_hits;
+        }
+        auto sranges = snapshot::tag1_blob_nonptr_arg_ranges(
+            node.kernel.param_blob, sit->second);
+        if (!sranges.empty()) {
+          per_node_struct_ranges[nidx].emplace_back(
+              &node.kernel.param_blob, std::move(sranges));
+        }
+        // Diagnostic: dump blob-vs-signature layout for kernels whose blob
+        // has a DIFFERENT arg count than the signature, or whose non-pointer
+        // args contain arena-range values (embedded pointers). Helps trace
+        // why certain pointers escape relocation.
+        static bool layout_dbg = [] {
+          const char* e = std::getenv("SNAPSHOT_RESTORE_AUDIT");
+          return e && (e[0] == '1' || e[0] == 'y');
+        }();
+        if (layout_dbg &&
+            (node.entry_name.find("rms_norm") != std::string::npos ||
+             node.entry_name.find("wvSplitK") != std::string::npos) &&
+            idx <= 5) {
+          const auto& b = node.kernel.param_blob;
+          std::uint32_t bcount = 0;
+          if (b.size() >= 5 && (unsigned char)b[0] == 1) {
+            bcount = (unsigned)b[1] | ((unsigned)b[2] << 8) |
+                     ((unsigned)b[3] << 16) | ((unsigned)b[4] << 24);
+          }
+          std::fprintf(stderr,
+               "[restore-layout] g%zu '%s' blob_args=%u sig_args=%zu "
+               "ptr_offsets=%zu struct_ranges=%zu blob_size=%zu\n",
+               idx, node.entry_name.c_str(), bcount,
+               sit->second.args.size(), node.kernel.ptr_offsets.size(),
+               sranges.size(), b.size());
+          // Dump each blob arg: offset, len, is it a pointer per sig, does it
+          // contain an in-arena u64?
+          std::size_t off = 5;
+          for (std::size_t i = 0;
+               i < bcount && off + 4 <= b.size() && i < 16; ++i) {
+            std::uint32_t len = (unsigned)b[off] | ((unsigned)b[off+1] << 8) |
+                ((unsigned)b[off+2] << 16) | ((unsigned)b[off+3] << 24);
+            off += 4;
+            bool is_ptr_sig = i < sit->second.args.size() &&
+                              sit->second.args[i].is_pointer;
+            bool has_arena = false;
+            std::uint64_t arena_val = 0;
+            for (std::size_t j = off;
+                 j + 8 <= off + len && j + 8 <= b.size(); ++j) {
+              std::uint64_t v;
+              std::memcpy(&v, b.data() + j, 8);
+              // crude arena check vs a known record base
+              if (v >= 0x150a0dc00000ULL && v < 0x151c0dc00000ULL) {
+                has_arena = true;
+                arena_val = v;
+                break;
+              }
+            }
+            std::fprintf(stderr,
+                 "[restore-layout]   arg%zu off=%zu len=%u sig_ptr=%d "
+                 "arena=%d%s%s\n",
+                 i, off, len, is_ptr_sig, has_arena ? 1 : 0,
+                 has_arena ? " val=0x" : "",
+                 has_arena ? ([](std::uint64_t v){ char b[20];
+                   std::snprintf(b,sizeof(b),"%llx",
+                   (unsigned long long)v); return std::string(b);})
+                   (arena_val).c_str() : "");
+            off += len;
+          }
+        }
+      }
+      ++nidx;
+    }
+
+    // M3g: relocate captured device pointers across the differing arena base.
+    // relocate_graph_ir blind-scans each kernel param blob for 8-byte values
+    // that fall inside the recorded region and shifts them by delta; it is a
+    // no-op when captured_base == live_base (same-process record/restore).
+    // SNAPSHOT_RESTORE_NO_RELOC=1 skips relocation (debug: isolates whether a
+    // runtime fault is caused by stale pointers vs. module semantics).
+    const char* no_reloc = std::getenv("SNAPSHOT_RESTORE_NO_RELOC");
+    if (live_base != 0 && (no_reloc == nullptr || no_reloc[0] != '1')) {
+      snapshot::Relocation reloc{snap.allocator.region_base, live_base,
+                                 snap.allocator.region_size};
+      snapshot::RelocationStats rstats{};
+      // Blind-scan fallback only for nodes WITHOUT a parsed signature. When
+      // SNAPSHOT_RESTORE_NO_BLIND=1, disable blind-scan entirely (diagnostic:
+      // isolates whether the remaining blind patches corrupt args).
+      const char* no_blind = std::getenv("SNAPSHOT_RESTORE_NO_BLIND");
+      const bool blind_fb =
+          no_blind == nullptr || no_blind[0] != '1';
+      snapshot::Status rs = snapshot::relocate_graph_ir(
+          &ir, reloc, blind_fb, &rstats);
+      if (!rs.ok()) {
+        std::fprintf(stderr,
+                     "[restore] relocate failed for a graph: %s\n",
+                     rs.message().c_str());
+      }
+      reloc_known += rstats.known_patches;
+      reloc_blind += rstats.blind_patches;
+
+      // Struct-embedded pointer scan: for nodes with a parsed signature,
+      // blind-scan ONLY the non-pointer arg byte ranges (structs may contain
+      // EMBEDDED device pointers the signature doesn't advertise). This catches
+      // the ~120 struct-embedded pointers (off=109/129 in rms_norm kernels)
+      // WITHOUT whole-blob blind-scan corrupting scalar args. relocate_value
+      // is a no-op for non-arena values, so scalar args are safe.
+      std::uint64_t struct_patches = 0;
+      for (auto& [nidx, ranges_vec] : per_node_struct_ranges) {
+        for (auto& [blobp, sranges] : ranges_vec) {
+          for (auto [start, len] : sranges) {
+            std::size_t end = static_cast<std::size_t>(start) + len;
+            if (end > blobp->size()) end = blobp->size();
+            for (std::size_t off = start;
+                 off + sizeof(std::uint64_t) <= end; ) {
+              std::uint64_t v;
+              std::memcpy(&v, blobp->data() + off, sizeof(v));
+              // Alignment filter: see relocation.cpp blind-scan. Prevents
+              // cross-boundary phantom values from corrupting struct fields.
+              static const std::uint64_t ba = [] {
+                const char* e = std::getenv("SNAPSHOT_RESTORE_BLIND_ALIGN");
+                if (!e || !*e) return 256ULL;
+                const long val = std::atol(e);
+                return val > 0 ? static_cast<std::uint64_t>(val) : 0ULL;
+              }();
+              if (ba != 0 && (v & (ba - 1)) != 0) {
+                ++off;
+                continue;
+              }
+              bool patched = false;
+              snapshot::Status sv =
+                  snapshot::relocate_value(&v, reloc, &patched);
+              if (sv.ok() && patched) {
+                std::memcpy(blobp->data() + off, &v, sizeof(v));
+                ++struct_patches;
+                // Skip past this qword to avoid overlapping reads: the
+                // tail of a real pointer creates phantom in-range values at
+                // adjacent byte positions that, if "relocated", corrupt the
+                // pointer (the root cause of the (nil) fault). Mirror the
+                // original blind-scan's offset += 7.
+                off += sizeof(std::uint64_t);
+              } else {
+                ++off;
+              }
+            }
+          }
+        }
+      }
+      reloc_blind += struct_patches;
+
+      // Post-relocation audit: scan every param_blob for ANY remaining 8-byte
+      // value that still falls in the record arena range (unpatched). These
+      // are pointers that escaped both known-offset and blind-scan relocation
+      // — the root cause of runtime faults. Log node name + offset so we can
+      // trace which kernel arg / which signature gap holds the faulting ptr.
+      static const bool audit = [] {
+        const char* e = std::getenv("SNAPSHOT_RESTORE_AUDIT");
+        return e && (e[0] == '1' || e[0] == 'y');
+      }();
+      if (audit) {
+        int ashown = 0;
+        for (const auto& node : ir.nodes) {
+          if (node.type != snapshot::GraphNodeType::kKernel) continue;
+          const auto& b = node.kernel.param_blob;
+          for (std::size_t off = 0; off + 8 <= b.size(); ++off) {
+            std::uint64_t v;
+            std::memcpy(&v, b.data() + off, 8);
+            if (v >= reloc.captured_base &&
+                v - reloc.captured_base < reloc.region_size) {
+              std::fprintf(stderr,
+                           "[restore-audit] g%zu node='%s' off=%zu "
+                           "UNPATCHED ptr=0x%llx ptr_offsets=%zu\n",
+                           idx, node.entry_name.c_str(), off,
+                           static_cast<unsigned long long>(v),
+                           node.kernel.ptr_offsets.size());
+              if (++ashown >= 20) break;
+            }
+          }
+          if (ashown >= 20) break;
+        }
+      }
+    }
+
+    snapshot::GraphHandle gh;
+    bool bs_prev_ok = false;
+    // M3k diagnostic: peek (without clearing) for a sticky HIP error left by
+    // a prior operation (a faulting Triton module load during function
+    // resolution is the prime suspect for the FULL-graph rebuild failures).
+    // If peek != success BEFORE this graph's rebuild_graph, the subsequent
+    // hipGraphAddKernelNode "launch failure" is stickiness, not a genuine
+    // per-graph problem. When SNAPSHOT_RESTORE_CLEAR_STICKY=1, also clear the
+    // error after peeking so each graph gets a fair rebuild attempt in
+    // isolation — a graph that STILL fails after a clear is genuinely bad.
+    static const bool sticky_dbg = [] {
+      const char* e = std::getenv("SNAPSHOT_RESTORE_STICKY_DBG");
+      return e && (e[0] == '1' || e[0] == 'y' || e[0] == 't');
+    }();
+    static const bool clear_sticky = [] {
+      const char* e = std::getenv("SNAPSHOT_RESTORE_CLEAR_STICKY");
+      return e && (e[0] == '1' || e[0] == 'y' || e[0] == 't');
+    }();
+    if (sticky_dbg || clear_sticky) {
+      hipError_t peek = hipPeekAtLastError();
+      if (sticky_dbg &&
+          (peek != hipSuccess || idx <= 8)) {
+        std::fprintf(stderr,
+                     "[restore-sticky] g#%zu pre-rebuild peek_err=%d (%s) "
+                     "nodes=%zu\n",
+                     idx, static_cast<int>(peek),
+                     hipGetErrorString(peek), ir.nodes.size());
+        std::fflush(stderr);
+      }
+      if (clear_sticky && peek != hipSuccess) {
+        hipGetLastError();  // clear the sticky error
+      }
+    }
+    snapshot::Status bs = backend->rebuild_graph(ir, &gh);
+    if (bs.ok()) {
+      g_restore_graphs.push_back(
+          reinterpret_cast<hipGraph_t>(gh.value));
+      g_restore_nodecounts.push_back(ir.nodes.size());
+      g_graph_nodecount[reinterpret_cast<void*>(gh.value)] =
+          ir.nodes.size();
+      ++ok;
+      bs_prev_ok = true;
+    } else if (fail_dbg < 12) {
+      std::fprintf(stderr,
+                   "[restore] rebuild_graph FAILED graph #%zu "
+                   "(nodes=%zu mods=%u): %s\n",
+                   idx, ir.nodes.size(),
+                   static_cast<unsigned>(snap.modules.size()),
+                   bs.message().c_str());
+      ++fail_dbg;
+    }
+  }
+
+  auto t1 = std::chrono::steady_clock::now();
+  double ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
+  std::fprintf(stderr,
+               "[restore] rebuilt %zu/%zu graphs (%zu failed, %zu unresolved "
+               "entries), fn_cache=%zu modules=%zu hsa-kn=%zu hsa-named=%zu, "
+               "snap-resolved=%zu snap_fb=%d, reloc "
+               "known=%llu blind=%llu live_base=0x%llx, %.1fms\n",
+               ok, snapshots.size(), snapshots.size() - ok,
+               unresolved, entry_to_fn.size(), hash_to_module.size(),
+               hsa_named_kernels, resolved_from_hsa,
+               resolved_from_snapshot,
+               snap_fallback_on ? 1 : 0,
+               static_cast<unsigned long long>(reloc_known),
+               static_cast<unsigned long long>(reloc_blind),
+               static_cast<unsigned long long>(live_base), ms);
+
+  // Mode-aware partition: split rebuilt graphs into PW (small) and FULL
+  // (large) pools by node count. FULL decode graphs have ~1124 nodes, PW
+  // fragments have 6-17, so the threshold cleanly separates them. Override
+  // via SNAPSHOT_RESTORE_FULL_NODE_THRESHOLD=<n> (default 256). When the
+  // phase is signalled (SNAPSHOT_RESTORE_PHASE), EndCapture serves from the
+  // matching pool; a missing/empty pool falls back to the other. This is the
+  // fix for the PW-fragment-in-FULL-slot replay fault (see RESULTS.md M3k++++).
+  {
+    const char* thr_env = std::getenv("SNAPSHOT_RESTORE_FULL_NODE_THRESHOLD");
+    if (thr_env && *thr_env) {
+      long t = std::strtol(thr_env, nullptr, 10);
+      if (t > 0) g_full_threshold = static_cast<std::size_t>(t);
+    }
+    g_pw_pool.clear();
+    g_full_pool.clear();
+    std::size_t pw_max = 0, full_min = SIZE_MAX;
+    for (std::size_t i = 0; i < g_restore_graphs.size(); ++i) {
+      std::size_t nc = (i < g_restore_nodecounts.size())
+                           ? g_restore_nodecounts[i]
+                           : 0;
+      if (nc > g_full_threshold) {
+        g_full_pool.push_back(i);
+        if (nc < full_min) full_min = nc;
+      } else {
+        g_pw_pool.push_back(i);
+        if (nc > pw_max) pw_max = nc;
+      }
+    }
+    std::fprintf(stderr,
+                 "[restore] mode-aware pools: pw=%zu (nodes<=%zu, max=%zu) "
+                 "full=%zu (nodes>%zu, min=%zu); serve phase via "
+                 "SNAPSHOT_RESTORE_PHASE\n",
+                 g_pw_pool.size(), g_full_threshold, pw_max,
+                 g_full_pool.size(), g_full_threshold,
+                 full_min == SIZE_MAX ? 0 : full_min);
+    std::fflush(stderr);
+  }
+}
+
 // ---- capture window delimiters --------------------------------------------
 
 hipError_t hipStreamBeginCapture(hipStream_t stream, hipStreamCaptureMode mode) {
   probe_once("hipStreamBeginCapture");
+  // Restore mode: skip ALL real captures — return pre-built graphs for the
+  // first N, then empty graphs for any extras (avoids real stream capture
+  // which can hit hipErrorStreamCaptureUnsupported for ops like MoE that
+  // allocate/synchronize). Gate: SNAPSHOT_RESTORE_DIR must be set.
+  static const bool empty_exhausted = [] {
+    const char* e = std::getenv("SNAPSHOT_RESTORE_EMPTY_EXHAUSTED");
+    return e != nullptr && (e[0] == '1' || e[0] == 'y' || e[0] == 't');
+  }();
+  if (std::getenv("SNAPSHOT_RESTORE_DIR")) {
+    std::call_once(g_restore_once, init_restore_graphs);
+    if (g_restore_mode &&
+        (g_restore_idx.load(std::memory_order_relaxed) <
+             g_restore_graphs.size() ||
+         empty_exhausted)) {
+      // Fake the capture state so hipStreamIsCapturing returns Active.
+      g_restore_stream.store(reinterpret_cast<std::uintptr_t>(stream));
+      g_restore_capturing.store(true);
+      return hipSuccess;
+    }
+    // Pre-built graphs exhausted: fall through to real capture for any extras.
+  }
+  g_census.begin_capture.fetch_add(1, std::memory_order_relaxed);
   using Fn = hipError_t (*)(hipStream_t, hipStreamCaptureMode);
   static Fn real = resolve<Fn>("hipStreamBeginCapture");
   const hipError_t status = real(stream, mode);
@@ -2019,6 +3030,7 @@ hipError_t hipStreamBeginCaptureToGraph(hipStream_t stream, hipGraph_t graph,
                                         size_t numDependencies,
                                         hipStreamCaptureMode mode) {
   probe_once("hipStreamBeginCaptureToGraph");
+  g_census.begin_capture_to_graph.fetch_add(1, std::memory_order_relaxed);
   using Fn = hipError_t (*)(hipStream_t, hipGraph_t, const hipGraphNode_t*,
                             const hipGraphEdgeData*, size_t,
                             hipStreamCaptureMode);
@@ -2033,6 +3045,70 @@ hipError_t hipStreamBeginCaptureToGraph(hipStream_t stream, hipGraph_t graph,
 
 hipError_t hipStreamEndCapture(hipStream_t stream, hipGraph_t* pGraph) {
   probe_once("hipStreamEndCapture");
+  // Restore mode: return next pre-built graph if we're in a fake capture.
+  if (g_restore_capturing.load(std::memory_order_relaxed)) {
+    std::call_once(g_restore_once, init_restore_graphs);
+    g_restore_capturing.store(false);
+    g_restore_stream.store(0);
+    std::size_t idx = g_restore_idx.fetch_add(1);
+    // Mode-aware serve: pick a graph from the pool matching the CURRENT capture
+    // phase (signalled in-process by cg_skip.py via SNAPSHOT_RESTORE_PHASE).
+    // FULL decode slots MUST get a FULL graph (many nodes); a PW fragment there
+    // nil-derefs at the first decode hipGraphLaunch. If the requested pool is
+    // empty/exhausted, fall back to the other pool, then to the exhausted path.
+    const char* phase = std::getenv("SNAPSHOT_RESTORE_PHASE");
+    bool want_full =
+        (phase != nullptr && (phase[0] == 'F' || phase[0] == 'f'));
+    auto take = [](const std::vector<std::size_t>& pool,
+                   std::atomic<std::size_t>& cur) -> std::size_t {
+      std::size_t c = cur.fetch_add(1, std::memory_order_relaxed);
+      return (c < pool.size()) ? pool[c] : SIZE_MAX;
+    };
+    std::size_t gidx = want_full ? take(g_full_pool, g_full_cursor)
+                                 : take(g_pw_pool, g_pw_cursor);
+    const char* gkind = want_full ? "FULL" : "PW";
+    if (gidx == SIZE_MAX) {
+      // Requested pool empty: fall back to the other pool.
+      std::size_t gidx2 = want_full ? take(g_pw_pool, g_pw_cursor)
+                                    : take(g_full_pool, g_full_cursor);
+      if (gidx2 != SIZE_MAX) {
+        gidx = gidx2;
+        gkind = want_full ? "PW(fallback)" : "FULL(fallback)";
+      }
+    }
+    if (g_restore_mode && gidx < g_restore_graphs.size() && pGraph != nullptr) {
+      *pGraph = g_restore_graphs[gidx];
+      g_graph_serve_idx[static_cast<void*>(*pGraph)] = gidx;
+      std::size_t nc = (gidx < g_restore_nodecounts.size())
+                           ? g_restore_nodecounts[gidx]
+                           : 0;
+      std::fprintf(stderr,
+                   "[restore] EndCapture -> pre-built graph %zu/%zu "
+                   "(phase=%s kind=%s nodes=%zu total_served=%zu)\n",
+                   gidx + 1, g_restore_graphs.size(),
+                   phase ? phase : "?", gkind, nc, idx + 1);
+      return hipSuccess;
+    }
+    // Exhausted: fall through to real EndCapture (BeginCapture already
+    // started a real capture for this window).
+    static const bool empty_exhausted = [] {
+      const char* e = std::getenv("SNAPSHOT_RESTORE_EMPTY_EXHAUSTED");
+      return e != nullptr && (e[0] == '1' || e[0] == 'y' || e[0] == 't');
+    }();
+    if (empty_exhausted && pGraph != nullptr) {
+      // Return an empty graph to avoid real stream capture (which can hit
+      // hipErrorStreamCaptureUnsupported). The empty graph is instantiable
+      // but produces no output — only for measuring READY, not inference.
+      hipGraph_t empty = nullptr;
+      hipGraphCreate(&empty, 0);
+      *pGraph = empty;
+      std::fprintf(stderr,
+                   "[restore] EndCapture -> EMPTY graph (exhausted at %zu)\n",
+                   idx + 1);
+      return hipSuccess;
+    }
+  }
+  g_census.end_capture.fetch_add(1, std::memory_order_relaxed);
   using Fn = hipError_t (*)(hipStream_t, hipGraph_t*);
   static Fn real = resolve<Fn>("hipStreamEndCapture");
   const hipError_t status = real(stream, pGraph);
@@ -2052,6 +3128,14 @@ hipError_t hipStreamEndCapture(hipStream_t stream, hipGraph_t* pGraph) {
   }
   if (have_window) {
     g_active_captures.fetch_sub(1);
+    // Cache this finalized graph's arg_blobs so a later hipGraphLaunch that
+    // inlines it into a parent capture can backfill the child nodes.
+    if (pGraph != nullptr && *pGraph != nullptr &&
+        !window.arg_blobs.empty()) {
+      const std::lock_guard<std::mutex> lock(g_mu);
+      g_finalized_graph_argcache[static_cast<void*>(*pGraph)] =
+          window.arg_blobs;
+    }
     if (g_graphs_written.load() < max_graphs() && pGraph != nullptr) {
       // Introspect the captured graph: authoritative node list + structure
       // (grid/block/params) + per-node func. Identity (names) cannot be resolved
@@ -2066,22 +3150,27 @@ hipError_t hipStreamEndCapture(hipStream_t stream, hipGraph_t* pGraph) {
         pg.arch = query_arch();  // reliable on this (capture) thread
         pg.nodes = std::move(intro);
         pg.node_funcs = std::move(intro_funcs);
+        pg.issue_ids = std::move(window.issue_ids);  // launch-time identity
         pg.arg_blobs = std::move(window.arg_blobs);  // launch-time kernarg
         pg.hooks.mod = g_cap_hooks.mod.load(std::memory_order_relaxed);
         pg.hooks.host = g_cap_hooks.host.load(std::memory_order_relaxed);
         pg.hooks.ext = g_cap_hooks.ext.load(std::memory_order_relaxed);
+        pg.hooks.hcc = g_cap_hooks.hcc.load(std::memory_order_relaxed);
         pg.hooks.exc = g_cap_hooks.exc.load(std::memory_order_relaxed);
         pg.hooks.coop_host =
             g_cap_hooks.coop_host.load(std::memory_order_relaxed);
         pg.hooks.coop_mod =
             g_cap_hooks.coop_mod.load(std::memory_order_relaxed);
         pg.hooks.addnode = g_cap_hooks.addnode.load(std::memory_order_relaxed);
+        pg.hooks.drvex = g_cap_hooks.drvex.load(std::memory_order_relaxed);
+        pg.hooks.extlk = g_cap_hooks.extlk.load(std::memory_order_relaxed);
+        pg.hooks.byptr = g_cap_hooks.byptr.load(std::memory_order_relaxed);
+        pg.hooks.graphlaunch =
+            g_cap_hooks.graphlaunch.load(std::memory_order_relaxed);
         {
           const std::lock_guard<std::mutex> lock(g_mu);
-          pg.region_base =
-              env_u64("SNAPSHOT_RECORD_REGION_BASE", g_region_base);
-          pg.region_size =
-              env_u64("SNAPSHOT_RECORD_REGION_SIZE", g_region_size);
+          pg.region_base = recorded_region_base();
+          pg.region_size = recorded_region_size();
           pg.granularity = g_granularity;
           pg.alloc_events = g_alloc_events;
         }
@@ -2093,6 +3182,39 @@ hipError_t hipStreamEndCapture(hipStream_t stream, hipGraph_t* pGraph) {
     }
   }
   return status;
+}
+
+// In restore mode, lie about capture status so PyTorch's HIPGraph asserts pass.
+// PyTorch checks hipStreamIsCapturing BEFORE and AFTER hipStreamBeginCapture:
+//   - Before: expects None (stream not already capturing)
+//   - After:  expects Active (capture started successfully)
+// Since we skip the real BeginCapture, we must fake the "Active" response.
+hipError_t hipStreamIsCapturing(hipStream_t stream,
+                               hipStreamCaptureStatus* pCaptureStatus) {
+  if (g_restore_capturing.load(std::memory_order_relaxed) && pCaptureStatus) {
+    *pCaptureStatus = hipStreamCaptureStatusActive;
+    return hipSuccess;
+  }
+  using Fn = hipError_t (*)(hipStream_t, hipStreamCaptureStatus*);
+  static Fn real = resolve<Fn>("hipStreamIsCapturing");
+  return real(stream, pCaptureStatus);
+}
+
+// Some PyTorch / ROCm versions call hipStreamGetCaptureInfo instead of (or
+// in addition to) hipStreamIsCapturing.  Fake the same response.
+// NOTE: signature must match ROCm header exactly.
+hipError_t hipStreamGetCaptureInfo(hipStream_t stream,
+                                  hipStreamCaptureStatus* captureStatusOut,
+                                  unsigned long long* graphIdOut) {
+  if (g_restore_capturing.load(std::memory_order_relaxed) && captureStatusOut) {
+    *captureStatusOut = hipStreamCaptureStatusActive;
+    if (graphIdOut) *graphIdOut = 0;
+    return hipSuccess;
+  }
+  using Fn = hipError_t (*)(hipStream_t, hipStreamCaptureStatus*,
+                            unsigned long long*);
+  static Fn real = resolve<Fn>("hipStreamGetCaptureInfo");
+  return real(stream, captureStatusOut, graphIdOut);
 }
 
 // ---- kernel launch (the HIP hot path) --------------------------------------
@@ -2186,9 +3308,7 @@ void** __hipRegisterFatBinary(const void* data) {
   using Fn = void** (*)(const void*);
   static Fn real = resolve<Fn>("__hipRegisterFatBinary");
   void** handle = real(data);
-  const bool want = g_graphs_written.load(std::memory_order_relaxed) <
-                        max_graphs() ||
-                    g_active_captures.load(std::memory_order_relaxed) > 0;
+  const bool want = recording_active();
   if (handle != nullptr && data != nullptr && want) {
     // FatBinWrapper: { u32 magic "HPIF"; u32 version; const void* binary; ... }
     // The HSACO code objects live in the __CLANG_OFFLOAD_BUNDLE__ at `binary`.
@@ -2237,9 +3357,7 @@ void __hipRegisterFunction(void** modules, const void* hostFunction,
   using Fn = void (*)(void**, const void*, char*, const char*, unsigned int,
                       void*, void*, void*, void*, int*);
   static Fn real = resolve<Fn>("__hipRegisterFunction");
-  const bool want = g_graphs_written.load(std::memory_order_relaxed) <
-                        max_graphs() ||
-                    g_active_captures.load(std::memory_order_relaxed) > 0;
+  const bool want = recording_active();
   if (modules != nullptr && hostFunction != nullptr && want) {
     HostFuncRec rec;
     rec.fatbin_handle = reinterpret_cast<std::uintptr_t>(modules);
@@ -2290,6 +3408,33 @@ hipError_t hipLaunchKernel(const void* function_address, dim3 numBlocks,
               stream);
 }
 
+// ---- per-thread-default-stream (_spt) variants ---------------------------
+// When HIP_API_PER_THREAD_DEFAULT_STREAM is defined, HIP macros remap
+// hipLaunchKernel -> hipLaunchKernel_spt, hipGraphLaunch -> hipGraphLaunch_spt,
+// hipStreamBeginCapture -> _spt, etc. vLLM/PyTorch is compiled with a MIX of
+// per-thread and legacy default stream, so some captured nodes flow through
+// the _spt launch entry points and bypass the non-_spt interposers above.
+// We interpose the _spt launch symbols with identical capture logic.
+hipError_t hipLaunchKernel_spt(const void* function_address, dim3 numBlocks,
+                              dim3 dimBlocks, void** args,
+                              std::size_t sharedMemBytes, hipStream_t stream) {
+  probe_once("hipLaunchKernel_spt");
+  using Fn = hipError_t (*)(const void*, dim3, dim3, void**, std::size_t,
+                            hipStream_t);
+  static Fn real = resolve<Fn>("hipLaunchKernel_spt");
+  if (g_active_captures.load(std::memory_order_relaxed) > 0) {
+    g_cap_hooks.host.fetch_add(1, std::memory_order_relaxed);
+    std::vector<std::byte> kernarg;
+    if (capture_args_enabled()) {
+      kernarg = pack_kernel_args_array(args);
+    }
+    record_issue(stream, lookup_host_fid(function_address), std::move(kernarg));
+  }
+  drain_naming_inline();
+  return real(function_address, numBlocks, dimBlocks, args, sharedMemBytes,
+              stream);
+}
+
 // The aiter/Tensile launch path (and how vLLM's captured GEMM + many fused
 // kernels reach the graph). Declared here matching hip_ext.h exactly so the C
 // symbol is interposed; we record the function's identity in issue order like
@@ -2323,11 +3468,46 @@ hipError_t hipExtModuleLaunchKernel(hipFunction_t f, std::uint32_t gWSx,
               kernelParams, extra, startEvent, stopEvent, flags);
 }
 
+// hipHccModuleLaunchKernel: the LEGACY HCC module-launch path (same signature
+// as hipExtModuleLaunchKernel MINUS the trailing flags). aiter / CK kernels on
+// older HIP builds launch through here. This was the missing entry point for
+// nodes that appeared in the captured graph but not in any launch hook
+// (mod/ext/coop_mod all zero) — they resolve via hipKernelNameRef (module path)
+// not the host map, confirming a module-launch origin.
+hipError_t hipHccModuleLaunchKernel(hipFunction_t f,
+                                   unsigned int gWSx, unsigned int gWSy,
+                                   unsigned int gWSz, unsigned int lWSx,
+                                   unsigned int lWSy, unsigned int lWSz,
+                                   size_t sharedMemBytes, hipStream_t hStream,
+                                   void** kernelParams, void** extra,
+                                   hipEvent_t startEvent,
+                                   hipEvent_t stopEvent) {
+  probe_once("hipHccModuleLaunchKernel");
+  using Fn = hipError_t (*)(hipFunction_t, unsigned int, unsigned int,
+                            unsigned int, unsigned int, unsigned int,
+                            unsigned int, size_t, hipStream_t, void**, void**,
+                            hipEvent_t, hipEvent_t);
+  static Fn real = resolve<Fn>("hipHccModuleLaunchKernel");
+  if (g_active_captures.load(std::memory_order_relaxed) > 0) {
+    g_cap_hooks.hcc.fetch_add(1, std::memory_order_relaxed);
+    std::vector<std::byte> args;
+    if (capture_args_enabled()) {
+      args = extra ? pack_kernel_args_buffer(extra)
+                   : pack_kernel_args_array(kernelParams);
+    }
+    record_issue(hStream, lookup_module_fid(f), std::move(args));
+  }
+  drain_naming_inline();
+  return real(f, gWSx, gWSy, gWSz, lWSx, lWSy, lWSz, sharedMemBytes, hStream,
+              kernelParams, extra, startEvent, stopEvent);
+}
+
 hipError_t hipGraphAddKernelNode(hipGraphNode_t* pGraphNode, hipGraph_t graph,
                                 const hipGraphNode_t* dependencies,
                                 std::size_t numDependencies,
                                 const hipKernelNodeParams* nodeParams) {
   probe_once("hipGraphAddKernelNode");
+  g_census.add_kernel_node.fetch_add(1, std::memory_order_relaxed);
   using Fn = hipError_t (*)(hipGraphNode_t*, hipGraph_t, const hipGraphNode_t*,
                             std::size_t, const hipKernelNodeParams*);
   static Fn real = resolve<Fn>("hipGraphAddKernelNode");
@@ -2335,20 +3515,186 @@ hipError_t hipGraphAddKernelNode(hipGraphNode_t* pGraphNode, hipGraph_t graph,
     if (g_active_captures.load(std::memory_order_relaxed) > 0) {
       g_cap_hooks.addnode.fetch_add(1, std::memory_order_relaxed);
     }
-    // Record the func this directly-added node uses, so it can be correlated
-    // like any captured launch (covers torch.compile/inductor building graph
-    // nodes explicitly rather than via stream capture of <<<>>> launches).
-    const std::lock_guard<std::mutex> lock(g_mu);
-    auto fit = g_functions.find(reinterpret_cast<std::uintptr_t>(nodeParams->func));
-    auto hfit = g_host_functions.find(reinterpret_cast<std::uintptr_t>(nodeParams->func));
-    if (verbose() && fit == g_functions.end() && hfit == g_host_functions.end()) {
+    // Capture the app-passed params (provenance b for child-graph nodes) OUTSIDE
+    // the lock — pack_* touches the (caller-owned, stable) launch buffer.
+    std::vector<std::byte> blob;
+    if (nodeParams->extra != nullptr) {
+      blob = pack_kernel_args_buffer(nodeParams->extra);
+    } else if (nodeParams->kernelParams != nullptr) {
+      blob = pack_kernel_args_array(nodeParams->kernelParams);
+    }
+    bool not_in_map = false;
+    {
+      const std::lock_guard<std::mutex> lock(g_mu);
+      auto fit = g_functions.find(reinterpret_cast<std::uintptr_t>(nodeParams->func));
+      auto hfit = g_host_functions.find(reinterpret_cast<std::uintptr_t>(nodeParams->func));
+      not_in_map = (fit == g_functions.end() && hfit == g_host_functions.end());
+      // Keyed by graph so hipGraphLaunch can backfill per-node.
+      g_addnode_params[static_cast<void*>(graph)].push_back(std::move(blob));
+    }
+    static std::atomic<int> addn_log{0};
+    if ((verbose() && not_in_map) ||
+        (verbose() && addn_log.fetch_add(1, std::memory_order_relaxed) < 10)) {
       std::fprintf(stderr,
-                   "[record] hipGraphAddKernelNode func=0x%llx NOT in any map\n",
+                   "[record] hipGraphAddKernelNode graph=%p func=0x%llx "
+                   "in_capture=%d\n",
+                   static_cast<void*>(graph),
                    static_cast<unsigned long long>(
-                       reinterpret_cast<std::uintptr_t>(nodeParams->func)));
+                       reinterpret_cast<std::uintptr_t>(nodeParams->func)),
+                   g_active_captures.load(std::memory_order_relaxed) > 0 ? 1 : 0);
     }
   }
   return real(pGraphNode, graph, dependencies, numDependencies, nodeParams);
+}
+
+// hipGraphInstantiate variants: record exec->graph so hipGraphLaunch can
+// translate. All three share (exec*, graph, ...) as leading args. vLLM/PyTorch
+// may route through any of them.
+hipError_t hipGraphInstantiate(hipGraphExec_t* pGraphExec, hipGraph_t graph,
+                              hipGraphNode_t* pErrorNode, char* pLogBuffer,
+                              std::size_t bufferSize) {
+  probe_once("hipGraphInstantiate");
+  using Fn = hipError_t (*)(hipGraphExec_t*, hipGraph_t, hipGraphNode_t*,
+                            char*, std::size_t);
+  static Fn real = resolve<Fn>("hipGraphInstantiate");
+  const hipError_t status = real(pGraphExec, graph, pErrorNode, pLogBuffer,
+                                 bufferSize);
+  if (status == hipSuccess && pGraphExec != nullptr && *pGraphExec != nullptr) {
+    const std::lock_guard<std::mutex> lock(g_mu);
+    g_exec_to_graph[static_cast<void*>(*pGraphExec)] =
+        static_cast<void*>(graph);
+  }
+  return status;
+}
+
+hipError_t hipGraphInstantiateWithFlags(hipGraphExec_t* pGraphExec,
+                                       hipGraph_t graph,
+                                       unsigned long long flags) {
+  probe_once("hipGraphInstantiateWithFlags");
+  using Fn = hipError_t (*)(hipGraphExec_t*, hipGraph_t, unsigned long long);
+  static Fn real = resolve<Fn>("hipGraphInstantiateWithFlags");
+  const hipError_t status = real(pGraphExec, graph, flags);
+  if (status == hipSuccess && pGraphExec != nullptr && *pGraphExec != nullptr) {
+    const std::lock_guard<std::mutex> lock(g_mu);
+    g_exec_to_graph[static_cast<void*>(*pGraphExec)] =
+        static_cast<void*>(graph);
+  }
+  return status;
+}
+
+hipError_t hipGraphInstantiateWithParams(hipGraphExec_t* pGraphExec,
+                                        hipGraph_t graph,
+                                        hipGraphInstantiateParams* params) {
+  probe_once("hipGraphInstantiateWithParams");
+  using Fn = hipError_t (*)(hipGraphExec_t*, hipGraph_t,
+                            hipGraphInstantiateParams*);
+  static Fn real = resolve<Fn>("hipGraphInstantiateWithParams");
+  const hipError_t status = real(pGraphExec, graph, params);
+  if (status == hipSuccess && pGraphExec != nullptr && *pGraphExec != nullptr) {
+    const std::lock_guard<std::mutex> lock(g_mu);
+    g_exec_to_graph[static_cast<void*>(*pGraphExec)] =
+        static_cast<void*>(graph);
+  }
+  return status;
+}
+
+// Generic hipGraphAddNode (the non-typed variant). If vLLM builds kernel nodes
+// via the generic add rather than hipGraphAddKernelNode, the census counter
+// reveals it. Forward-only probe (params opaque).
+hipError_t hipGraphAddNode(hipGraphNode_t* pGraphNode, hipGraph_t graph,
+                          const hipGraphNode_t* dependencies,
+                          std::size_t numDependencies,
+                          hipGraphNodeParams* nodeParams) {
+  probe_once("hipGraphAddNode");
+  g_census.add_node.fetch_add(1, std::memory_order_relaxed);
+  using Fn = hipError_t (*)(hipGraphNode_t*, hipGraph_t, const hipGraphNode_t*,
+                            std::size_t, hipGraphNodeParams*);
+  static Fn real = resolve<Fn>("hipGraphAddNode");
+  return real(pGraphNode, graph, dependencies, numDependencies, nodeParams);
+}
+
+// hipGraphLaunch: when a pre-captured child graph is replayed during an open
+// parent capture, the runtime inlines the child's nodes — but they never route
+// through hipLaunchKernel, so their args are missing from the parent window.
+// We backfill them from whichever provenance built the child graph:
+//   (a) stream-captured -> g_finalized_graph_argcache (its EndCapture window)
+//   (b) AddKernelNode-built -> g_addnode_params (app-passed params)
+hipError_t hipGraphLaunch(hipGraphExec_t graphExec, hipStream_t stream) {
+  probe_once("hipGraphLaunch");
+  // M3k launch-probe: log the first hipGraphLaunch's graph identity regardless
+  // of capture state (the faulting decode launch takes the in-capture branch).
+  std::call_once(g_launchprobe_done, [graphExec]() {
+    void* exec_key = static_cast<void*>(graphExec);
+    void* graph_key = nullptr;
+    std::size_t serve_idx = SIZE_MAX, ncount = 0;
+    {
+      const std::lock_guard<std::mutex> lock(g_mu);
+      auto eit = g_exec_to_graph.find(exec_key);
+      if (eit != g_exec_to_graph.end()) graph_key = eit->second;
+    }
+    if (graph_key != nullptr) {
+      auto sit = g_graph_serve_idx.find(graph_key);
+      if (sit != g_graph_serve_idx.end()) serve_idx = sit->second;
+      auto nit = g_graph_nodecount.find(graph_key);
+      if (nit != g_graph_nodecount.end()) ncount = nit->second;
+    }
+    std::fprintf(stderr,
+         "[launch-probe] first hipGraphLaunch exec=%p graph=%p "
+         "serve_idx=%zu nodes=%zu active_captures=%d %s\n",
+         exec_key, graph_key, serve_idx, ncount,
+         (int)g_active_captures.load(std::memory_order_relaxed),
+         (ncount > 100 ? "(FULL)" : (serve_idx == SIZE_MAX ? "(not-a-served-graph/live)" : "(PW)")));
+    std::fflush(stderr);
+  });
+  g_census.graph_launch.fetch_add(1, std::memory_order_relaxed);
+  using Fn = hipError_t (*)(hipGraphExec_t, hipStream_t);
+  static Fn real = resolve<Fn>("hipGraphLaunch");
+  if (g_active_captures.load(std::memory_order_relaxed) > 0) {
+    void* exec_key = static_cast<void*>(graphExec);
+    void* graph_key = nullptr;
+    std::vector<std::vector<std::byte>> child_args;
+    std::string provenance = "none";
+    {
+      const std::lock_guard<std::mutex> lock(g_mu);
+      auto eit = g_exec_to_graph.find(exec_key);
+      if (eit != g_exec_to_graph.end()) graph_key = eit->second;
+      if (graph_key != nullptr) {
+        auto it = g_finalized_graph_argcache.find(graph_key);
+        if (it != g_finalized_graph_argcache.end()) {
+          child_args = it->second;
+          provenance = "stream-capture";
+        } else {
+          auto ait = g_addnode_params.find(graph_key);
+          if (ait != g_addnode_params.end()) {
+            child_args = ait->second;
+            provenance = "addnode";
+          }
+        }
+      }
+    }
+    g_graphlaunch_in_capture.fetch_add(1, std::memory_order_relaxed);
+    g_cap_hooks.graphlaunch.fetch_add(1, std::memory_order_relaxed);
+    if (verbose()) {
+      std::fprintf(stderr,
+                   "[record] hipGraphLaunch in-capture graphExec=%p "
+                   "graph=%p provenance=%s child_nodes=%zu\n",
+                   exec_key, graph_key, provenance.c_str(), child_args.size());
+    }
+    if (!child_args.empty()) {
+      const std::lock_guard<std::mutex> lock(g_mu);
+      auto wit = g_windows.find(static_cast<void*>(stream));
+      if (wit != g_windows.end()) {
+        for (auto& a : child_args) {
+          wit->second.arg_blobs.push_back(a);
+        }
+        g_graphlaunch_backfilled.fetch_add(child_args.size(),
+                                           std::memory_order_relaxed);
+      }
+    }
+  } else {
+    // Decode-time launch (outside any capture) -- probe moved to top of fn.
+  }
+  return real(graphExec, stream);
 }
 
 // Forward-only probes for the remaining module/cooperative launch variants
@@ -2365,6 +3711,28 @@ hipError_t hipLaunchCooperativeKernel(const void* function_address, dim3 numBloc
   if (g_active_captures.load(std::memory_order_relaxed) > 0) {
     g_cap_hooks.coop_host.fetch_add(1, std::memory_order_relaxed);
     record_issue(stream, lookup_host_fid(function_address));
+  }
+  return real(function_address, numBlocks, dimBlocks, args, sharedMemBytes,
+              stream);
+}
+
+// _spt variant of cooperative launch (per-thread default stream).
+hipError_t hipLaunchCooperativeKernel_spt(const void* function_address,
+                                         dim3 numBlocks, dim3 dimBlocks,
+                                         void** args,
+                                         unsigned int sharedMemBytes,
+                                         hipStream_t stream) {
+  probe_once("hipLaunchCooperativeKernel_spt");
+  using Fn = hipError_t (*)(const void*, dim3, dim3, void**, unsigned int,
+                            hipStream_t);
+  static Fn real = resolve<Fn>("hipLaunchCooperativeKernel_spt");
+  if (g_active_captures.load(std::memory_order_relaxed) > 0) {
+    g_cap_hooks.coop_host.fetch_add(1, std::memory_order_relaxed);
+    std::vector<std::byte> kernarg;
+    if (capture_args_enabled()) {
+      kernarg = pack_kernel_args_array(args);
+    }
+    record_issue(stream, lookup_host_fid(function_address), std::move(kernarg));
   }
   return real(function_address, numBlocks, dimBlocks, args, sharedMemBytes,
               stream);
@@ -2399,7 +3767,15 @@ hsa_status_t hsa_executable_freeze(hsa_executable_t executable,
                                    const char* options) {
   using Fn = hsa_status_t (*)(hsa_executable_t, const char*);
   static Fn real = resolve<Fn>("hsa_executable_freeze");
-  return real(executable, options);
+  const hsa_status_t rc = real(executable, options);
+  // Index this executable's kernel symbols into g_hsa_kernels (kernel_object
+  // -> name). Runs during BOTH record and restore warmup. On restore it lets
+  // init_restore_graphs resolve drifting Triton kernels by NAME from the
+  // live run's OWN frozen executables — no duplicate module load needed.
+  if (rc == 0 /*HSA_STATUS_SUCCESS*/) {
+    record_executable_kernels(executable);
+  }
+  return rc;
 }
 
 // M3b: capture HSACO bytes loaded directly through the ROCr runtime. Triton JIT
@@ -2420,9 +3796,7 @@ hsa_status_t hsa_code_object_reader_create_from_memory(
   static Fn real = resolve<Fn>("hsa_code_object_reader_create_from_memory");
   const hsa_status_t rc =
       real(code_object_data, code_object_data_size, code_object_reader);
-  const bool want = g_graphs_written.load(std::memory_order_relaxed) <
-                        max_graphs() ||
-                    g_active_captures.load(std::memory_order_relaxed) > 0;
+  const bool want = recording_active();
   if (rc == 0 /*HSA_STATUS_SUCCESS*/ && code_object_reader != nullptr &&
       code_object_data != nullptr && code_object_data_size >= 64 && want) {
     const std::uint64_t handle = code_object_reader->handle;
@@ -2517,9 +3891,18 @@ hipError_t hipLaunchByPtr(const void* func) {
   using Fn = hipError_t (*)(const void*);
   static Fn real = resolve<Fn>("hipLaunchByPtr");
   diag_launch("hipLaunchByPtr", func, /*key_is_host_ptr=*/true);
+  if (g_active_captures.load(std::memory_order_relaxed) > 0) {
+    g_cap_hooks.byptr.fetch_add(1, std::memory_order_relaxed);
+    record_issue(nullptr, lookup_host_fid(func));
+  }
   return real(func);
 }
 
+// These two interposers use hipLaunchConfig_t / HIP_LAUNCH_CONFIG, which are
+// absent from some ROCm 6.3 header builds (they exist in the patched ROCm the
+// GPU nodes expose via EDF). Guard so the login-node build (for quick
+// iteration) succeeds; the GPU build defines SNAPSHOT_HAS_LAUNCH_EX.
+#if defined(SNAPSHOT_HAS_LAUNCH_EX)
 hipError_t hipLaunchKernelExC(const hipLaunchConfig_t* config, const void* fPtr,
                               void** args_param) {
   probe_once("hipLaunchKernelExC");
@@ -2545,8 +3928,19 @@ hipError_t hipDrvLaunchKernelEx(const HIP_LAUNCH_CONFIG* config, hipFunction_t f
   static Fn real = resolve<Fn>("hipDrvLaunchKernelEx");
   diag_launch("hipDrvLaunchKernelEx", reinterpret_cast<const void*>(f),
               /*key_is_host_ptr=*/false);
+  if (g_active_captures.load(std::memory_order_relaxed) > 0 && config != nullptr) {
+    g_cap_hooks.drvex.fetch_add(1, std::memory_order_relaxed);
+    std::vector<std::byte> kernarg;
+    if (capture_args_enabled()) {
+      kernarg = extra ? pack_kernel_args_buffer(extra)
+                      : pack_kernel_args_array(params);
+    }
+    hipStream_t s = nullptr;
+    record_issue(s, lookup_module_fid(f), std::move(kernarg));
+  }
   return real(config, f, params, extra);
 }
+#endif  // SNAPSHOT_HAS_LAUNCH_EX
 
 hipError_t hipExtLaunchKernel(const void* function_address, dim3 numBlocks,
                               dim3 dimBlocks, void** args, size_t sharedMemBytes,
@@ -2557,6 +3951,14 @@ hipError_t hipExtLaunchKernel(const void* function_address, dim3 numBlocks,
                             hipEvent_t, hipEvent_t, int);
   static Fn real = resolve<Fn>("hipExtLaunchKernel");
   diag_launch("hipExtLaunchKernel", function_address, /*key_is_host_ptr=*/true);
+  if (g_active_captures.load(std::memory_order_relaxed) > 0) {
+    g_cap_hooks.extlk.fetch_add(1, std::memory_order_relaxed);
+    std::vector<std::byte> kernarg;
+    if (capture_args_enabled()) {
+      kernarg = pack_kernel_args_array(args);
+    }
+    record_issue(stream, lookup_host_fid(function_address), std::move(kernarg));
+  }
   return real(function_address, numBlocks, dimBlocks, args, sharedMemBytes,
               stream, startEvent, stopEvent, flags);
 }

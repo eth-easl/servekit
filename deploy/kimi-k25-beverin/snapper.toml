@@ -1,0 +1,21 @@
+name    = "kimi-k25-beverin"
+profile = "beverin"
+engine  = "vllm"
+served_model_name = "moonshotai/Kimi-K2.7-Code"
+port = 8000
+default_nodes = 2
+
+[scripts]
+probe = "probe_vllm.sbatch"
+serve = "serve_kimi_k25.sbatch"
+
+[ready]
+markers = ["APIV1-server"]
+log_pattern = "logs/opentela-{job}.log"
+
+[verify]
+models_path = "/v1/models"
+chat_path   = "/v1/chat/completions"
+
+[snapshot]
+enabled = false

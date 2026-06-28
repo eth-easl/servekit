@@ -45,6 +45,19 @@ def _in_capture():
     return getattr(_tls, "capture", False)
 
 
+def _set_phase_env(mode_name):
+    """Signal the current capture phase (PIECEWISE/FULL) to the HIP
+    interposer in-process. The interposer reads SNAPSHOT_RESTORE_PHASE at each
+    hipStreamEndCapture and serves a graph from the matching PW/FULL pool
+    (mode-aware serve; see snapshot_record.cpp). os.environ.__setitem__ calls
+    libc setenv(), which updates the same process environ that the
+    interposer's std::getenv reads — no IPC needed."""
+    try:
+        os.environ["SNAPSHOT_RESTORE_PHASE"] = str(mode_name or "")
+    except Exception:
+        pass
+
+
 def _install():
     import torch
     from vllm.compilation import cuda_graph as cgmod
@@ -210,6 +223,7 @@ def _install():
         def _timed(self, batch_descriptors, cudagraph_runtime_mode):
             n = len(batch_descriptors)
             _tls.cg_mode = getattr(cudagraph_runtime_mode, "name", "")
+            _set_phase_env(_tls.cg_mode)
             t0 = time.perf_counter()
             _orig_capture(self, batch_descriptors, cudagraph_runtime_mode)
             el = time.perf_counter() - t0

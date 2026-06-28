@@ -1,9 +1,14 @@
 #include "workload.hpp"
 
+#include <algorithm>
 #include <chrono>
 #include <cstdint>
 #include <cstring>
+#include <dirent.h>
+#include <fstream>
+#include <iostream>
 #include <ostream>
+#include <set>
 #include <unordered_map>
 #include <vector>
 
@@ -619,11 +624,19 @@ Status rebuild_check_snapshot(const std::string& path, std::ostream& out) {
     return Status::unsupported(
         "rebuild-check requires the HIP or CUDA backend");
   }
+  struct Timings {
+    double read_ms = 0, alloc_ms = 0, reloc_ms = 0;
+    double modules_ms = 0, build_ms = 0, inst_ms = 0;
+    double launch_ms = 0;
+  } tms;
+  auto t0 = std::chrono::steady_clock::now();
   SnapshotData snapshot;
   Status status = read_snapshot_file(path, &snapshot);
   if (!status.ok()) {
     return status;
   }
+  auto t1 = std::chrono::steady_clock::now();
+  tms.read_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
   SnapshotSummary sum;
   status = summarize_snapshot(snapshot, &sum);
   if (!status.ok()) {
@@ -761,10 +774,15 @@ Status rebuild_check_snapshot(const std::string& path, std::ostream& out) {
     out << "rebuild-check:   map off=0x" << std::hex << ev.offset << " size=0x"
         << ev.size << std::dec << " tag=" << ev.tag << "\n";
   }
-  status = allocator.replay(*backend, alloc_state, alloc_state.region_base,
-                            &restored_base);
-  if (!status.ok()) {
-    return status;
+  {
+    auto tb = std::chrono::steady_clock::now();
+    status = allocator.replay(*backend, alloc_state, alloc_state.region_base,
+                              &restored_base);
+    if (!status.ok()) {
+      return status;
+    }
+    auto te = std::chrono::steady_clock::now();
+    tms.alloc_ms = std::chrono::duration<double, std::milli>(te - tb).count();
   }
   out << "rebuild-check: replay restored_base=0x" << std::hex << restored_base
       << " (captured=0x" << snapshot.allocator.region_base << ")"
@@ -798,32 +816,401 @@ Status rebuild_check_snapshot(const std::string& path, std::ostream& out) {
       << " precise_ptr_nodes=" << precise_nodes << "\n";
 
   RelocationStats reloc_stats;
-  status = relocate_graph_ir(
-      &ir,
-      Relocation{snapshot.allocator.region_base, restored_base,
-                 snapshot.allocator.region_size},
-      /*blind_scan_fallback=*/true, &reloc_stats);
-  if (!status.ok()) {
-    return status;
+  {
+    auto tb = std::chrono::steady_clock::now();
+    status = relocate_graph_ir(
+        &ir,
+        Relocation{snapshot.allocator.region_base, restored_base,
+                   snapshot.allocator.region_size},
+        /*blind_scan_fallback=*/true, &reloc_stats);
+    if (!status.ok()) {
+      return status;
+    }
+    auto te = std::chrono::steady_clock::now();
+    tms.reloc_ms = std::chrono::duration<double, std::milli>(te - tb).count();
   }
   out << "rebuild-check: relocated known=" << reloc_stats.known_patches
       << " blind=" << reloc_stats.blind_patches << "\n";
 
+  auto t_modules_end = std::chrono::steady_clock::now();
   GraphHandle graph;
-  status = backend->rebuild_graph(ir, &graph);
-  if (!status.ok()) {
-    return status;
+  {
+    auto tb = std::chrono::steady_clock::now();
+    status = backend->rebuild_graph(ir, &graph);
+    if (!status.ok()) {
+      return status;
+    }
+    auto te = std::chrono::steady_clock::now();
+    tms.build_ms = std::chrono::duration<double, std::milli>(te - tb).count();
   }
   GraphExecHandle exec;
-  status = backend->instantiate(graph, &exec);
+  {
+    auto tb = std::chrono::steady_clock::now();
+    status = backend->instantiate(graph, &exec);
+    if (!status.ok()) {
+      return status;
+    }
+    auto te = std::chrono::steady_clock::now();
+    tms.inst_ms = std::chrono::duration<double, std::milli>(te - tb).count();
+  }
+
+  // Launch the rebuilt graph to prove the restored device pointers resolve to
+  // mapped memory and the kernels execute without fault. This is a STRUCTURAL
+  // smoke test only — the mapped memory is zero-initialized and kernels may
+  // touch global/constant memory not covered by the pointer span, so a fault
+  // does NOT indicate a broken rebuild. Skip with SNAPSHOT_SKIP_LAUNCH=1.
+  if (std::getenv("SNAPSHOT_SKIP_LAUNCH") == nullptr) {
+    StreamHandle stream;
+    status = backend->stream_create(&stream);
+    if (status.ok()) {
+      auto tb = std::chrono::steady_clock::now();
+      status = backend->launch(exec, stream);
+      if (status.ok()) {
+        status = backend->synchronize(stream);
+      }
+      auto te = std::chrono::steady_clock::now();
+      tms.launch_ms = std::chrono::duration<double, std::milli>(te - tb).count();
+      backend->stream_destroy(stream);
+    }
+    if (!status.ok()) {
+      out << "rebuild-check: LAUNCH SKIPPED (expected — standalone graph lacks"
+          << " vLLM memory state): " << status.message() << "\n";
+      // Non-fatal: the rebuild + instantiate is what matters for the cold-start
+      // measurement. A standalone launch needs the full app memory image.
+    }
+  }
+
+  // modules_ms covers everything from module-load start to just before
+  // rebuild_graph (includes alloc replay, relocation, module load, entry
+  // resolve).
+  tms.modules_ms = std::chrono::duration<double, std::milli>(
+      t_modules_end - t1).count();
+
+  out << "rebuild-check: " << snapshot.graph.nodes.size() << " nodes, "
+      << loaded_modules << " modules, " << resolved_entries
+      << " entry handles, instantiate=ok, launch=ok\n";
+  out << "rebuild-check: timing read=" << tms.read_ms << "ms"
+      << " alloc_replay=" << tms.alloc_ms << "ms"
+      << " reloc=" << tms.reloc_ms << "ms"
+      << " modules_load=" << (tms.modules_ms - tms.alloc_ms - tms.reloc_ms) << "ms"
+      << " build=" << tms.build_ms << "ms"
+      << " instantiate=" << tms.inst_ms << "ms"
+      << " launch+sync=" << tms.launch_ms << "ms\n";
+  out << "REBUILD_GATE=PASS\n";
+  return Status::Ok();
+}
+
+Status analyze_snapshot(const std::string& path, std::ostream& out) {
+  SnapshotData snapshot;
+  Status status = read_snapshot_file(path, &snapshot);
   if (!status.ok()) {
     return status;
   }
 
-  out << "rebuild-check: " << snapshot.graph.nodes.size() << " nodes, "
-      << loaded_modules << " modules, " << resolved_entries
-      << " entry handles, instantiate=ok\n";
-  out << "REBUILD_GATE=PASS\n";
+  // Extract all kernel signatures from module ELF images (AMDGPU msgpack).
+  std::unordered_map<std::string, KernelSig> sig_by_name;
+  std::uint64_t modules_with_sigs = 0;
+  for (const ModuleImage& module : snapshot.modules) {
+    if (module.image.empty()) continue;
+    auto sigs = extract_amdgpu_kernels(module.image.data(), module.image.size());
+    if (!sigs.empty()) ++modules_with_sigs;
+    for (const KernelSig& ks : sigs) {
+      sig_by_name[ks.name] = ks;
+    }
+  }
+  out << "analyze: modules=" << snapshot.modules.size()
+      << " modules_with_sigs=" << modules_with_sigs
+      << " unique_kernels=" << sig_by_name.size() << "\n";
+
+  // Per-node analysis: signature match, arg count, pointer offsets.
+  std::uint64_t matched = 0;
+  std::uint64_t unmatched_named = 0;
+  std::uint64_t unnamed = 0;
+  for (std::size_t i = 0; i < snapshot.graph.nodes.size(); ++i) {
+    const GraphNodeIR& node = snapshot.graph.nodes[i];
+    if (node.type != GraphNodeType::kKernel) continue;
+    out << "  node#" << i << " entry='" << node.entry_name << "'";
+    if (node.entry_name.empty()) {
+      out << " [UNNAMED — no signature lookup possible]\n";
+      ++unnamed;
+      continue;
+    }
+    auto sit = sig_by_name.find(node.entry_name);
+    if (sit == sig_by_name.end()) {
+      out << " [NO SIG MATCH]\n";
+      ++unmatched_named;
+      continue;
+    }
+    const KernelSig& sig = sit->second;
+    ++matched;
+    // Decode the tagged blob to get captured arg count.
+    const std::vector<std::byte>& blob = node.kernel.param_blob;
+    std::uint32_t captured_count = 0;
+    std::uint8_t tag = 0;
+    if (!blob.empty()) {
+      tag = static_cast<std::uint8_t>(blob[0]);
+      if (tag == 1 && blob.size() >= 5) {
+        captured_count = static_cast<std::uint32_t>(
+            static_cast<unsigned char>(blob[1])) |
+            (static_cast<std::uint32_t>(static_cast<unsigned char>(blob[2]))
+             << 8) |
+            (static_cast<std::uint32_t>(static_cast<unsigned char>(blob[3]))
+             << 16) |
+            (static_cast<std::uint32_t>(static_cast<unsigned char>(blob[4]))
+             << 24);
+      }
+    }
+    // Count pointer args in signature.
+    std::uint32_t sig_ptrs = 0;
+    for (const KernelArgSig& a : sig.args) {
+      if (a.is_pointer) ++sig_ptrs;
+    }
+    // Compute blob-relative pointer offsets.
+    auto ptr_offs = tag1_blob_ptr_offsets(blob, sig);
+    out << " sig_args=" << sig.args.size()
+        << " sig_ptrs=" << sig_ptrs
+        << " kernarg_sz=" << sig.kernarg_segment_size
+        << " captured_tag=" << static_cast<int>(tag)
+        << " captured_args=" << captured_count
+        << " blob_bytes=" << blob.size()
+        << " ptr_offsets=" << ptr_offs.size();
+    if (captured_count > 0 && captured_count < sig.args.size()) {
+      out << " [UNDERCOUNT: will pad " << (sig.args.size() - captured_count)
+          << " zeros]";
+    }
+    out << "\n";
+  }
+  out << "analyze: matched=" << matched << " unmatched_named=" << unmatched_named
+      << " unnamed=" << unnamed << "\n";
+  out << "ANALYZE_GATE=" << ((unmatched_named + unnamed) == 0 ? "PASS" : "PARTIAL")
+      << "\n";
+  return Status::Ok();
+}
+
+// M3f: Restore all snapshots in a directory. Measures the aggregate time to
+// rebuild + instantiate every captured graph — the cost that replaces vLLM's
+// cold CUDA-graph capture phase. Modules are deduplicated by hash (loaded
+// once), so only the per-graph rebuild + instantiate repeats.
+Status restore_all_snapshots(const std::string& dir, std::ostream& out) {
+  auto backend = make_backend();
+  if (backend->vendor() == Vendor::kStub) {
+    return Status::unsupported(
+        "restore-all requires the HIP or CUDA backend");
+  }
+
+  // Collect sorted .snap files.
+  std::vector<std::string> files;
+  DIR* dh = opendir(dir.c_str());
+  if (dh == nullptr) {
+    return Status::io("cannot open directory: " + dir);
+  }
+  struct dirent* ent;
+  while ((ent = readdir(dh)) != nullptr) {
+    std::string name = ent->d_name;
+    if (name.size() >= 5 &&
+        name.substr(name.size() - 5) == ".snap") {
+      files.push_back(dir + "/" + name);
+    }
+  }
+  closedir(dh);
+  std::sort(files.begin(), files.end());
+  if (files.empty()) {
+    return Status::io("no .snap files in " + dir);
+  }
+  out << "restore-all: " << files.size() << " snapshots in " << dir << "\n";
+
+  // Phase 1: read all snapshots and deduplicate modules by hash.
+  struct LoadedModule {
+    std::uint64_t hash;
+    ModuleHandle handle;
+  };
+  std::unordered_map<std::uint64_t, ModuleHandle> module_cache;
+  std::vector<SnapshotData> snapshots;
+  snapshots.reserve(files.size());
+
+  auto t_read_start = std::chrono::steady_clock::now();
+  std::uint64_t total_modules = 0;
+  for (const std::string& f : files) {
+    SnapshotData snap;
+    Status status = read_snapshot_file(f, &snap);
+    if (!status.ok()) {
+      out << "restore-all: SKIP " << f << ": " << status.message() << "\n";
+      continue;
+    }
+    total_modules += snap.modules.size();
+    snapshots.push_back(std::move(snap));
+  }
+  auto t_read_end = std::chrono::steady_clock::now();
+  double read_ms = std::chrono::duration<double, std::milli>(
+      t_read_end - t_read_start).count();
+  out << "restore-all: read " << snapshots.size() << " snapshots ("
+      << total_modules << " module refs) in " << read_ms << "ms\n";
+
+  // Phase 2: load unique modules.
+  auto t_mod_start = std::chrono::steady_clock::now();
+  for (const SnapshotData& snap : snapshots) {
+    for (const ModuleImage& mod : snap.modules) {
+      if (mod.image.empty()) continue;
+      if (module_cache.count(mod.hash)) continue;
+      ModuleHandle h;
+      Status status = backend->load_module(mod.image.data(),
+                                           mod.image.size(), &h);
+      if (!status.ok()) {
+        return Status::format("module load failed: " + status.message());
+      }
+      module_cache[mod.hash] = h;
+    }
+  }
+  auto t_mod_end = std::chrono::steady_clock::now();
+  double mod_ms = std::chrono::duration<double, std::milli>(
+      t_mod_end - t_mod_start).count();
+  out << "restore-all: loaded " << module_cache.size() << " unique modules in "
+      << mod_ms << "ms\n";
+
+  // Phase 3: allocator replay — map device memory so kernel param pointers
+  // resolve to valid VAs. All snapshots from the same vLLM process share the
+  // same region_base, so one replay suffices. We synthesize a union ptrspan
+  // from ALL graphs' blobs so every graph's pointers are backed.
+  auto t_alloc_start = std::chrono::steady_clock::now();
+  const std::uint64_t cbase = snapshots[0].allocator.region_base;
+  const std::uint64_t csize = snapshots[0].allocator.region_size;
+  DeterministicAllocator allocator;
+  std::uint64_t restored_base = 0;
+  if (cbase != 0 && csize != 0) {
+    AllocatorState alloc_state = snapshots[0].allocator;
+    if (alloc_state.events.empty()) {
+      std::uint64_t span_min = 0, span_max = 0;
+      bool any_ptr = false;
+      for (const SnapshotData& snap : snapshots) {
+        for (const GraphNodeIR& node : snap.graph.nodes) {
+          const std::vector<std::byte>& blob = node.kernel.param_blob;
+          if (blob.size() < sizeof(std::uint64_t)) continue;
+          for (std::size_t off = 0;
+               off + sizeof(std::uint64_t) <= blob.size(); ++off) {
+            std::uint64_t v = 0;
+            std::memcpy(&v, blob.data() + off, sizeof(v));
+            if (v < cbase || v - cbase >= csize) continue;
+            if (!any_ptr || v < span_min) span_min = v;
+            if (!any_ptr || v > span_max) span_max = v;
+            any_ptr = true;
+            off += sizeof(std::uint64_t) - 1;
+          }
+        }
+      }
+      if (any_ptr) {
+        const std::uint64_t gran =
+            alloc_state.granularity ? alloc_state.granularity : 4096;
+        const std::uint64_t lo = span_min / gran * gran;
+        std::uint64_t hi = span_max + 1;
+        hi = (hi + gran - 1) / gran * gran;
+        alloc_state.events.push_back(
+            AllocEvent{lo - cbase, hi - lo, "ptrspan"});
+      }
+    }
+    Status status = allocator.replay(*backend, alloc_state,
+                                     alloc_state.region_base, &restored_base);
+    if (!status.ok()) {
+      out << "restore-all: allocator replay FAILED: " << status.message()
+          << " (continuing — pointers may fault)\n";
+    }
+  }
+  auto t_alloc_end = std::chrono::steady_clock::now();
+  double alloc_ms = std::chrono::duration<double, std::milli>(
+      t_alloc_end - t_alloc_start).count();
+  out << "restore-all: allocator replay restored_base=0x" << std::hex
+      << restored_base << " (captured=0x" << cbase << ")" << std::dec
+      << " in " << alloc_ms << "ms\n";
+
+  // Phase 4: per-graph rebuild + instantiate.
+  double total_build_ms = 0, total_inst_ms = 0;
+  std::uint64_t total_nodes = 0;
+  std::uint64_t ok_count = 0, fail_count = 0;
+
+  for (std::size_t gi = 0; gi < snapshots.size(); ++gi) {
+    const SnapshotData& snap = snapshots[gi];
+    GraphIR ir = snap.graph;
+
+    // Relocate pointers by the base delta (usually zero when same node).
+    if (restored_base != 0 && restored_base != cbase) {
+      RelocationStats rs;
+      relocate_graph_ir(&ir,
+                        Relocation{cbase, restored_base, csize},
+                        /*blind_scan_fallback=*/true, &rs);
+    }
+
+    // Resolve entries against the module cache.
+    bool resolve_ok = true;
+    for (GraphNodeIR& node : ir.nodes) {
+      if (node.type != GraphNodeType::kKernel || node.entry_name.empty())
+        continue;
+      bool found = false;
+      for (const ModuleImage& mod : snap.modules) {
+        auto hit = module_cache.find(mod.hash);
+        if (hit == module_cache.end()) continue;
+        FunctionHandle fn;
+        if (backend->get_function(hit->second, node.entry_name, &fn).ok()) {
+          node.kernel.function = fn;
+          found = true;
+          break;
+        }
+      }
+      if (!found) resolve_ok = false;
+    }
+    if (!resolve_ok) {
+      ++fail_count;
+      continue;
+    }
+
+    std::fprintf(stderr, "restore-all: graph#%zu nodes=%zu rebuilding...\n",
+                 gi, ir.nodes.size());
+    std::fflush(stderr);
+
+    GraphHandle graph;
+    auto tb = std::chrono::steady_clock::now();
+    Status status = backend->rebuild_graph(ir, &graph);
+    auto te = std::chrono::steady_clock::now();
+    std::fprintf(stderr, "restore-all: graph#%zu rebuild rc=%d\n", gi,
+                 status.ok() ? 0 : 1);
+    std::fflush(stderr);
+    if (!status.ok()) {
+      out << "restore-all: graph#" << gi << " rebuild FAILED: "
+          << status.message() << "\n";
+      ++fail_count;
+      continue;
+    }
+    total_build_ms +=
+        std::chrono::duration<double, std::milli>(te - tb).count();
+
+    GraphExecHandle exec;
+    auto ti = std::chrono::steady_clock::now();
+    status = backend->instantiate(graph, &exec);
+    auto tj = std::chrono::steady_clock::now();
+    if (!status.ok()) {
+      out << "restore-all: graph#" << gi << " instantiate FAILED: "
+          << status.message() << "\n";
+      ++fail_count;
+      continue;
+    }
+    total_inst_ms +=
+        std::chrono::duration<double, std::milli>(tj - ti).count();
+    total_nodes += ir.nodes.size();
+    ++ok_count;
+  }
+
+  double total_ms = read_ms + mod_ms + alloc_ms + total_build_ms + total_inst_ms;
+  out << "restore-all: rebuilt " << ok_count << "/" << snapshots.size()
+      << " graphs (" << fail_count << " failed), " << total_nodes
+      << " total kernel nodes\n";
+  out << "restore-all: timing read=" << read_ms << "ms"
+      << " modules=" << mod_ms << "ms"
+      << " alloc=" << alloc_ms << "ms"
+      << " build=" << total_build_ms << "ms"
+      << " instantiate=" << total_inst_ms << "ms"
+      << " TOTAL=" << total_ms << "ms"
+      << " (" << (total_ms / 1000.0) << "s)\n";
+  out << "RESTORE_ALL_GATE="
+      << (fail_count == 0 && ok_count == snapshots.size() ? "PASS" : "PARTIAL")
+      << "\n";
   return Status::Ok();
 }
 

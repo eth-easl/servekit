@@ -64,6 +64,27 @@ struct KernelSig {
 std::vector<KernelSig> extract_amdgpu_kernels(const std::byte* image,
                                               std::size_t size);
 
+// Rewrite every amdhsa.kernels[].max_flat_workgroup_size to `target`, IN PLACE,
+// within the AMDGPU metadata note of an ELF code object. `image` must be
+// writable; all ELF/note offsets and byte sizes are unchanged (same-width
+// integer rewrites only). Returns the number of values rewritten.
+//
+// Rationale: Triton's ROCm codegen emits an over-restrictive
+// max_flat_workgroup_size (256) for num_warps=8 pointwise kernels that are in
+// fact compiled for and run correctly at 512 threads. Eager launch ignores the
+// field (baseline serving works), but hipGraphAddKernelNode validates
+// block.x <= MAX_THREADS_PER_BLOCK (derived from this field) and rejects such
+// nodes. Bumping it to the device max (1024 on MI300A) makes the code object
+// self-consistent so graph-add succeeds. The field is a runtime hint only;
+// compile-time resource allocation (COMPUTE_PGM_RSRC1/2) is unaffected, so the
+// patch does not change execution. Only rewrites values whose current msgpack
+// int encoding (uint16/uint32/uint64) can hold `target` in place; smaller
+// encodings (fixint/uint8) are left untouched. Pure byte manipulation; no HIP
+// dependency.
+std::size_t patch_amdgpu_max_flat_workgroup_size(std::byte* image,
+                                                 std::size_t size,
+                                                 std::uint32_t target);
+
 // Given a tag-1 (array-format) kernarg blob {u8 tag=1, u32 count, per arg:
 // {u32 len, bytes[len]}} and the kernel's parsed signature, compute the
 // blob-relative byte offsets where POINTER args live. arg i's value starts at
@@ -72,6 +93,17 @@ std::vector<KernelSig> extract_amdgpu_kernels(const std::byte* image,
 // mismatch (caller falls back to blind-scan). Pure data manipulation.
 std::vector<std::uint32_t> tag1_blob_ptr_offsets(
     const std::vector<std::byte>& blob, const KernelSig& sig);
+
+// Returns the byte offsets within a tag-1 kernarg blob that START each
+// NON-pointer arg's value bytes. These ranges may contain embedded device
+// pointers (e.g. a struct arg {ptr, stride, size}) that the signature does not
+// advertise as pointers — they need blind-scan relocation to catch. Each
+// returned offset is the START of the arg value; the caller scans [off, off+len)
+// for embedded pointers by reading the per-arg length prefix the same way
+// tag1_blob_ptr_offsets does. Returns {offset, length} pairs.
+std::vector<std::pair<std::uint32_t, std::uint32_t>>
+tag1_blob_nonptr_arg_ranges(const std::vector<std::byte>& blob,
+                            const KernelSig& sig);
 
 struct RecordedModule {
   std::uint64_t hash = 0;

@@ -1,6 +1,13 @@
 # Local agent / tooling state (logs, session, HUD, metrics)
 .omx/
 
+# Coding-agent harness state (skills, worktrees, session data)
+.agents/
+.claude/
+
+# Personal scratch deployment configs (user-suffixed)
+deploy/*-xzyao/
+
 # Python caches
 __pycache__/
 *.py[cod]

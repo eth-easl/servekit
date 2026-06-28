@@ -2,6 +2,7 @@
 
 #include <array>
 #include <atomic>
+#include <cstdlib>
 #include <cstddef>
 #include <cstdio>
 #include <map>
@@ -128,10 +129,24 @@ bool decode_recorded_args(const std::vector<std::byte>& src, NodeParam& out,
     std::size_t off = 5;
     out.arg_storage.reserve(count);
     for (std::uint32_t a = 0; a < count; ++a) {
-      if (off + 4 > src.size()) return false;
+      if (off + 4 > src.size()) {
+        if (std::getenv("SNAPSHOT_REBUILD_DEBUG")) {
+          std::fprintf(stderr, "[rebuild] decode FAIL tag=1 count=%u a=%u "
+                       "off=%zu blobsz=%zu (header overrun)\n",
+                       count, a, off, src.size());
+        }
+        return false;
+      }
       const std::uint32_t per = rd_u32(off);
       off += 4;
-      if (off + per > src.size()) return false;
+      if (off + per > src.size()) {
+        if (std::getenv("SNAPSHOT_REBUILD_DEBUG")) {
+          std::fprintf(stderr, "[rebuild] decode FAIL tag=1 count=%u a=%u "
+                       "per=%u off=%zu blobsz=%zu (data overrun)\n",
+                       count, a, per, off, src.size());
+        }
+        return false;
+      }
       out.arg_storage.emplace_back(src.begin() + off,
                                    src.begin() + off + per);
       off += per;
@@ -197,8 +212,37 @@ Status HipBackend::load_module(const std::byte* image, std::size_t n,
   if (image == nullptr || n == 0) {
     return Status::invalid_argument("module image is empty");
   }
+  // Optionally patch the over-restrictive .max_flat_workgroup_size that
+  // Triton's ROCm codegen emits for num_warps=8 pointwise kernels (it reports
+  // 256 for a kernel compiled for/launched at 512). Eager launch ignores the
+  // field; hipGraphAddKernelNode enforces block.x<=MAX_THREADS_PER_BLOCK and
+  // rejects such nodes. Bumping to the device max (1024 on MI300A) makes the
+  // code object self-consistent. Gated by SNAPSHOT_HSACO_PATCH_MAXWG=<threads>.
+  // The patch is a same-width in-place msgpack int rewrite (no offset shifts).
+  const std::byte* load_image = image;
+  std::vector<std::byte> patched;
+  if (const char* tg = std::getenv("SNAPSHOT_HSACO_PATCH_MAXWG")) {
+    const long targetl = std::strtol(tg, nullptr, 10);
+    if (targetl > 0) {
+      const std::uint32_t target = static_cast<std::uint32_t>(targetl);
+      patched.assign(image, image + n);
+      std::size_t cnt = patch_amdgpu_max_flat_workgroup_size(
+          patched.data(), patched.size(), target);
+      if (cnt > 0) {
+        if (const char* d = std::getenv("SNAPSHOT_DEBUG")) {
+          if (d[0] == '1') {
+            std::fprintf(stderr,
+                         "[hsaco-patch] rewrote %zu max_flat_workgroup_size "
+                         "fields -> %u\n",
+                         cnt, target);
+          }
+        }
+        load_image = patched.data();
+      }
+    }
+  }
   hipModule_t module{};
-  Status status = hip_status(hipModuleLoadData(&module, image),
+  Status status = hip_status(hipModuleLoadData(&module, load_image),
                              "hipModuleLoadData");
   if (!status.ok()) {
     return status;
@@ -208,6 +252,8 @@ Status HipBackend::load_module(const std::byte* image, std::size_t n,
   // knows each kernel's exact arg count / pointer offsets. Best-effort: a parse
   // failure (e.g. code-object v3 YAML, or no metadata note) leaves the name
   // absent and rebuild falls back to the captured count / blind-scan reloc.
+  // NOTE: parse from the ORIGINAL image (unchanged metadata either way; the
+  // patch only touches max_flat_workgroup_size, which KernelSig ignores).
   for (const KernelSig& ks : extract_amdgpu_kernels(image, n)) {
     sig_by_name_[ks.name] = ks;
   }
@@ -374,6 +420,31 @@ Status HipBackend::rebuild_graph(const GraphIR& ir, GraphHandle* out) {
                    node.kernel.grid.y, node.kernel.grid.z, node.kernel.block.x,
                    node.kernel.block.y, node.kernel.block.z);
       std::fflush(stderr);
+      // M3k: sharedMemBytes is validated by hipGraphAddKernelNode against the
+      // device/kernel limit — an over-large value faults there WITHOUT
+      // launching (reported as launch failure). Print it per node.
+      std::fprintf(stderr, "[rebuild] node#%d shared=%u func=%p\n", seq,
+                   node.kernel.shared_mem_bytes,
+                   (void*)as_handle<hipFunction_t>(node.kernel.function));
+      std::fflush(stderr);
+      // M3k: dump per-arg values for tag-1 (array) nodes to see whether the
+      // failing node's pointer args fall inside the mapped region or are
+      // unmapped (trajectory-mismatch fault).
+      if (param->tag == 1 && !param->arg_storage.empty()) {
+        std::fprintf(stderr, "[rebuild] node#%d args:", seq);
+        for (std::size_t a = 0; a < param->arg_storage.size(); ++a) {
+          const auto& v = param->arg_storage[a];
+          std::uint64_t lo = 0;
+          for (std::size_t b = 0; b < v.size() && b < 8; ++b)
+            lo |= static_cast<std::uint64_t>(
+                       static_cast<unsigned char>(v[b]))
+                  << (8 * b);
+          std::fprintf(stderr, " [a%zu sz=%zu v0=0x%016llx]", a, v.size(),
+                       static_cast<unsigned long long>(lo));
+        }
+        std::fprintf(stderr, "\n");
+        std::fflush(stderr);
+      }
     }
 
     hipKernelNodeParams params{};
@@ -384,12 +455,24 @@ Status HipBackend::rebuild_graph(const GraphIR& ir, GraphHandle* out) {
                            node.kernel.block.z};
     params.sharedMemBytes = node.kernel.shared_mem_bytes;
     // tag 1 -> array format (kernelParams); tag 0 (or empty) -> buffer (extra).
+    // When decode fails entirely (corrupted/truncated blob), fall back to a
+    // safe zero-arg array format — NEVER pass an uninitialized config vector
+    // as extra (that segfaults inside hipGraphAddKernelNode).
     if (ok && param->tag == 1) {
       params.kernelParams = param->arg_ptrs.data();
       params.extra = nullptr;
-    } else {
+    } else if (ok && param->tag == 0 && !param->config.empty()) {
       params.kernelParams = nullptr;
       params.extra = param->config.data();
+    } else {
+      // Decode failed or unknown tag: use zero-arg array with sig-count pad.
+      param->tag = 1;
+      const std::size_t pad_target = exact_count > 0 ? exact_count : 32;
+      param->zero_pad.assign(64, std::byte{0});
+      param->arg_ptrs.assign(pad_target, param->zero_pad.data());
+      param->arg_ptrs.push_back(nullptr);  // terminator
+      params.kernelParams = param->arg_ptrs.data();
+      params.extra = nullptr;
     }
     if (dbg) {
       std::fprintf(stderr, "[rebuild] node#%d calling hipGraphAddKernelNode kp=%p "
@@ -408,6 +491,45 @@ Status HipBackend::rebuild_graph(const GraphIR& ir, GraphHandle* out) {
     }
 
     hipGraphNode_t graph_node{};
+    // M3k sticky probe: peek (non-clearing) for a sticky HIP error left by a
+    // PRIOR node's AddKernelNode (intra-graph stickiness), then optionally
+    // clear it so THIS node gets a fair attempt. Distinguishes node#4's own
+    // fault from a poisoned state inherited from nodes 0-3.
+    static const bool sticky_dbg =
+        std::getenv("SNAPSHOT_REBUILD_STICKY_DBG");
+    static const bool sticky_clear =
+        std::getenv("SNAPSHOT_REBUILD_CLEAR_STICKY");
+    if (sticky_dbg || sticky_clear) {
+      hipError_t peek = hipPeekAtLastError();
+      if (sticky_dbg) {
+        std::fprintf(stderr, "[rebuild] node#%d pre-add peek=%d(%s)\n", seq,
+                     (int)peek, hipGetErrorString(peek));
+        std::fflush(stderr);
+      }
+      if (sticky_clear) (void)hipGetLastError();  // clear
+    }
+    // M3k mechanism probe: query the kernel's resource footprint via
+    // hipFuncGetAttribute and print it. Tests the hypothesis that the failing
+    // pointwise@8-warp kernel trips a per-block resource cap (static LDS /
+    // registers) that hipGraphAddKernelNode enforces at add-time but eager
+    // launch does not. Comparing OK nodes (reduction@8, pointwise@4) vs the
+    // FAIL node (pointwise@8) on these attributes localizes the cause.
+    if (dbg) {
+      hipFunction_t f = (hipFunction_t)params.func;
+      auto q = [&](hipFunction_attribute a) -> int {
+        int v = -999; hipFuncGetAttribute(&v, a, f);
+        return v;
+      };
+      std::fprintf(stderr,
+                   "[rebuild] node#%d attr regs=%d static_shared=%d "
+                   "max_dyn_shared=%d max_threads=%d local=%d\n",
+                   seq, q(HIP_FUNC_ATTRIBUTE_NUM_REGS),
+                   q(HIP_FUNC_ATTRIBUTE_SHARED_SIZE_BYTES),
+                   q(HIP_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES),
+                   q(HIP_FUNC_ATTRIBUTE_MAX_THREADS_PER_BLOCK),
+                   q(HIP_FUNC_ATTRIBUTE_LOCAL_SIZE_BYTES));
+      std::fflush(stderr);
+    }
     status = hip_status(
         hipGraphAddKernelNode(&graph_node, graph, deps.data(), deps.size(),
                               &params),

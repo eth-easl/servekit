@@ -106,7 +106,12 @@ Status HipBackend::create_physical(std::uint64_t size, MemHandle* out) {
   prop.type = hipMemAllocationTypePinned;
   prop.location.type = hipMemLocationTypeDevice;
   prop.location.id = current_device();
+  // AMD ROCm: requestedHandleType (singular); NVIDIA: requestedHandleTypes.
+#if defined(__HIP_PLATFORM_AMD__)
+  prop.requestedHandleType = hipMemHandleTypeNone;
+#else
   prop.requestedHandleTypes = hipMemHandleTypeNone;
+#endif
   hipMemGenericAllocationHandle_t handle{};
   Status status = hip_status(hipMemCreate(&handle, size, &prop, 0),
                              "hipMemCreate");

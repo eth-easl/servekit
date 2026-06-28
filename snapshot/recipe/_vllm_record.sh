@@ -32,7 +32,7 @@ RECORDER="$PWD/snapshot/build/libsnapshot_record.so"
 SNAP=snapshot/build/snapshot
 MODEL=/capstor/store/cscs/swissai/infra01/hf_models/models/zai-org/GLM-4.7-Flash
 
-OUT=snapshot/record-vllm
+OUT="${OUT:-snapshot/record-vllm}"
 rm -rf "$OUT"; mkdir -p "$OUT"
 
 export LD_PRELOAD="$REDIRECT $RECORDER"
@@ -50,21 +50,53 @@ SENTINEL="$OUT/drain.now"
 rm -f "$SENTINEL"
 export SNAPSHOT_RECORD_DRAIN_SENTINEL="$SENTINEL"
 export SNAPSHOT_REDIRECT_ARENA=1
+# FIXED_BASE=1 backs the arena with a pinned VMM region
+# (hipMemAddressReserve + one set_access over the whole region) instead of a
+# driver-chosen hipMalloc. Pins base 0x600000000000 so record and restore land
+# at the SAME base (Δ=0) and every device pointer is valid unmodified.
+export SNAPSHOT_REDIRECT_FIXED_BASE="${SNAPSHOT_REDIRECT_FIXED_BASE:-0}"
 export SNAPSHOT_REDIRECT_REGION_GIB="${REGION_GIB:-72}"
 export SNAPSHOT_REDIRECT_ALLOC_DIR="$OUT"
 export SNAPSHOT_REDIRECT_VERBOSE=0
 export VLLM_LOGGING_LEVEL=INFO
+# vLLM manages BOTH the Triton and inductor caches itself: it derives a
+# cache dir from VLLM_CACHE_ROOT ($VLLM_CACHE_ROOT/torch_compile_cache/<hash>/)
+# and OVERRIDES os.environ["TRITON_CACHE_DIR"] and ["TORCHINDUCTOR_CACHE_DIR"]
+# to subdirs of that. So per-cache env vars are useless here; the ONLY knob
+# that matters is VLLM_CACHE_ROOT. We point it at a dedicated frozen dir so no
+# other (production) serve job can mutate the compiled artifacts between record
+# and restore -> record/live compile bit-identically -> snapshot pointers
+# relocate onto the correct live buffers. See _probe_cache2.sh for the override.
+export VLLM_CACHE_ROOT="${SNAPSHOT_VLLM_CACHE_ROOT:-${VLLM_CACHE_ROOT:-/capstor/scratch/cscs/xyao/glm-47-flash-vllm/cache/vllm}}"
+# ALSO freeze the EAGER Triton kernels (flash-attn _fwd_kernel_stage2, MoE
+# _fwd_grouped_kernel_stage1) which JIT-compile during model import BEFORE
+# vLLM's inductor override takes effect. vLLM's override covers only the
+# inductor-fused kernels; the eager ones still read this env var directly. Both
+# record and restore must share the SAME dedicated dir for their HSACOs to
+# match byte-for-byte.
+export TRITON_CACHE_DIR="${SNAPSHOT_TRITON_CACHE_DIR:-${TRITON_CACHE_DIR:-/capstor/scratch/cscs/xyao/glm-47-flash-vllm/cache/triton}}"
+# Freeze Python's hash seed. The inductor's fusion passes iterate over Python
+# dicts/sets; with the default random per-process seed the iteration ORDER
+# differs across cold starts -> different op fusion -> different generated
+# Triton source -> different HSACOs for triton_poi_fused_* kernels. Raw
+# hand-written Triton kernels are unaffected (fixed source), which is why the
+# M3g spike showed 16/16 deterministic but the real pipeline drifts. Setting
+# this for BOTH record and restore makes the inductor generate byte-identical
+# Triton source -> identical HSACOs -> matching module_hash.
+export PYTHONHASHSEED="${SNAPSHOT_PYTHONHASHSEED:-0}"
 TP="${TP:-1}"
 GMU="${GMU:-0.60}"
 MAX_NUM_SEQS="${MAX_NUM_SEQS:-64}"
 MAX_MODEL_LEN="${MAX_MODEL_LEN:-8192}"
 # M3b: vLLM's default cuda-graph capture sizes ([1,2,4] + range(8,256,8) ...) is
-# ~34 sizes -> ~528 driver-level piecewise sub-graphs, so the capture phase runs
-# minutes and vLLM never reaches the idle window the off-path namer needs to
-# drain hipKernelNameRef. Restrict capture to a tiny explicit list (default a
-# single batch size) so capture finishes in seconds and the model goes idle
-# fast. CAPTURE_SIZES="" -> vLLM default (the M2.x behavior). Space-separated.
-CAPTURE_SIZES="${CAPTURE_SIZES:-1}"
+# ~34 sizes -> ~528 driver-level piecewise sub-graphs. The off-path namer is
+# sentinel-gated (drains AFTER /health on inference probes), so it no longer
+# needs a tiny capture list to find an idle window -- default capture works.
+# Default "1" is the fast dev/CI config; export CAPTURE_SIZES="" (empty) for the
+# vLLM default list (the production workload whose ~264s capture the snapshot
+# targets). Space-separated for an explicit list. Note: use ${VAR-1} (not :-1)
+# so an explicitly-empty value is honored as vLLM default.
+CAPTURE_SIZES="${CAPTURE_SIZES-1}"
 PORT="${PORT:-8811}"
 DEADLINE="${RUN_SECS:-600}"
 LOG="$OUT/vllm.log"
@@ -78,11 +110,38 @@ fi
 
 echo "[record-vllm] TP=$TP gmu=$GMU region=${SNAPSHOT_REDIRECT_REGION_GIB}GiB max_graphs=$SNAPSHOT_RECORD_MAX_GRAPHS capture_sizes='${CAPTURE_SIZES:-<vllm-default>}' start=$(date +%T)"
 
+# cg_meta record hook: observe each capture's entry.output and write a JSON
+# (offset/shape/dtype per capture index) so lazy-restore can reconstruct
+# entry.output without the forward. Defaults to alongside the snapshots.
+if [ -n "${VLLM_CG_RECORD_META:-}" ]; then
+  case "$VLLM_CG_RECORD_META" in
+    1|yes|on|true) VLLM_CG_RECORD_META="$OUT/restore_meta.json" ;;
+  esac
+  export VLLM_CG_RECORD_META
+  export PYTHONPATH="/capstor/scratch/cscs/xyao/kimi-k25-vllm/snapshot/recipe/cginst_skip:${PYTHONPATH:-}"
+  echo "[record-vllm] cg_meta RECORD active -> $VLLM_CG_RECORD_META"
+fi
+
+# cg_skip hook (record_pw / measure): load the cginst_skip sitecustomize so
+# cg_skip.py activates when VLLM_CG_SKIP_CAPTURE is set. record_pw skips FULL
+# captures during record, producing a PIECEWISE-only snapshot dir.
+if [ -n "${VLLM_CG_SKIP_CAPTURE:-}" ]; then
+  export PYTHONPATH="/capstor/scratch/cscs/xyao/kimi-k25-vllm/snapshot/recipe/cginst_skip:${PYTHONPATH:-}"
+  echo "[record-vllm] cg_skip active (VLLM_CG_SKIP_CAPTURE=$VLLM_CG_SKIP_CAPTURE)"
+fi
+
 t0=$(date +%s)
+# Optional --compilation-config override (e.g. disable runtime combo-kernel
+# benchmarking for deterministic HSACOs across cold starts).
+CC_ARGS=()
+if [ -n "${COMPILATION_CONFIG:-}" ]; then
+  CC_ARGS=(--compilation-config "$COMPILATION_CONFIG")
+fi
+
 vllm serve "$MODEL" --host 127.0.0.1 --port "$PORT" --served-model-name rec \
   --tensor-parallel-size "$TP" --pipeline-parallel-size 1 --trust-remote-code \
   --gpu-memory-utilization "$GMU" --max-model-len "$MAX_MODEL_LEN" \
-  --max-num-seqs "$MAX_NUM_SEQS" "${CAPTURE_ARGS[@]}" > "$LOG" 2>&1 &
+  --max-num-seqs "$MAX_NUM_SEQS" "${CAPTURE_ARGS[@]}" "${CC_ARGS[@]}" > "$LOG" 2>&1 &
 SERVER_PID=$!
 
 # Wait for vLLM to finish capturing + warming up and reach /health, THEN release
@@ -93,6 +152,9 @@ SERVER_PID=$!
 # clamped, capture finishes in seconds so /health arrives fast.
 REACHED_READY=0
 SENT_PROBE=0
+LASTN=0
+STABLE=0
+CONVERGE_S="${CONVERGE_S:-45}"   # seconds of no graph growth = converged
 while :; do
   elapsed=$(( $(date +%s) - t0 ))
   # Release the namer the instant vLLM is serving (capture phase is over).
@@ -102,20 +164,37 @@ while :; do
     : > "$SENTINEL"
     echo "[record-vllm] READY at ${elapsed}s — sentinel touched, namer can drain on inference"
   fi
-  # Naming now happens INLINE on vLLM's inference thread (hipLaunchKernel), so
-  # send one completion to drive it. The first launch after the sentinel drains
-  # the whole queue + FLUSHes. (Not before /health: that would race capture.)
-  if [ "$REACHED_READY" -eq 1 ] && [ "$SENT_PROBE" -eq 0 ]; then
-    SENT_PROBE=1
-    echo "[record-vllm] sending completion probe to trigger main-thread naming..."
+  # Naming happens INLINE on vLLM's inference thread (each hipLaunchKernel hook
+  # call resolves a batch of pending funcs). Drive it with a steady stream of
+  # completion probes after /health and break once the flush count converges
+  # (no new .snap for CONVERGE_S seconds) -- meaning every capturable graph is
+  # named + written. This is what makes default capture (~hundreds of graphs)
+  # drain to completion; a fixed small probe burst stalls partway.
+  if [ "$REACHED_READY" -eq 1 ]; then
+    if [ "$SENT_PROBE" -eq 0 ]; then
+      SENT_PROBE=1
+      echo "[record-vllm] probing to drive inline naming (converge=${CONVERGE_S}s of no growth, max=${SNAPSHOT_RECORD_MAX_GRAPHS})..."
+    fi
     curl -sS "http://127.0.0.1:${PORT}/v1/completions" \
       -H 'Content-Type: application/json' \
-      -d '{"model":"rec","prompt":"The capital of France is","max_tokens":4,"temperature":0}' \
-      >/dev/null 2>&1 || echo "[record-vllm] probe request failed (non-fatal)"
+      -d '{"model":"rec","prompt":"The capital of France is","max_tokens":1,"temperature":0}' \
+      >/dev/null 2>&1 || true
+    n=$(ls "$OUT"/graph-*.snap 2>/dev/null | wc -l)
+    if [ "$n" -ge "$SNAPSHOT_RECORD_MAX_GRAPHS" ]; then
+      echo "[record-vllm] captured $n graph(s) at ${elapsed}s"; break
+    fi
+    if [ "$n" -eq "$LASTN" ]; then
+      STABLE=$((STABLE+1))
+      if [ "$STABLE" -ge "$CONVERGE_S" ]; then
+        echo "[record-vllm] flush converged at $n graph(s) (stable ${STABLE}s) at ${elapsed}s"; break
+      fi
+    else
+      LASTN=$n; STABLE=0
+    fi
   fi
   n=$(ls "$OUT"/graph-*.snap 2>/dev/null | wc -l)
   if [ "$n" -ge "$SNAPSHOT_RECORD_MAX_GRAPHS" ]; then
-    echo "[record-vllm] captured $n graph(s) at ${elapsed}s"; break
+    :  # already handled above (convergence loop may break first)
   fi
   if ! kill -0 "$SERVER_PID" 2>/dev/null; then
     echo "[record-vllm] server exited at ${elapsed}s (captured $n graph(s))"; break
@@ -123,7 +202,7 @@ while :; do
   if [ "$elapsed" -gt "$DEADLINE" ]; then
     echo "[record-vllm] DEADLINE ${DEADLINE}s (captured $n graph(s))"; break
   fi
-  sleep 3
+  sleep "${PROBE_INTERVAL:-0}"
 done
 
 echo "[record-vllm] grace ${NAMER_GRACE:-90}s for off-path name resolution"
@@ -168,8 +247,12 @@ echo "=== recorded snapshots ==="
 ls -lh "$OUT"/graph-*.snap 2>/dev/null || { echo "(no graphs recorded)"; exit 0; }
 
 echo
-echo "================= M3a.3 IDENTITY GATE (host-side, per graph) ================="
-for f in "$OUT"/graph-*.snap; do
+echo "================= M3a.3 IDENTITY GATE (host-side, sample) ================="
+# At default capture (~hundreds of graphs) inspecting each would blow the time
+# limit; sample the first few and report the aggregate count instead.
+NG=$(ls "$OUT"/graph-*.snap 2>/dev/null | wc -l)
+echo "recorded $NG graph(s); inspecting first 6:"
+for f in $(ls "$OUT"/graph-*.snap 2>/dev/null | head -6); do
   echo "----- $(basename "$f") -----"
   "$SNAP" inspect "$f" || echo "  (inspect failed for $f)"
 done

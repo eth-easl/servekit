@@ -46,21 +46,26 @@ from __future__ import annotations
 import ctypes
 import json
 import os
+import sys
 
 
 def _log(msg):
-    print(f"[cg_meta_cuda] {msg}", flush=True)
+    print(f"[cg_meta_cuda] {msg}", flush=True, file=sys.stderr)
 
 
 def _rank():
     # N5b (vLLM TP=4): resolve the per-worker rank, matching the C interposer's
-    # g_snap_dir priority. vLLM does NOT isolate workers via device-remapping —
-    # all see CUDA_VISIBLE_DEVICES="0,1,2,3" and each pins itself via
-    # cudaSetDevice(local_rank). srun's SLURM_PROCID=0 is inherited by all 4
-    # workers, so env vars are wrong. The authoritative rank is: (1) a single-
-    # device CUDA_VISIBLE_DEVICES, else (2) the current device index
-    # (torch.cuda.current_device() — correct because cudaSetDevice(rank) ran
-    # before capture; resolved lazily at first _write), else (3) env vars.
+    # g_snap_dir priority. Order: (1) RANK/LOCAL_RANK (explicit — the CLI smoke
+    # sets RANK=N; torch.distributed sets these correctly per worker),
+    # (2) a single-device CUDA_VISIBLE_DEVICES (device-isolated workers),
+    # (3) the current device index (torch.cuda.current_device() — correct
+    # because cudaSetDevice(rank) ran before capture; vLLM multi-GPU),
+    # (4) VLLM_DP_RANK / SLURM_PROCID (last resort; SLURM_PROCID is unreliable —
+    # srun sets it to 0 for the single serve task, inherited by all workers).
+    for name in ("RANK", "LOCAL_RANK"):
+        v = os.environ.get(name)
+        if v:
+            return v
     cvd = os.environ.get("CUDA_VISIBLE_DEVICES", "")
     ids = [t for t in cvd.replace(",", " ").split() if t.strip().isdigit()]
     if len(ids) == 1:
@@ -71,7 +76,7 @@ def _rank():
             return str(torch.cuda.current_device())
         except Exception:
             pass
-    for name in ("RANK", "LOCAL_RANK", "VLLM_DP_RANK", "SLURM_PROCID"):
+    for name in ("VLLM_DP_RANK", "SLURM_PROCID"):
         v = os.environ.get(name)
         if v:
             return v

@@ -49,13 +49,25 @@ export LD_PRELOAD="${REDIRECT_SO}:${RECORD_SO}"
 export SNAPSHOT_RECORD_CUDA_MODE="$MODE"
 export SNAPSHOT_RECORD_CUDA_DIR="${SNAP_ROOT}/rank%r"
 export SNAPSHOT_REDIRECT_REGION_GIB="$REGION_GIB"
+# N5b: redirect Triton's compile cache into the shared snap dir so restore can
+# pre-load the SAME .cubin images (record and restore share SNAP_ROOT). Triton
+# resolves driver symbols via its own libcuda handle, bypassing LD_PRELOAD, so
+# the cuModuleLoadData hook never sees Triton's loads. We re-load the .cubin
+# ourselves at restore init → the hook fires → g_func_by_devname is populated.
+export TRITON_CACHE_DIR="${SNAP_ROOT}/triton-cache"
 export PYTHONPATH="${SNAP_CUDA_DIR}/snapshot/recipe/cginst_cuda:${PYTHONPATH:-}"
 if [ "$MODE" = "record" ]; then
   export VLLM_CG_RECORD_META="${META_ROOT}/rank%r.json"
   unset VLLM_CG_RESTORE_META || true
 else
-  export VLLM_CG_RESTORE_META="${META_ROOT}/rank%r.json"
+  # N5b restore: do NOT install the Python lazy-restore hook. The forward must
+  # run so Triton/Inductor JIT fires and modules are loaded (launch suppression
+  # is OFF via env). The C interposer fakes begin-capture (alignment) and
+  # restores the .snap rebuild at end-capture; entry.output comes from the real
+  # forward (valid under Δ=0). The cold-start speedup comes from skipping the
+  # graph CAPTURE (the .snap is pre-built), not from skipping the forward.
   unset VLLM_CG_RECORD_META || true
+  unset VLLM_CG_RESTORE_META || true
 fi
 export TRITON_CACHE_DIR="${TRITON_CACHE_DIR:-${DEPLOY_DIR}/cache/triton}"
 export VLLM_CACHE_ROOT="${VLLM_CACHE_ROOT:-${DEPLOY_DIR}/cache/vllm}"

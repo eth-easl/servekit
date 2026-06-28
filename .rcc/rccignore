@@ -32,6 +32,9 @@ pip-wheel-metadata/
 
 # C++ build output
 snapshot/build/
+# Standalone CMake binary tarball fetched once on the cluster (not in git).
+cmake/
+build-cuda/
 
 # Recorder / redirect output dirs (written on the cluster, contain large .snap
 # module images — never sync back).
@@ -59,7 +62,12 @@ home/
 
 # Per-job artifacts written into the deploy dir root by the serve scripts
 vllm_subprocess-*.sh
+sglang_subprocess-*.sh
+sglang_backend-*.sh
+sglang_router-*.sh
 opentela_launcher-*.sh
+router_launcher-*.sh
+router-workers-*.txt
 warmup_launcher-*.sh
 vmagent-scrape-*.yaml*
 last_service.env

@@ -1,6 +1,7 @@
 #include "snapshot/relocation.hpp"
 
 #include <cstring>
+#include <cstdlib>
 #include <limits>
 
 namespace snapshot {
@@ -99,14 +100,34 @@ Status relocate_param_blob(std::vector<std::byte>* blob,
     }
   }
 
-  if (patched_known || !blind_scan_fallback ||
+  if (!ptr_offsets.empty() || patched_known || !blind_scan_fallback ||
       blob->size() < sizeof(std::uint64_t)) {
+    // If ptr_offsets is non-empty we have a parsed signature: trust it and
+    // NEVER blind-scan (blind-scan corrupts scalar args / dimension values
+    // that happen to fall in the arena range — the root cause of the (nil)
+    // fault in pre-signature restores).
     return Status::Ok();
   }
+
+  // Alignment filter for blind-scan: real GPU pointers from the arena are
+  // at least 256-byte aligned (arena granularity is 4K; buffer starts are
+  // 4K-aligned, element pointers are dtype-aligned >= 16). Cross-boundary
+  // phantom values (from reading across arg/field boundaries) have random
+  // alignment and are the source of false-positive corruption -> (nil) fault.
+  // Configurable via SNAPSHOT_RESTORE_BLIND_ALIGN (default 256; 0 = off).
+  static const std::uint64_t blind_align = [] {
+    const char* e = std::getenv("SNAPSHOT_RESTORE_BLIND_ALIGN");
+    if (!e || !*e) return 256ULL;
+    const long v = std::atol(e);
+    return v > 0 ? static_cast<std::uint64_t>(v) : 0ULL;
+  }();
 
   for (std::size_t offset = 0; offset <= blob->size() - sizeof(std::uint64_t);
        ++offset) {
     std::uint64_t value = load_u64(blob->data() + offset);
+    if (blind_align != 0 && (value & (blind_align - 1)) != 0) {
+      continue;  // not aligned enough to be a real pointer
+    }
     bool patched = false;
     Status status = relocate_value(&value, relocation, &patched);
     if (!status.ok()) {

@@ -1,0 +1,24 @@
+name    = "glm-47-flash-bristen"
+profile = "glm-47-flash-bristen"
+engine  = "sglang"
+served_model_name = "zai-org/GLM-4.7-Flash"
+port = 8080
+default_nodes = 5
+
+[scripts]
+probe = "probe_sglang.sbatch"
+serve = "serve_glm_47_flash_sglang.sbatch"
+
+[ready]
+markers = ["fired up and ready to roll", "vmagent_started"]
+log_pattern = "logs/opentela-{job}-{rank}.log"
+
+[verify]
+models_path = "/v1/models"
+chat_path   = "/v1/chat/completions"
+
+[variants.router]
+serve = "serve_glm_47_flash_sglang_router.sbatch"
+
+[snapshot]
+enabled = false

@@ -208,6 +208,7 @@ chmod +x "${OTELA_LAUNCHER}"
 # available while the services are still running.
 {
   echo "JOB_ID=${SLURM_JOB_ID}"
+  echo "JOBID=${SLURM_JOB_ID}"
   echo "NUM_NODES=${NUM_NODES}"
   echo "PORT=${VLLM_PORT}"
   echo "MODEL=${SERVED_MODEL_NAME}"

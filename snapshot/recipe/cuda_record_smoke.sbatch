@@ -257,6 +257,8 @@ srun --environment=snapshot-cuda \
     echo "--- restore run (LD_PRELOAD=redirect:record, MODE=restore) ---"
     LD_PRELOAD="${REDIRECT_SO}:${RECORD_SO}" \
       SNAPSHOT_RECORD_CUDA_MODE=restore \
+      SNAPSHOT_RECORD_CUDA_REBUILD=1 \
+      SNAPSHOT_RECORD_CUDA_SUPPRESS=1 \
       SNAPSHOT_RECORD_CUDA_DIR="${T3_DIR1}" \
       "$SMOKE" 2>&1 | tee "${T4_LOG}"
     T4_EXIT="${PIPESTATUS[0]}"
@@ -354,6 +356,8 @@ srun --environment=snapshot-cuda \
     echo "--- runtime restore run (LD_PRELOAD=redirect:record, MODE=restore) ---"
     LD_PRELOAD="${REDIRECT_SO}:${RECORD_SO}" \
       SNAPSHOT_RECORD_CUDA_MODE=restore \
+      SNAPSHOT_RECORD_CUDA_REBUILD=1 \
+      SNAPSHOT_RECORD_CUDA_SUPPRESS=1 \
       SNAPSHOT_RECORD_CUDA_DIR="${RT_DIR}" \
       "${RT_SMOKE}" 2>&1 | tee "${RT_LOG_S}"
     RT_EXIT_S="${PIPESTATUS[0]}"
@@ -441,6 +445,8 @@ srun --environment=snapshot-cuda \
     echo "--- FULL restore run (LD_PRELOAD=redirect:record, MODE=restore) ---"
     LD_PRELOAD="${REDIRECT_SO}:${RECORD_SO}" \
       SNAPSHOT_RECORD_CUDA_MODE=restore \
+      SNAPSHOT_RECORD_CUDA_REBUILD=1 \
+      SNAPSHOT_RECORD_CUDA_SUPPRESS=1 \
       SNAPSHOT_RECORD_CUDA_DIR="${FULL_DIR1}" \
       "${FULL_SMOKE}" 2>&1 | tee "${FULL_LOG_S}"
     FULL_EXIT_S="${PIPESTATUS[0]}"

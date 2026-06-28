@@ -38,7 +38,14 @@ if [ "$PROFILE" = "restore" ]; then
   export SNAPSHOT_RECORD_CUDA_DIR="${DEPLOY_DIR}/snap-n5b/rank%r"
   export SNAPSHOT_REDIRECT_REGION_GIB="$REGION_GIB"
   export PYTHONPATH="${SNAP_CUDA_DIR}/snapshot/recipe/cginst_cuda:${PYTHONPATH:-}"
-  export VLLM_CG_RESTORE_META="${DEPLOY_DIR}/meta-n5b/rank%r.json"
+  # The Python restore hook (skip-forward + entry.output reconstruction) is only
+  # valid WITH the .snap rebuild (fake-begin reconstructs the graph). NCCL's
+  # direct-handle kernel loading blocks the rebuild (proven), so restore runs
+  # rebuild=OFF (default): the forward runs normally (real capture), and the
+  # hook must be DISABLED or vLLM's engine core init fails (skipped forward +
+  # no rebuilt graph). B therefore measures interposer+redirect overhead over a
+  # real warm-cache cold start (B ~= A); the capture-skip win is unavailable.
+  unset VLLM_CG_RESTORE_META
 else
   unset LD_PRELOAD  # baseline / eager: unmodified vLLM
 fi

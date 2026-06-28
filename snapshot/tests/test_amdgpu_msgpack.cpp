@@ -162,7 +162,7 @@ static std::vector<byte> build_elf_with_note(const std::vector<uint8>& meta,
   auto put64s = [&](uint32_t off, uint64_t x) {
     for (int i = 0; i < 8; ++i) sh[off + i] = (x >> (i * 8)) & 0xff;
   };
-  put(4, 8);  // sh_type SHT_NOTE
+  put(4, 7);  // sh_type SHT_NOTE
   put64s(0x18, note_off);   // sh_offset
   put64s(0x20, note_size);  // sh_size
   e.insert(e.end(), sh.begin(), sh.end());

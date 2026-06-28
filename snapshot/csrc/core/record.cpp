@@ -146,7 +146,7 @@ std::vector<std::string> extract_elf_symbols(const std::byte* image,
     const std::byte* shdr = section(s);
     const std::uint32_t sh_type = le32(shdr + 4);
     if (sh_type != 2 /*SHT_SYMTAB*/ && sh_type != 11 /*SHT_DYNSYM*/ &&
-        sh_type != 8 /*SHT_NOTE*/) {
+        sh_type != 7 /*SHT_NOTE*/) {
       continue;
     }
     const std::uint64_t sh_offset = le64(shdr + 0x18);
@@ -154,7 +154,7 @@ std::vector<std::string> extract_elf_symbols(const std::byte* image,
     if (sh_offset >= size || sh_offset + sh_size > size) {
       continue;
     }
-    if (sh_type == 8 /*SHT_NOTE*/) {
+    if (sh_type == 7 /*SHT_NOTE*/) {
       // Walk ELF notes: {u32 namesz, u32 descsz, u32 type, name[pad4], desc[pad4]}.
       const unsigned char* base = reinterpret_cast<const unsigned char*>(image) +
                                   sh_offset;
@@ -644,7 +644,7 @@ std::vector<KernelSig> extract_amdgpu_kernels(const std::byte* image,
   for (std::uint16_t s = 0; s < e_shnum; ++s) {
     const std::byte* shdr = image + e_shoff +
                              static_cast<std::uint64_t>(s) * e_shentsize;
-    if (le32(shdr + 4) != 8 /*SHT_NOTE*/) continue;
+    if (le32(shdr + 4) != 7 /*SHT_NOTE*/) continue;
     const std::uint64_t sh_offset = le64(shdr + 0x18);
     const std::uint64_t sh_size = le64(shdr + 0x20);
     if (sh_offset >= size || sh_offset + sh_size > size) continue;
@@ -678,6 +678,89 @@ std::vector<KernelSig> extract_amdgpu_kernels(const std::byte* image,
     }
   }
   return out;
+}
+
+// Rewrite every amdhsa.kernels[].max_flat_workgroup_size to `target`, in place.
+// See the header doc for the full rationale. Implementation: walk the ELF
+// SHT_NOTE sections to find the AMDGPU metadata note (name "AMD*", type 0x3a/
+// 0x20), then within its msgpack desc scan for the fixstr(24)=0xb8 byte
+// immediately followed by ".max_flat_workgroup_size" and rewrite the integer
+// value that follows, preserving its encoding width (uint16/32/64 only).
+std::size_t patch_amdgpu_max_flat_workgroup_size(std::byte* image,
+                                                 std::size_t size,
+                                                 std::uint32_t target) {
+  std::size_t patched = 0;
+  if (image == nullptr || size < 64 || !elf_magic_ok(image) ||
+      static_cast<std::uint8_t>(image[4]) != 2 /*ELFCLASS64*/) {
+    return 0;
+  }
+  const std::uint64_t e_shoff = le64(image + 0x28);
+  const std::uint16_t e_shentsize = le16(image + 0x3a);
+  const std::uint16_t e_shnum = le16(image + 0x3c);
+  if (e_shnum == 0 || e_shoff == 0 || e_shentsize < 40 ||
+      e_shoff + static_cast<std::uint64_t>(e_shnum) * e_shentsize > size) {
+    return 0;
+  }
+  // ".max_flat_workgroup_size" is 24 chars; msgpack fixstr prefix = 0xa0+24.
+  static const char kField[] = ".max_flat_workgroup_size";
+  const std::size_t kFieldLen = sizeof(kField) - 1;  // 24
+  auto* base = reinterpret_cast<unsigned char*>(image);
+  for (std::uint16_t s = 0; s < e_shnum; ++s) {
+    const std::byte* shdr =
+        image + e_shoff + static_cast<std::uint64_t>(s) * e_shentsize;
+    if (le32(shdr + 4) != 7 /*SHT_NOTE*/) continue;
+    const std::uint64_t sh_offset = le64(shdr + 0x18);
+    const std::uint64_t sh_size = le64(shdr + 0x20);
+    if (sh_offset >= size || sh_offset + sh_size > size) continue;
+    std::size_t off = 0;
+    while (off + 12 <= sh_size) {
+      const std::uint32_t namesz = le32(image + sh_offset + off);
+      const std::uint32_t descsz = le32(image + sh_offset + off + 4);
+      const std::uint32_t type = le32(image + sh_offset + off + 8);
+      const std::size_t name_padded = (namesz + 3u) & ~3u;
+      const std::size_t desc_padded = (descsz + 3u) & ~3u;
+      if (off + 12 + name_padded + desc_padded > sh_size) break;
+      const unsigned char* nm = base + sh_offset + 12;
+      const bool is_amd = (namesz >= 3 && nm[0] == 'A' && nm[1] == 'M' &&
+                           nm[2] == 'D');
+      if (is_amd && (type == 0x3a || type == 0x20) && descsz > 0) {
+        unsigned char* desc = base + sh_offset + 12 + name_padded;
+        // Scan desc for 0xb8 + ".max_flat_workgroup_size". Loop bound keeps the
+        // value encoding byte (vp[0]) in bounds; each rewrite re-checks width.
+        std::size_t d = 0;
+        const std::size_t need = 1 + kFieldLen + 1;  // prefix + key + enc byte
+        while (d + need <= descsz) {
+          if (desc[d] == 0xb8 &&
+              std::memcmp(desc + d + 1, kField, kFieldLen) == 0) {
+            unsigned char* vp = desc + d + 1 + kFieldLen;
+            unsigned char enc = vp[0];
+            unsigned char* body = vp + 1;
+            std::size_t vwidth = 0;
+            if (enc == 0xcd /*uint16*/ && target <= 0xffffu) {
+              vwidth = 2;
+            } else if (enc == 0xce /*uint32*/ && target <= 0xffffffffu) {
+              vwidth = 4;
+            } else if (enc == 0xcf /*uint64*/) {
+              vwidth = 8;
+            }
+            // (fixint 0x00-0x7f and uint8 0xcc can't hold target>=256: skip.)
+            if (vwidth && (d + need + vwidth) <= descsz) {
+              for (std::size_t b = 0; b < vwidth; ++b) {
+                body[vwidth - 1 - b] = static_cast<unsigned char>(
+                    (target >> (8 * b)) & 0xff);  // big-endian
+              }
+              ++patched;
+            }
+            d += 1 + kFieldLen;  // past the key (value won't re-match)
+          } else {
+            ++d;
+          }
+        }
+      }
+      off += 12 + name_padded + desc_padded;
+    }
+  }
+  return patched;
 }
 
 namespace {
@@ -723,6 +806,36 @@ std::vector<std::uint32_t> tag1_blob_ptr_offsets(
     // a pointer, record its start offset in the blob.
     if (sig.args[i].is_pointer) {
       out.push_back(static_cast<std::uint32_t>(off));
+    }
+    off += len;
+  }
+  return out;
+}
+
+std::vector<std::pair<std::uint32_t, std::uint32_t>>
+tag1_blob_nonptr_arg_ranges(const std::vector<std::byte>& blob,
+                            const KernelSig& sig) {
+  std::vector<std::pair<std::uint32_t, std::uint32_t>> out;
+  if (blob.size() < 5 || static_cast<unsigned char>(blob[0]) != 1) return out;
+  const auto rd_u32 = [&](std::size_t off) -> std::uint32_t {
+    return static_cast<std::uint32_t>(static_cast<unsigned char>(blob[off])) |
+           (static_cast<std::uint32_t>(static_cast<unsigned char>(blob[off + 1]))
+            << 8) |
+           (static_cast<std::uint32_t>(static_cast<unsigned char>(blob[off + 2]))
+            << 16) |
+           (static_cast<std::uint32_t>(static_cast<unsigned char>(blob[off + 3]))
+            << 24);
+  };
+  const std::uint32_t count = rd_u32(1);
+  std::size_t off = 5;
+  const std::size_t nargs = std::min<std::size_t>(count, sig.args.size());
+  for (std::size_t i = 0; i < nargs; ++i) {
+    if (off + 4 > blob.size()) return {};
+    const std::uint32_t len = rd_u32(off);
+    off += 4;
+    if (off + len > blob.size()) return {};
+    if (!sig.args[i].is_pointer && len >= sizeof(std::uint64_t)) {
+      out.emplace_back(static_cast<std::uint32_t>(off), len);
     }
     off += len;
   }

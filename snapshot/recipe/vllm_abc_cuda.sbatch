@@ -27,17 +27,10 @@ export PIP_CACHE_DIR="${DEPLOY_DIR}/cache/pip"; mkdir -p "${PIP_CACHE_DIR}"
 TRANSFORMERS_VERSION="${TRANSFORMERS_VERSION:-5.12.1}"
 TP_N="${TP:-4}"
 
-echo "=== Step 1: build redirect + record .so (snapshot-cuda devel env) ==="
-srun --environment=snapshot-cuda bash -lc '
+echo "=== Step 1: build redirect + record .so INSIDE the vllm image (glibc 2.35 + CUDA 13) ==="
+srun --environment=glm-47-flash-vllm-cuda bash -lc '
   set -euo pipefail
-  cd "${SNAP_CUDA_DIR}"
-  CMAKE_PREFIX="${SNAP_CUDA_DIR}/cmake/cmake-3.30.8-linux-x86_64/bin"
-  if [ -x "${CMAKE_PREFIX}/cmake" ]; then export PATH="${CMAKE_PREFIX}:${PATH}"; fi
-  cmake -S snapshot -B snapshot/build-cuda -DSNAPSHOT_BACKEND=CUDA -DCMAKE_CUDA_ARCHITECTURES=80
-  cmake --build snapshot/build-cuda -j"${SLURM_CPUS_PER_TASK:-8}" \
-    --target snapshot_record_cuda snapshot_redirect_cuda
-  ls -l snapshot/build-cuda/libsnapshot_record_cuda.so \
-        snapshot/build-cuda/libsnapshot_redirect_cuda.so
+  bash "${SNAP_CUDA_DIR}/snapshot/recipe/_build_cuda_so.sh" build-vllm
 '
 
 run_glm() {

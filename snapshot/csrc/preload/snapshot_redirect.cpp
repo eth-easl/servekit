@@ -49,6 +49,21 @@ bool arena_mode() {
   return a;
 }
 
+// FIXED_VMM: Foundry-style fixed-base arena. One hipMemAddressReserve pins the
+// base (Δ=0 across cold starts), then ONE hipMemCreate + hipMemMap +
+// hipMemSetAccess over the WHOLE region — not per sub-allocation. The per-block
+// hipMemSetAccess is exactly the M2.3 fragility that forced the driver-chosen
+// hipMalloc arena (and thus base drift). One upfront set_access over the entire
+// reserved range sidesteps the torch-interleaving corruption. Sub-allocations
+// are bump cursors inside the single mapping, identical to ARENA mode.
+bool fixed_vmm_mode() {
+  static const bool f = [] {
+    const char* e = std::getenv("SNAPSHOT_REDIRECT_FIXED_BASE");
+    return e != nullptr && e[0] == '1';
+  }();
+  return f;
+}
+
 // --- VMM backing (legacy) ----------------------------------------------------
 std::unique_ptr<snapshot::GpuBackend> g_backend;
 snapshot::DeterministicAllocator g_alloc;
@@ -124,6 +139,106 @@ bool ensure_init() {
     return g_init_ok;
   }
   g_init_attempted = true;
+
+  if (fixed_vmm_mode()) {
+    // --- Foundry-style fixed-base VMM arena ------------------------------
+    // One reserve (fixed base) + one create + one map + ONE set_access over
+    // the whole region. Avoids the per-block hipMemSetAccess that broke under
+    // full vLLM (M2.3) and pins the base so Δ=0 across cold starts.
+    int dev = 0;
+    hipGetDevice(&dev);
+    // Query granularity so create/map/reserve sizes are properly aligned.
+    hipMemAllocationProp gprop{};
+    gprop.type = hipMemAllocationTypePinned;
+    gprop.location.type = hipMemLocationTypeDevice;
+    gprop.location.id = dev;
+    std::size_t gran = 0;
+    hipMemGetAllocationGranularity(&gran, &gprop,
+                                   hipMemAllocationGranularityRecommended);
+    if (gran == 0) gran = 1ULL << 21;  // 2 MiB fallback
+    const std::uint64_t rsize = round_up(region_bytes(), gran);
+
+    void* ptr = reinterpret_cast<void*>(snapshot::kDefaultRequestedBase);
+    hipError_t e = hipMemAddressReserve(&ptr, rsize, gran, ptr, 0);
+    if (e != hipSuccess || ptr == nullptr) {
+      std::fprintf(stderr,
+                   "[redirect] FIXED_VMM hipMemAddressReserve(base=0x%llx, "
+                   "%lluGiB) failed (%s); pass through\n",
+                   static_cast<unsigned long long>(
+                       snapshot::kDefaultRequestedBase),
+                   static_cast<unsigned long long>(rsize >> 30),
+                   hipGetErrorString(e));
+      return false;
+    }
+    const std::uint64_t reserved_base = reinterpret_cast<std::uint64_t>(ptr);
+
+    hipMemAllocationProp prop{};
+    prop.type = hipMemAllocationTypePinned;
+    prop.location.type = hipMemLocationTypeDevice;
+    prop.location.id = dev;
+#if defined(__HIP_PLATFORM_AMD__)
+    prop.requestedHandleType = hipMemHandleTypeNone;
+#else
+    prop.requestedHandleTypes = hipMemHandleTypeNone;
+#endif
+    hipMemGenericAllocationHandle_t handle{};
+    e = hipMemCreate(&handle, rsize, &prop, 0);
+    if (e != hipSuccess) {
+      std::fprintf(stderr,
+                   "[redirect] FIXED_VMM hipMemCreate(%lluGiB) failed (%s)\n",
+                   static_cast<unsigned long long>(rsize >> 30),
+                   hipGetErrorString(e));
+      hipMemAddressFree(ptr, rsize);
+      return false;
+    }
+    e = hipMemMap(ptr, rsize, 0, handle, 0);
+    if (e != hipSuccess) {
+      std::fprintf(stderr, "[redirect] FIXED_VMM hipMemMap failed (%s)\n",
+                   hipGetErrorString(e));
+      hipMemRelease(handle);
+      hipMemAddressFree(ptr, rsize);
+      return false;
+    }
+    hipMemAccessDesc desc{};
+    desc.location.type = hipMemLocationTypeDevice;
+    desc.location.id = dev;
+    desc.flags = hipMemAccessFlagsProtReadWrite;
+    e = hipMemSetAccess(ptr, rsize, &desc, 1);
+    if (e != hipSuccess) {
+      std::fprintf(stderr,
+                   "[redirect] FIXED_VMM hipMemSetAccess(whole region) failed "
+                   "(%s)\n",
+                   hipGetErrorString(e));
+      hipMemUnmap(ptr, rsize);
+      hipMemRelease(handle);
+      hipMemAddressFree(ptr, rsize);
+      return false;
+    }
+
+    g_base = reserved_base;
+    g_region = rsize;
+    g_cursor = 0;
+    g_granularity = 512;
+    g_fixed_base = (reserved_base == snapshot::kDefaultRequestedBase);
+    g_init_ok = true;
+    // Publish the region VA to the recorder exactly like ARENA mode.
+    {
+      char buf[32];
+      std::snprintf(buf, sizeof(buf), "%llu",
+                    static_cast<unsigned long long>(g_base));
+      setenv("SNAPSHOT_RECORD_REGION_BASE", buf, 1);
+      std::snprintf(buf, sizeof(buf), "%llu",
+                    static_cast<unsigned long long>(g_region));
+      setenv("SNAPSHOT_RECORD_REGION_SIZE", buf, 1);
+    }
+    std::fprintf(stderr,
+                 "[redirect] pid=%d FIXED_VMM base=0x%llx size=%lluGiB "
+                 "fixed_base_honored=%d\n",
+                 static_cast<int>(getpid()),
+                 static_cast<unsigned long long>(g_base),
+                 static_cast<unsigned long long>(g_region >> 30), g_fixed_base);
+    return true;
+  }
 
   if (arena_mode()) {
     // One real hipMalloc for the whole region. Device alignment of 512 B
@@ -348,6 +463,24 @@ hipError_t hipFreeAsync(void* ptr, hipStream_t stream) {
   return real(ptr, stream);
 }
 
+// --- M3g: exported accessors for the record/restore shim -----------------
+// snapshot_record is a SEPARATE .so (not linked against us), so it cannot read
+// g_base directly. It resolves these symbols via dlsym(RTLD_DEFAULT, ...) at
+// restore time to get THIS process's live arena base. The restore path then
+// computes delta = live_base - snap.allocator.region_base and relocates every
+// captured device pointer before rebuilding the graph — without it, differing
+// driver-chosen arena bases across cold starts make every kernel arg point at
+// shifted memory and hipGraphLaunch faults (hipErrorLaunchFailure).
+__attribute__((visibility("default")))
+std::uint64_t snapshot_redirect_region_base() {
+  return g_base;
+}
+
+__attribute__((visibility("default")))
+std::uint64_t snapshot_redirect_region_size() {
+  return g_region;
+}
+
 }  // extern "C"
 
 namespace {
@@ -360,7 +493,8 @@ struct RedirectSummary {
                  "[redirect] pid=%d SUMMARY mode=%s base=0x%llx served=%llu "
                  "reused=%llu passthrough=%llu(%lluMiB) live=%zu free=%zu "
                  "region_used=%lluMiB\n",
-                 static_cast<int>(getpid()), arena_mode() ? "arena" : "vmm",
+                 static_cast<int>(getpid()),
+                 fixed_vmm_mode() ? "fixed_vmm" : (arena_mode() ? "arena" : "vmm"),
                  static_cast<unsigned long long>(g_base),
                  static_cast<unsigned long long>(g_served),
                  static_cast<unsigned long long>(g_reused),
