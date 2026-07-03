@@ -60,6 +60,7 @@ snapshot/measure-init/
 # Logs and Slurm output
 *.log
 slurm-*.out
+logs/
 
 # Secrets / environment
 .env
