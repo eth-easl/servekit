@@ -30,6 +30,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         print("error: no command given after --", file=sys.stderr)
         return 2
 
+    print(f"[SERVEKIT] profiling cold start of: {' '.join(command)}", flush=True)
+
     emitted = False
 
     def emit(report: ProfileReport) -> None:

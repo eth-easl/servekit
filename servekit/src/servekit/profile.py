@@ -198,7 +198,7 @@ def render_table(report: ProfileReport) -> str:
     name_w = max([len(r[0]) for r in rows] + [len("phase")])
     header = f"{'phase':<{name_w}}  {'duration_s':>10}  source"
     sep = "-" * len(header)
-    lines = [header, sep]
+    lines = ["[SERVEKIT] Cold-start profile", sep, header, sep]
     for name, dur, source in rows:
         lines.append(f"{name:<{name_w}}  {dur:>10.2f}  {source}")
     lines.append(sep)
