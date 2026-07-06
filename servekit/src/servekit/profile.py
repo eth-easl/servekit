@@ -19,6 +19,19 @@ SGLANG_PHASE_PATTERNS = [
 ]
 READY_PATTERN = re.compile(r"The server is fired up and ready to roll!")
 
+# Wall-clock milestones from the tail of startup, where the engine emits no
+# `elapsed=` timing of its own. Each milestone, the first time it is seen,
+# closes the interval since the previous marker as a phase whose duration
+# servekit measures itself. This is what splits the old lumped
+# "http_bind_and_warmup" gap into the HTTP bind vs. the first (JIT-heavy)
+# warmup request: the warmup POST on an already-loaded, already-captured model
+# is dominated by first-call lazy init (FlashInfer JIT/autotune, sampling
+# backend, first kernel loads), not by serving work.
+MILESTONE_PATTERNS = [
+    ("http_bind", re.compile(r"Uvicorn running on")),
+    ("warmup_request(JIT)", re.compile(r'"POST /generate HTTP/1\.1"\s+200')),
+]
+
 GAP_THRESHOLD_S = 0.5
 
 # A gap between two phases is only named if *all* marker regexes for that
@@ -38,13 +51,6 @@ GAP_HYPOTHESES = [
         [
             re.compile(r"KV Cache is allocated"),
             re.compile(r"Memory pool end\."),
-        ],
-    ),
-    (
-        "http_bind_and_warmup",
-        [
-            re.compile(r"Uvicorn running on"),
-            re.compile(r'"POST /generate HTTP/1\.1"\s+200'),
         ],
     ),
 ]
@@ -98,6 +104,7 @@ def _process_stream(
     servekit only stops *measuring*, it never stops the process from serving.
     """
     seen_phases = set()
+    seen_milestones = set()
     phases: List[Phase] = []
     last_marker_time = spawn_time
     ready_at: Optional[float] = None
@@ -134,6 +141,23 @@ def _process_stream(
             for idx, marker in enumerate(markers):
                 if marker.search(line):
                     gap_evidence[name].add(idx)
+
+        milestone_hit = False
+        for name, pattern in MILESTONE_PATTERNS:
+            if name in seen_milestones:
+                continue
+            if pattern.search(line):
+                seen_milestones.add(name)
+                gap = now - last_marker_time
+                if gap > GAP_THRESHOLD_S:
+                    phases.append(Phase(name, round(gap, 2), "wall_clock"))
+                last_marker_time = now
+                for evidence in gap_evidence.values():
+                    evidence.clear()
+                milestone_hit = True
+                break
+        if milestone_hit:
+            continue
 
         for name, pattern in SGLANG_PHASE_PATTERNS:
             if name in seen_phases:

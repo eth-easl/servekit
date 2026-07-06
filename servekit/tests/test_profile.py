@@ -53,8 +53,14 @@ def test_parses_real_sglang_log():
     # left as "unknown".
     assert by_name["tp_worker_spawn"].source == "wall_clock"  # chat template -> first TP-tagged line
     assert by_name["kv_cache_alloc"].source == "wall_clock"  # KV Cache is allocated -> Memory pool end
-    assert by_name["http_bind_and_warmup"].source == "wall_clock"  # Uvicorn running -> POST /generate 200
-    assert 10.0 <= by_name["http_bind_and_warmup"].duration_s <= 14.0
+
+    # The old lumped "http_bind_and_warmup" gap is now split at the "Uvicorn
+    # running" milestone: HTTP bind (piecewise graph end -> Uvicorn up) vs. the
+    # first, JIT-heavy warmup request (Uvicorn up -> POST /generate 200).
+    assert by_name["http_bind"].source == "wall_clock"
+    assert 1.0 <= by_name["http_bind"].duration_s <= 4.0
+    assert by_name["warmup_request(JIT)"].source == "wall_clock"
+    assert 8.0 <= by_name["warmup_request(JIT)"].duration_s <= 12.0
 
     # Gaps we haven't diagnosed a hypothesis for yet (e.g. between
     # torch_distributed_init and weight_loading, where nothing is logged at
