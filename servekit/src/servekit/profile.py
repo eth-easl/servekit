@@ -5,10 +5,13 @@ import json
 import re
 import subprocess
 import sys
+import threading
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Callable, Iterable, List, Optional
+
+from .bench import BenchConfig, run_benchmark
 
 # (phase name, regex whose sole capture group is the engine-reported elapsed seconds)
 SGLANG_PHASE_PATTERNS = [
@@ -70,6 +73,7 @@ class ProfileReport:
     ready_at: Optional[float]
     success: bool
     phases: List[Phase] = field(default_factory=list)
+    benchmark: Optional[dict] = None  # post-ready bench results, if --bench was used
 
     @property
     def total_duration_s(self) -> float:
@@ -85,6 +89,7 @@ class ProfileReport:
             "success": self.success,
             "total_duration_s": self.total_duration_s,
             "phases": [asdict(p) for p in self.phases],
+            "benchmark": self.benchmark,
         }
 
 
@@ -214,6 +219,64 @@ def run_profile(
         proc.terminate()
     proc.wait()
     report.command = " ".join(command)
+    return report
+
+
+def run_profile_with_bench(
+    command: List[str],
+    base_url: str,
+    bench_config: BenchConfig,
+    ready_timeout: float = 1800.0,
+) -> ProfileReport:
+    """Profile cold start, then benchmark the live server before tearing it down.
+
+    The server's stdout is drained in a background thread the whole time. This
+    matters: under benchmark load the engine logs heavily, and if we stopped
+    reading stdout the OS pipe buffer would fill and the server would block on
+    write -> deadlock. So the drain thread keeps measuring/echoing while the
+    main thread hits the server with requests. Once the benchmark finishes,
+    the server is terminated and the combined report is returned.
+    """
+    spawn_time = time.time()
+    proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+
+    ready_event = threading.Event()
+    holder: dict = {}
+
+    def _on_ready(_: ProfileReport) -> None:
+        ready_event.set()
+
+    def _drain() -> None:
+        holder["report"] = _process_stream(
+            proc.stdout, spawn_time, ready_timeout, on_ready=_on_ready
+        )
+
+    drain = threading.Thread(target=_drain, daemon=True)
+    drain.start()
+
+    # Wait until the server is ready, or the drain thread ends first (failure/timeout).
+    while not ready_event.is_set() and drain.is_alive():
+        drain.join(timeout=0.5)
+
+    bench_result = None
+    if ready_event.is_set():
+        print("\n[SERVEKIT] server ready -> running post-ready benchmark", flush=True)
+        bench_result = run_benchmark(base_url, bench_config).to_dict()
+
+    # Measurement done: stop the server and let the drain thread finish.
+    proc.terminate()
+    try:
+        proc.wait(timeout=30)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.wait()
+    drain.join(timeout=10)
+
+    report = holder.get("report") or ProfileReport(
+        command="", started_at=spawn_time, ready_at=None, success=False
+    )
+    report.command = " ".join(command)
+    report.benchmark = bench_result
     return report
 
 
