@@ -1,0 +1,94 @@
+=== comparison (sorted by weight_loading) ===
+loader               job       node  weight_s  total_s  graph_s    tok/s   p50_s     reqs  errs
+-----------------------------------------------------------------------------------------------
+fastsafetensors    73620  nid002805      73.7    237.2    107.3    402.3    5.09    64/64     0
+nommap             73621  nid002808     161.9    348.2    119.3    401.3    5.10    64/64     0
+mmap               73622  nid002809     939.0   1123.2    107.8    402.0    5.09    64/64     0
+
+=== full phase breakdown ===
+
+### phase1_3_e2e-fastsafetensors-73620-nid002805-profile.json  (total=237.18s, ok)
+    process_startup                     19.05  (wall_clock)
+    tp_worker_spawn                     15.42  (wall_clock)
+    torch_distributed_init               2.79  (engine_reported)
+    unknown                              1.83  (wall_clock)
+    weight_loading                      73.67  (engine_reported)
+    cuda_graph_capture                  26.83  (engine_reported)
+    piecewise_cuda_graph_capture        80.49  (engine_reported)
+    http_bind                            1.85  (wall_clock)
+    warmup_request(JIT)                 14.79  (wall_clock)
+
+### phase1_3_e2e-nommap-73621-nid002808-profile.json  (total=348.21s, ok)
+    process_startup                     23.88  (wall_clock)
+    tp_worker_spawn                     15.68  (wall_clock)
+    torch_distributed_init               3.00  (engine_reported)
+    unknown                              1.82  (wall_clock)
+    weight_loading                     161.92  (engine_reported)
+    kv_cache_alloc                       5.67  (wall_clock)
+    cuda_graph_capture                  41.26  (engine_reported)
+    piecewise_cuda_graph_capture        78.03  (engine_reported)
+    http_bind                            1.99  (wall_clock)
+    warmup_request(JIT)                 14.95  (wall_clock)
+
+### phase1_3_e2e-mmap-73622-nid002809-profile.json  (total=1123.23s, ok)
+    process_startup                     25.29  (wall_clock)
+    tp_worker_spawn                     16.88  (wall_clock)
+    torch_distributed_init               3.49  (engine_reported)
+    unknown                              1.96  (wall_clock)
+    weight_loading                     939.05  (engine_reported)
+    kv_cache_alloc                      12.17  (wall_clock)
+    cuda_graph_capture                  28.21  (engine_reported)
+    piecewise_cuda_graph_capture        79.60  (engine_reported)
+    http_bind                            1.91  (wall_clock)
+    warmup_request(JIT)                 14.67  (wall_clock)
+
+=== post-ready benchmark ===
+
+### fastsafetensors (nid002805)
+    requests        64/64  conc=16 in=512 out=128
+    wall_s          20.364
+    output_tokens   8192
+    output_tok/s    402.3
+    requests/s      3.143
+    latency_s       mean=5.09 p50=5.092 p99=5.1 max=5.1
+    errors          0
+
+### nommap (nid002808)
+    requests        64/64  conc=16 in=512 out=128
+    wall_s          20.415
+    output_tokens   8192
+    output_tok/s    401.3
+    requests/s      3.135
+    latency_s       mean=5.102 p50=5.103 p99=5.111 max=5.111
+    errors          0
+
+### mmap (nid002809)
+    requests        64/64  conc=16 in=512 out=128
+    wall_s          20.379
+    output_tokens   8192
+    output_tok/s    402.0
+    requests/s      3.14
+    latency_s       mean=5.094 p50=5.094 p99=5.106 max=5.106
+    errors          0
+
+=== correctness cross-check (greedy outputs across loaders) ===
+
+  [AGREE ] 'The capital of France is'
+      all 3 loaders -> 'a city of love, art, fashion, and cuisine. Paris is a must-visit destination for anyone '
+
+  [AGREE ] 'Explain in one sentence why the sky is blue.'
+      all 3 loaders -> 'The sky is blue because of a phenomenon called Rayleigh scattering, in which shorter (bl'
+
+  [AGREE ] 'List the first 10 prime numbers.'
+      all 3 loaders -> '2, 3, 5, 7, 11, 13, 17, 19, 23, 29 What is the definition of a prime number? A prime num'
+
+  [AGREE ] 'Q: If a train travels 60 km in 1.5 hours, what is its average speed? A:'
+      all 3 loaders -> '40 km/h Explanation: The average speed of the train is calculated by dividing the distan'
+
+  [AGREE ] 'def fibonacci(n):'
+      all 3 loaders -> '#function to generate fibonacci sequence fib_sequence = [0, 1] while len(fib_sequence) <'
+
+  [AGREE ] 'The three laws of thermodynamics are:'
+      all 3 loaders -> 'The first law, also known as the law of energy conservation, states that energy cannot b'
+
+  6/6 prompts identical across 3 loaders (fastsafetensors, nommap, mmap)

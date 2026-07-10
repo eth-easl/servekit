@@ -1,0 +1,20 @@
+job_id=73650 node=nid002317 model=/capstor/store/cscs/swissai/infra01/hf_models/models/meta-llama/Llama-3.1-70B-Instruct bs=16M conc='1 4 8 16 32 64'
+csv=/iopsstor/scratch/cscs/yboughizane/simple-serving-stack/lustre-loading-exp/results/phase1.2_dd_sweep/phase1_dd_sweep-73650-nid002317.csv
+started=2026-07-10T11:29:47+02:00
+host=nid002317 shards=30 total=141.1GB bs=16M (O_DIRECT)
+concurrency,total_bytes,wall_s,agg_GBps
+1,141107497872,372.36,0.38
+4,141107497872,93.42,1.51
+8,141107497872,49.22,2.87
+16,141107497872,30.20,4.67
+32,141107497872,18.36,7.69
+64,141107497872,24.04,5.87
+finished=2026-07-10T11:39:34+02:00
+=== result ===
+concurrency,total_bytes,wall_s,agg_GBps
+1,141107497872,372.36,0.38
+4,141107497872,93.42,1.51
+8,141107497872,49.22,2.87
+16,141107497872,30.20,4.67
+32,141107497872,18.36,7.69
+64,141107497872,24.04,5.87

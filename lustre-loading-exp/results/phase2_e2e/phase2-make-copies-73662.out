@@ -1,0 +1,20 @@
+job=73662 node=nid002317 model=/capstor/store/cscs/swissai/infra01/hf_models/models/meta-llama/Llama-3.1-70B-Instruct
+exp_base=/capstor/store/cscs/swissai/infra01/cold-start-experiments layouts='4:8M'
+started=2026-07-10T12:14:02+02:00
+
+==================== layout stripe_count=4 stripe_size=8M ====================
+striped copy: /capstor/store/cscs/swissai/infra01/hf_models/models/meta-llama/Llama-3.1-70B-Instruct -> /capstor/store/cscs/swissai/infra01/cold-start-experiments/llama70b_c4_s8M  (stripe_count=4 stripe_size=8M workers=16)
+dest dir layout:
+stripe_count:  4 stripe_size:   8388608 pattern:       raid0 stripe_offset: -1
+
+verify - layout of one copied shard (expect stripe_count=4):
+4
+
+copied_files=40 copied_bytes=141116758507 copy_wall_s=34.33 copy_GBps=4.11
+=== copies present ===
+132G	/capstor/store/cscs/swissai/infra01/cold-start-experiments/llama70b_c16_s4M
+132G	/capstor/store/cscs/swissai/infra01/cold-start-experiments/llama70b_c4_s4M
+131G	/capstor/store/cscs/swissai/infra01/cold-start-experiments/llama70b_c4_s8M
+132G	/capstor/store/cscs/swissai/infra01/cold-start-experiments/llama70b_c8_s16M
+132G	/capstor/store/cscs/swissai/infra01/cold-start-experiments/llama70b_c8_s4M
+finished=2026-07-10T12:14:36+02:00

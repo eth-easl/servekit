@@ -1,0 +1,39 @@
+shard                               count       size  ost_idx
+model-00001-of-00030.safetensors        1    1048576  117
+model-00002-of-00030.safetensors        1    1048576  30
+model-00003-of-00030.safetensors        1    1048576  30
+model-00004-of-00030.safetensors        1    1048576  11
+model-00005-of-00030.safetensors        1    1048576  98
+model-00006-of-00030.safetensors        1    1048576  46
+model-00007-of-00030.safetensors        1    1048576  139
+model-00008-of-00030.safetensors        1    1048576  149
+model-00009-of-00030.safetensors        1    1048576  107
+model-00010-of-00030.safetensors        1    1048576  30
+model-00011-of-00030.safetensors        1    1048576  59
+model-00012-of-00030.safetensors        1    1048576  93
+model-00013-of-00030.safetensors        1    1048576  2
+model-00014-of-00030.safetensors        1    1048576  86
+model-00015-of-00030.safetensors        1    1048576  133
+model-00016-of-00030.safetensors        1    1048576  13
+model-00017-of-00030.safetensors        1    1048576  16
+model-00018-of-00030.safetensors        1    1048576  8
+model-00019-of-00030.safetensors        1    1048576  105
+model-00020-of-00030.safetensors        1    1048576  46
+model-00021-of-00030.safetensors        1    1048576  80
+model-00022-of-00030.safetensors        1    1048576  56
+model-00023-of-00030.safetensors        1    1048576  70
+model-00024-of-00030.safetensors        1    1048576  130
+model-00025-of-00030.safetensors        1    1048576  15
+model-00026-of-00030.safetensors        1    1048576  59
+model-00027-of-00030.safetensors        1    1048576  76
+model-00028-of-00030.safetensors        1    1048576  23
+model-00029-of-00030.safetensors        1    1048576  93
+model-00030-of-00030.safetensors        1    1048576  15
+
+distinct OSTs used: 24
+OSTs hosting >1 shard (hot):
+  OST 15: 2 shards
+  OST 30: 3 shards
+  OST 46: 2 shards
+  OST 59: 2 shards
+  OST 93: 2 shards

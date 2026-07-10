@@ -1,0 +1,42 @@
+=== all e2e profile JSONs ===
+phase1_3_e2e-mmap-73605-nid002325-profile.json
+phase1_3_e2e-nommap-73606-nid002313-profile.json
+phase1_3_e2e-fastsafetensors-73612-nid002804-profile.json
+
+### phase1_3_e2e-mmap-73605-nid002325-profile.json
+  total=840.65s success=True
+    process_startup                     28.73
+    tp_worker_spawn                     16.74
+    torch_distributed_init               2.48
+    unknown                              1.87
+    weight_loading                     664.68
+    kv_cache_alloc                       0.84
+    cuda_graph_capture                  29.40
+    piecewise_cuda_graph_capture        79.02
+    http_bind                            1.88
+    warmup_request(JIT)                 15.00
+
+### phase1_3_e2e-nommap-73606-nid002313-profile.json
+  total=331.2s success=True
+    process_startup                     17.74
+    tp_worker_spawn                     15.13
+    torch_distributed_init               3.09
+    unknown                              1.82
+    weight_loading                     162.51
+    kv_cache_alloc                       2.30
+    cuda_graph_capture                  36.23
+    piecewise_cuda_graph_capture        76.61
+    http_bind                            1.98
+    warmup_request(JIT)                 13.78
+
+### phase1_3_e2e-fastsafetensors-73612-nid002804-profile.json
+  total=258.49s success=True
+    process_startup                     23.59
+    tp_worker_spawn                     16.68
+    torch_distributed_init               3.53
+    unknown                              1.90
+    weight_loading                      88.07
+    cuda_graph_capture                  28.33
+    piecewise_cuda_graph_capture        79.02
+    http_bind                            1.82
+    warmup_request(JIT)                 15.07

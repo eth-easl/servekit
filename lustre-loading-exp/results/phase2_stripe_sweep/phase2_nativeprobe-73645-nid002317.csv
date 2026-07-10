@@ -1,0 +1,9 @@
+label,probe_GBps
+native_before_c4_s4M,3.63
+native_after_c4_s4M,3.90
+native_before_c8_s4M,3.97
+native_after_c8_s4M,5.03
+native_before_c16_s4M,5.46
+native_after_c16_s4M,5.47
+native_before_c8_s16M,5.35
+native_after_c8_s16M,5.31
