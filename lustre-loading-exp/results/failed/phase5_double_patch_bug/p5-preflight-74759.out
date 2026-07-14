@@ -1,0 +1,75 @@
+job=74759 node=nid002324 tag=preflight
+started=2026-07-14T12:22:55+02:00
+=============== 1. instanttensor package ===============
+instanttensor version: 0.1.9
+
+=============== 2. backport harness ===============
+[patch] installed sglang 0.5.10 at /sgl-workspace/sglang/python/sglang
+[patch] patch touches 4 file(s)
+Note: switching to '1519acf37c23f2189adb93f57ca9cd2db1bebf18'.
+
+You are in 'detached HEAD' state. You can look around, make experimental
+changes and commit them, and you can discard any commits you make in this
+state without impacting any branches by switching back to a branch.
+
+If you want to create a new branch to retain commits you create, you may
+do so (now or later) by using -c with the switch command. Example:
+
+  git switch -c <new-branch-name>
+
+Or undo this operation with:
+
+  git switch -
+
+Turn off this advice by setting config variable advice.detachedHead to false
+
+[patch] cloned https://github.com/sgl-project/sglang.git @ v0.5.10 = 1519acf37c23f2189adb93f57ca9cd2db1bebf18
+[patch] verified: all 4 file(s) match the image byte-for-byte
+[patch]   swapped srt/configs/load_config.py
+[patch]   swapped srt/model_loader/weight_utils.py
+[patch]   swapped srt/model_loader/loader.py
+[patch]   swapped srt/server_args.py
+[patch] done (instanttensor_backport.patch)
+
+=============== 3. wiring asserts ===============
+[preflight] all 4 files wired correctly
+
+=============== 4. instanttensor API / knobs ===============
+safe_open signature: (filename: Union[str, list[str]], framework: str, device: Union[int, str, torch.device], process_group=None, *, buffer_size: Optional[int] = None, chunk_size: Optional[int] = None, concurrency: Optional[int] = None, io_depth: Optional[int] = None, max_free_mem_usage: Optional[float] = None, load_now: bool = True, copy: bool = True, backend: Union[instanttensor._impl.Backend, instanttensor._impl.BackendPolicy, list[Union[instanttensor._impl.Backend, instanttensor._impl.BackendPolicy]], NoneType] = None)
+public API: ['Backend', 'BackendPolicy', 'safe_open']
+--- INSTANTTENSOR*/IT_* env knobs currently set ---
+(none set; check the signature above for args)
+
+=============== 5. GDS availability (THE FORK IN THE ROAD) ===============
+--- libcufile ---
+  LOADED libcufile.so
+--- nvidia-fs device nodes ---
+  NONE (/dev/nvidia-fs* absent -> GDS kernel driver not exposed)
+--- /proc/driver/nvidia-fs ---
+  NONE
+--- cufile.json ---
+{
+    // NOTE : Application can override custom configuration via export CUFILE_ENV_PATH_JSON=<filepath>
+    // e.g : export CUFILE_ENV_PATH_JSON="/home/<xxx>/cufile.json"
+
+            "logging": {
+                            // log directory, if not enabled will create log file under current working directory
+                            //"dir": "/home/<xxxx>",
+
+                            // NOTICE|ERROR|WARN|INFO|DEBUG|TRACE (in decreasing order of severity)
+                            "level": "ERROR"
+            },
+
+            "profile": {
+                            // nvtx profiling on/off
+                            "nvtx": false,
+                            // cufile stats level(0-3)
+                            "cufile_stats": 0
+            },
+
+            "execution" : {
+--- is the model on a GDS-capable mount? ---
+  capstor fstype=lustre
+
+[preflight] ALL CHECKS PASSED
+finished=2026-07-14T12:23:32+02:00

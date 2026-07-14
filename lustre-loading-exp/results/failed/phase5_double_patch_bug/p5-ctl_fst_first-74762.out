@@ -1,0 +1,95 @@
+job=74762 node=nid002324 tag=ctl_fst_first loader=fastsafetensors fpr=8 it_conc=default it_iodepth=default
+profile_out=/iopsstor/scratch/cscs/yboughizane/simple-serving-stack/lustre-loading-exp/results/phase5_instanttensor/phase5_instanttensor-ctl_fst_first-74762-nid002324-profile.json
+started=2026-07-14T12:30:44+02:00
+[patch] installed sglang 0.5.10 at /sgl-workspace/sglang/python/sglang
+[patch] patch touches 1 file(s)
+Note: switching to '1519acf37c23f2189adb93f57ca9cd2db1bebf18'.
+
+You are in 'detached HEAD' state. You can look around, make experimental
+changes and commit them, and you can discard any commits you make in this
+state without impacting any branches by switching back to a branch.
+
+If you want to create a new branch to retain commits you create, you may
+do so (now or later) by using -c with the switch command. Example:
+
+  git switch -c <new-branch-name>
+
+Or undo this operation with:
+
+  git switch -
+
+Turn off this advice by setting config variable advice.detachedHead to false
+
+[patch] cloned https://github.com/sgl-project/sglang.git @ v0.5.10 = 1519acf37c23f2189adb93f57ca9cd2db1bebf18
+[patch] verified: all 1 file(s) match the image byte-for-byte
+[patch]   swapped srt/model_loader/weight_utils.py
+[patch] done (fst_files_per_rank.patch)
+[patch] installed sglang 0.5.10 at /sgl-workspace/sglang/python/sglang
+[patch] patch touches 4 file(s)
+Note: switching to '1519acf37c23f2189adb93f57ca9cd2db1bebf18'.
+
+You are in 'detached HEAD' state. You can look around, make experimental
+changes and commit them, and you can discard any commits you make in this
+state without impacting any branches by switching back to a branch.
+
+If you want to create a new branch to retain commits you create, you may
+do so (now or later) by using -c with the switch command. Example:
+
+  git switch -c <new-branch-name>
+
+Or undo this operation with:
+
+  git switch -
+
+Turn off this advice by setting config variable advice.detachedHead to false
+
+[patch] cloned https://github.com/sgl-project/sglang.git @ v0.5.10 = 1519acf37c23f2189adb93f57ca9cd2db1bebf18
+[patch] FATAL: pinned source != sglang installed in the image, for python/sglang/srt/model_loader/weight_utils.py
+[patch]        The image was not built from v0.5.10, or was patched on top of it.
+[patch]        Refusing to run: the swapped file would not be the code the image ships.
+--- /sgl-workspace/sglang/python/sglang/srt/model_loader/weight_utils.py	2026-07-14 12:31:19.621492742 +0200
++++ /root/sglang-src/python/sglang/srt/model_loader/weight_utils.py	2026-07-14 12:31:22.721671567 +0200
+@@ -750,17 +750,9 @@
+ 
+     device = torch.device(f"cuda:{rank}")
+ 
+-    # Files in flight during one fastsafetensors batch. Upstream hard-codes one
+-    # file per rank, so a TP=4 launch reads only 4 shards concurrently -- well
+-    # below the reader fan-out a parallel filesystem needs to reach peak
+-    # aggregate bandwidth. This makes the fan-out tunable. The default of 1 is
+-    # byte-for-byte upstream behavior.
+-    files_per_rank = int(os.getenv("SGLANG_FST_FILES_PER_RANK", "1"))
+-    chunk = pg.size() * files_per_rank
+-
+     weight_files_sub_lists = [
+-        hf_weights_files[i : i + chunk]
+-        for i in range(0, len(hf_weights_files), chunk)
++        hf_weights_files[i : i + pg.size()]
++        for i in range(0, len(hf_weights_files), pg.size())
+     ]
+ 
+     _BAR_FORMAT = (
+@@ -774,16 +766,7 @@
+         bar_format=_BAR_FORMAT,
+     ):
+         loader = SafeTensorsFileLoader(pg, device)
+-        # Round-robin this chunk across the ranks. At files_per_rank=1 this
+-        # reduces exactly to upstream's `{i: [f] for i, f in enumerate(f_list)}`:
+-        # every slice holds a single file, and on a short final chunk the
+-        # trailing ranks get an empty slice and are dropped -- precisely what
+-        # enumerate() does by running out of files.
+-        rank_file_map = {}
+-        for rank_idx in range(pg.size()):
+-            rank_files = f_list[rank_idx :: pg.size()]
+-            if rank_files:
+-                rank_file_map[rank_idx] = rank_files
++        rank_file_map = {i: [f] for i, f in enumerate(f_list)}
+         loader.add_filenames(rank_file_map)
+         try:
+             fb = loader.copy_files_to_device()
+srun: error: nid002324: task 0: Exited with exit code 1
+=== profile result (ctl_fst_first, loader=fastsafetensors) ===
+NO PROFILE JSON - run did not reach ready
+=== dd probe (ctl_fst_first) ===
+NO DD CSV
+finished=2026-07-14T12:31:24+02:00
