@@ -3,6 +3,72 @@
 Model: `/capstor/store/cscs/swissai/infra01/hf_models/models/meta-llama/Llama-3.1-70B-Instruct`
 (~132 GB, 30 safetensors shards, capstor Lustre). Node: bristen A100, TP=4.
 
+---
+
+## TL;DR
+
+**Cold start for Llama-3.1-70B is dominated by weight loading, and the default
+loader is the worst possible choice on Lustre.** Best config found:
+
+```
+--load-format fastsafetensors   +   SGLANG_FST_FILES_PER_RANK=8   (12-line patch)
+```
+
+| config | weight_loading | total cold start |
+|---|---|---|
+| mmap — **SGLang's default on Lustre** | 665–939 s | 841–1123 s |
+| nommap | 162 s | 348 s |
+| fastsafetensors (upstream) | 69–88 s | 242–258 s |
+| **fastsafetensors + files_per_rank=8** | **37–43 s** | **208–212 s** |
+| InstantTensor (PR sgl#28506, as written) | **352–376 s** ⚠️ | 510–542 s |
+
+**≈5.4× faster total cold start** than the default, with identical outputs and
+throughput (401–402 tok/s, 0 errors everywhere).
+
+### The one idea behind all of it: reader concurrency
+
+Every loader here is bottlenecked on how many shards it reads **at once**, not
+on capstor. Contemporaneous in-job dd probes show capstor delivers **6.7–8.6
+GB/s** on the *unmodified native layout*; the loaders were getting 0.35–1.8.
+
+| what it does | files in flight | eff BW |
+|---|---|---|
+| InstantTensor @ PR defaults | ~1 (!) | 0.35 GB/s |
+| fastsafetensors upstream (TP=4) | 4 | 1.5–1.9 GB/s |
+| **fastsafetensors + our patch** | **30** | **3.1–3.6 GB/s** |
+| raw dd, O_DIRECT | 30 | 6.7–8.6 GB/s |
+
+### What did NOT work (measured, not assumed)
+
+- **Lustre striping** — native is as fast as or faster than every striped
+  layout. Requires copying 141 GB/layout, not plug-and-play, buys nothing.
+- **/dev/shm staging** — 198.8 s incl. staging vs 208.2 s. A wash, for 141 GB
+  of RAM. Only wins for *warm restarts*.
+- **InstantTensor (PR sgl#28506)** — a **9× regression** here. Its headline
+  numbers are GDS on local NVMe; GDS is unavailable on bristen (`nvidia_fs` not
+  loaded) and the PR passes none of the library's own `concurrency`/`io_depth`
+  knobs, so it reads with ~1 stream.
+
+### Where the time goes now
+
+With weights at ~38 s, **graph capture is the new bottleneck**: `cuda_graph`
+~27 s + `piecewise` ~79 s = **~106 s of the ~208 s total (51%)**. That is where
+the next win is.
+
+### Methodology rules that turned out to be load-bearing
+
+1. **A bandwidth number from a different job at a different time is worthless.**
+   capstor swings 2–6×. Every job now carries its own dd probe (run *after* the
+   measured load, so it cannot warm the OSS cache).
+2. **`--exclusive` gives you sole use of a node, NOT a different node.** A
+   `--dependency` chain hands you the same node every time. Submit serially and
+   accumulate `--exclude`. (Cost us one whole sweep — Phase 3.)
+3. **Bracket every sweep with a control, first and last.** The *same* config
+   measures 69.5–86.1 s across nodes (21% spread). Node/time variance, not
+   drift, is the dominant noise source; a single-point comparison is worthless.
+
+---
+
 ## Phase 1.1 — shard→OST map (native layout)  ✅
 
 Ran `scripts/shard_ost_map.sh` → `results/phase1_shard_ost_map.txt`.
@@ -17,7 +83,7 @@ Ran `scripts/shard_ost_map.sh` → `results/phase1_shard_ost_map.txt`.
   straggler tail on hot OSTs (either per-file striping so each big shard spans
   multiple OSTs, or a balanced re-copy). Phase 2 must test this specifically.
 
-## Phase 1.2 — raw read ceiling (dd O_DIRECT, full-model workload)  ⏳ running
+## Phase 1.2 — raw read ceiling (dd O_DIRECT, full-model workload)  ✅ (see CORRECTION)
 
 Tool: `scripts/dd_read_sweep.sh` (fio unavailable → `dd iflag=direct`). Constant
 workload = all 30 shards (141 GB); N = worker-pool size draining the shard list.
@@ -34,7 +100,24 @@ workload = all 30 shards (141 GB); N = worker-pool size draining the shard list.
 
 Earlier partial run (job 73582) hit 0.91 @N=8 and 2.42 @N=16 — totally different.
 
-### KEY FINDING: capstor bandwidth is contention-dominated & non-reproducible
+> ## ⚠️ CORRECTION (Phase 3) — the "ceiling" below is WRONG. Read this first.
+>
+> The finding recorded here — "capstor peaks around 1.75 GB/s and collapses with
+> concurrency" — is **an artifact of one badly-contended sample**, and it sent
+> the investigation down the wrong path for a while. It is kept for the record,
+> struck through, not deleted.
+>
+> Measured later, with a **native-layout dd probe run inside each Phase-3 job**
+> (same node, minutes after the load, O_DIRECT, N=30), capstor delivers
+> **6.7 – 8.6 GB/s on the unmodified native layout** — 4–5× the "ceiling" below.
+> Five independent samples: 6.66, 7.44, 8.55, 6.91, 7.29 GB/s.
+>
+> **Methodological lesson**: a bandwidth number from a *different job at a
+> different time* is worthless on shared storage. The probe must run **in the
+> same job as the thing it is normalizing**. Every Phase-3 job now carries its
+> own probe, and that is what made the loader result interpretable.
+
+### ~~KEY FINDING~~ SUPERSEDED: capstor bandwidth is contention-dominated & non-reproducible
 - Single-stream is stable (~0.35–0.41 GB/s) but **aggregate scaling is not**:
   this run *peaks at N=8 (1.75 GB/s) then declines* with more concurrency; the
   earlier run scaled to 5.26 @N=16. The difference is **whole-cluster load on
@@ -134,12 +217,287 @@ COLD node, serialized so nothing contends on capstor.
    mmap 664.7 → 939.0 s (wild). Demand-paged mmap is the most
    contention-sensitive access pattern on Lustre — slow *and* unpredictable.
 
-**Recommendation so far**: `--load-format fastsafetensors` is a one-flag,
-plug-and-play change taking 70B cold start from ~1123 s (mmap worst case) to
-~237 s (**4.7× total**), with identical outputs and throughput. Never use the
-mmap default on Lustre.
+**Recommendation so far** *(superseded — see Phase 3 / Phase 5)*:
+`--load-format fastsafetensors` is a one-flag, plug-and-play change taking 70B
+cold start from ~1123 s (mmap worst case) to ~237 s (**4.7× total**), with
+identical outputs and throughput. Never use the mmap default on Lustre.
 
-## Phase 2 — layout sweep  ⏳
-## Phase 3 — Strategy A (striped copy)  ⏳
-## Phase 4 — Strategy B (/dev/shm)  ⏳
-## Phase 5 — comparison + recommendation  ⏳
+> Phase 3 goes further: fastsafetensors is itself concurrency-starved (4 files
+> in flight at TP=4). Adding `SGLANG_FST_FILES_PER_RANK=8` takes the weight
+> phase ~78 → 38.2 s and the total to **208 s (5.4×)**.
+
+## Phase 2 — layout sweep (striping)  ✅ — **striping is a dead end**
+
+### 2a. Raw dd sweep on striped copies vs native
+
+Aggregate GB/s, full 141 GB model, O_DIRECT. Native @N=30 comes from the
+Phase-3 in-job probes (Phase 2 skipped N=30 on native — that omission is what
+hid this conclusion for so long).
+
+| layout | N=8 | N=16 | N=30 | N=60 |
+|---|---|---|---|---|
+| **native** | 1.6–2.3 | **3.6–5.5** | **6.7–8.6** | — |
+| striped c8_s16M | 2.14 | 3.77 | 7.35 | 7.80 |
+| striped c16_s4M | 1.64 | 3.53 | 6.43 | 6.08 |
+| striped c8_s4M | 1.92 | 3.26 | 5.86 | 4.96 |
+| striped c4_s4M | 2.27 | 4.43 | 4.30 | 5.17 |
+
+**Native is as fast as, or faster than, every striped layout at N=30.** Phase
+1.1 already explained why: the 30 shards independently scatter across 24 OSTs,
+so concurrent multi-shard reads *already* exploit the whole filesystem. Per-file
+striping adds nothing on top of shard-level concurrency.
+
+### 2b. End-to-end per layout (fastsafetensors, TP=4)
+
+| layout | weight_loading | total |
+|---|---|---|
+| native_first | 62.9 s | 228.5 s |
+| c4_s4M | 49.5 | 210.6 |
+| c4_s8M | 48.7 | 210.2 |
+| c8_s4M | 63.2 | 225.7 |
+| c8_s16M | 50.7 | 217.2 |
+| c16_s4M | 72.8 | 236.8 |
+| native_last | 59.4 | 220.2 |
+
+Striped layouts land both above and below the native bracket (59–63 s) with no
+consistent ordering — **noise, not signal**. Expected in hindsight: the loader
+only kept 4 files in flight (see Phase 3), and layout cannot matter when you
+never ask the filesystem for enough parallelism to notice it.
+
+> **CONCLUSION: do not restripe.** It requires copying the production model
+> (141 GB per layout), it is not plug-and-play, and it buys nothing. The
+> bottleneck was never the layout.
+
+(Caveat, recorded honestly: all 2b points ran on nid002313 — a reused node,
+violating the fresh-node rule. Phase 3 later proved fastsafetensors reads
+O_DIRECT and neither fills nor uses the page cache, so these numbers stand. It
+was luck, not method.)
+
+## Phase 4 — Strategy B (/dev/shm staging)  ✅
+
+Staged from the c8_s16M striped copy with a **60-worker** parallel copy script,
+then served with `--model-path /dev/shm/llama70b`.
+
+| variant | stage | weight_loading | server total | **e2e incl. staging** |
+|---|---|---|---|---|
+| **shm + mmap** | 21.2 s @ 6.65 GB/s | **19.6 s** | 177.6 s | **198.8 s** |
+| shm + fastsafetensors | 21.8 s @ 6.46 | 25.1 | 195.8 | 217.6 |
+| shm + nommap | 23.8 s @ 5.93 | 103.6 | 270.4 | 294.2 |
+
+Two inversions worth remembering:
+
+1. **mmap is the BEST loader on tmpfs (19.6 s) and the WORST on Lustre (939 s).**
+   The flag you must never use on Lustre is the one you want once the bytes are
+   in RAM. Demand-paging is free when there is no disk behind the page.
+2. **The staging script beat the engine's own loader at reading Lustre** — 6.65
+   vs 1.78 GB/s. Not because tmpfs is magic, but because `cp` ran **60 workers**
+   while the loader ran **4**. /dev/shm was never beating the storage; it was
+   beating *the loader*. Phase 3 makes that explicit.
+
+## Phase 3 — loader reader-concurrency  ✅ — **the actual bottleneck**
+
+`weight_utils.fastsafetensors_weights_iterator` batches shards `pg.size()` at a
+time and hands **one file per rank** (`rank_file_map = {i: [f] ...}`). At TP=4
+that is **4 files in flight**, 8 serial batches, each a collective barrier gated
+by its slowest file. dd at N=4–8 gives 1.6–2.3 GB/s; the loader gave 1.78. Exact
+match — it was concurrency-starved.
+
+**Patch** (`scripts/phase3_loader_concurrency/fst_files_per_rank.patch`, 12
+lines): make files-per-rank an env knob, `SGLANG_FST_FILES_PER_RANK`, defaulting
+to 1 = byte-for-byte upstream. Round-robins each chunk across ranks.
+`rank_file_map` already accepted a list, so no fastsafetensors change is needed.
+
+**Harness** (`patch_sglang_in_container.sh`): each job clones sglang at the SHA
+pinned to the image, **diffs the clone against the sglang installed in the
+container**, and only then patches and swaps the single file into the live
+install. That diff *is* the version check — a drifted pin aborts the job instead
+of silently serving different engine code. Nothing depends on the working tree.
+
+### Results (native layout, TP=4, fastsafetensors)
+
+**Jobs 74750–74754, five DISTINCT nodes, none of which had ever read the model.**
+
+| files/rank | in flight | node | weight_loading | eff BW | total | capstor same-job |
+|---|---|---|---|---|---|---|
+| 1 (upstream) | 4 | nid002292 | 86.1 s | 1.53 GB/s | 258.0 s | 7.43 |
+| 2 | 8 | nid002293 | 82.2 s | 1.61 | 254.4 | 8.05 |
+| **4** | **16** | nid002296 | **40.0 s** | **3.30** | **212.1** | 7.19 |
+| **8** | **30** | nid002297 | **38.2 s** | **3.46** | **208.2** | 7.28 |
+| 1 (bracket) | 4 | nid002312 | 69.5 s | 1.90 | 242.2 | 7.91 |
+
+**weight_loading ~78 s → 38.2 s (2.0×); total ~250 s → 208 s.** From a 12-line
+patch, on the untouched production model dir. Throughput identical everywhere
+(401–402 tok/s), 0 errors.
+
+**Read it against the bracket, not against a single point.** The two upstream
+(fpr1) runs give **69.5–86.1 s** — a 21% spread for an *identical config* on
+different nodes. Node/time variance is the dominant noise source here, so:
+
+- **fpr2 (8 in flight) lands INSIDE the bracket → no effect.** Doubling from 4 to
+  8 buys nothing.
+- **fpr4/fpr8 land far BELOW the bracket's best case → real.**
+- It is a **step function, not a smooth curve**: nothing until ~16 files in
+  flight, then ~2×, then diminishing returns (40.0 → 38.2).
+
+**Drift is not the explanation**: capstor was flat at 7.19–8.05 GB/s across all
+five jobs (the in-job probes exist precisely to license this claim).
+
+> **Methodology note — earlier sweep discarded.** A first attempt (jobs
+> 74744–74748) put all 5 points on nid002324: a `--dependency` chain frees the
+> node and SLURM hands the same one straight back, and `--exclusive` grants sole
+> use, NOT a *different* node. It produced a smooth, tidy, and partly spurious
+> curve (65 → 49 → 37 → 35.5 s) whose fpr2 point did not survive re-running on a
+> clean node (49.0 → 82.2 s). Quarantined in
+> `results/failed/phase3_samenode_nid002324/`. `phase3_submit_chain.sh` now
+> submits serially and accumulates `--exclude`.
+>
+> That botched sweep did leave one genuinely useful artifact — the best
+> page-cache probe we have:
+
+- `fpr1_first`, node cold: **65.0 s**
+- `fpr1_last`, node had read the model **4×**: **69.3 s** — no speedup at all
+
+→ **fastsafetensors reads O_DIRECT/GDS; it neither fills nor uses the page
+cache.** (Retroactively validates Phase 2b and the Phase-1.3 warm/cold pair.)
+First attempt quarantined in `results/failed/phase3_samenode_nid002324/`;
+`phase3_submit_chain.sh` now submits serially and accumulates `--exclude`.
+
+### Why dd is still ~2× faster than the loader — and why that's now fine
+
+dd reads to `/dev/null`. The loader must also copy H2D, **broadcast every tensor
+across the 4 ranks over NCCL**, and materialize params — none of it overlapped
+with the read. Phase 4 prices that GPU-side work directly, because /dev/shm has
+no storage cost: **~20–25 s**.
+
+So of `fpr8`'s 38.2 s, only **~13–18 s is actually reading 132 GB → 7–10 GB/s,
+in line with raw dd (7.2–8.1 GB/s measured in the same jobs).** The read is
+*solved*. What remains is fixed, non-overlapped
+GPU-side work that a wider read batch physically cannot touch — which is exactly
+why the curve plateaus and why `fpr8` barely beat `fpr4`.
+
+**This is the argument for InstantTensor (PR sgl#28506).** Its pitch is
+*"pipelining and prefetching"* — overlap the read of batch N+1 with the
+broadcast of batch N — which attacks precisely the ~20 s this patch cannot. The
+next win is structural, not a tuning knob.
+
+## RECOMMENDATION — the deliverable
+
+| strategy | weight_loading | total cold start | plug-and-play? |
+|---|---|---|---|
+| mmap on Lustre (SGLang default) | 665–939 s | 841–1123 s | — (**never do this**) |
+| nommap | 162 s | 348 s | one flag |
+| fastsafetensors (upstream) | 69–88 s | 242–258 s | one flag |
+| **fastsafetensors + files_per_rank=8** | **38.2 s** | **208.2 s** | one flag + 12-line patch |
+| /dev/shm + mmap (60-worker stage) | 19.6 s | 198.8 s (incl. 21 s stage) | needs 141 GB RAM + a stager |
+| striped Lustre copy | ~no change | ~no change | ✗ (**abandoned**) |
+
+**Recommendation**
+
+1. **Never use the mmap default on Lustre.** 665–939 s, wildly unpredictable.
+   This alone is a 4–5× cold-start regression that current deployments are
+   silently paying.
+2. **`--load-format fastsafetensors` + `SGLANG_FST_FILES_PER_RANK=8`** — the
+   plug-and-play recommendation. 1123 s → 208 s (**5.4× total**), no change to
+   how the model is stored, identical outputs and throughput. Upstream the patch.
+   (`=4` is worth ~the same: the effect is a step at ~16 files in flight, not a
+   smooth curve.)
+3. **Ignore striping.** Measured, no benefit, not plug-and-play.
+4. **/dev/shm still edges it** (198.8 s incl. staging vs 208.2 s) but costs 141 GB of
+   RAM. Its real value is elsewhere: it is contention-immune and it makes *warm
+   restarts* nearly free. Revisit only for restart-heavy deployments, or if the
+   21 s stage can be overlapped with import+CUDA init (~50 s of cover available).
+5. **The bottleneck has moved.** With weights at ~38 s, graph capture
+   (`cuda_graph` ~27 s + `piecewise` ~79 s = **~106 s of the ~208 s total, 51%**)
+   is now the single largest phase. That is where the next real win is.
+
+## Probe — GDS on bristen: NOT AVAILABLE  ✅ (measured, `scripts/probes/gds_probe.sbatch`)
+
+Matters because InstantTensor's headline numbers (35–45 GB/s) are **GPUDirect
+Storage**. If GDS were live here, that would be a different conversation.
+
+**It is not, and this is measured, not inferred:**
+
+1. **`nvidia_fs` is NOT in `/proc/modules`.** Decisive, and not a container
+   artifact — containers share the host kernel, so `/proc/modules` is the
+   *node's* module list. The nvidia-fs kernel driver is not loaded on bristen,
+   so true GDS DMA is impossible regardless of what is bind-mounted. (Also: no
+   `/dev/infiniband`.)
+2. **InstantTensor selects `Backend.URING` for a real shard on capstor** — not
+   `Backend.CUFILE`. The library's own auto-selection answers the question
+   directly: it uses io_uring + direct I/O through the CPU.
+
+→ On this system InstantTensor must win on **pipelining + direct I/O alone**,
+against our 38.2 s. Expectations set before the run, not after.
+
+- Backend menu: `AIO, AIO_BUFFERED, CUFILE, MMAP, URING, URING_BUFFERED`.
+  Sweepable, alongside `concurrency` / `io_depth` (see Phase 5).
+- **Trap**: `safe_open(..., load_now=False)` **segfaults** on teardown. The PR
+  path uses the `load_now=True` default and is fine, but the library has sharp
+  edges.
+- **Do not trust a hand-rolled `CUfileDrvProps` ctypes struct** — `cufile.h`
+  nests `size_t` fields, so an all-`c_uint` layout is misaligned and prints
+  garbage (an early version of this probe confidently reported
+  "COMPATIBILITY MODE: False" from junk bytes). Ask the *library* which backend
+  it picked instead.
+
+## Phase 5 — InstantTensor (PR sgl#28506)  ⏳
+
+Backported to v0.5.10 (`scripts/phase5_instanttensor/instanttensor_backport.patch`,
+4 files: `LoadFormat.INSTANTTENSOR`, `instanttensor_weights_iterator`, the
+`loader.py` branch, and the `--load-format` allow-list). The PR targets `main`
+and does not apply to v0.5.10, so this is a hand-backport, verified by the same
+clone-and-diff harness as Phase 3 (now generalized to multi-file patches in
+`scripts/lib/patch_sglang_in_container.sh`, which derives the file list from the
+diff itself).
+
+The PR passes **no** I/O knobs — it takes library defaults. Our backport adds
+optional `SGLANG_IT_CONCURRENCY` / `SGLANG_IT_IO_DEPTH` pass-through, both
+defaulting to `None`, so an unset run reproduces the PR exactly.
+
+**Hypothesis**: Phase 3 fixed the *read*; the residual ~20–25 s is
+non-overlapped H2D + NCCL broadcast + param copy (priced by Phase 4's /dev/shm
+run: 19.6 s with storage cost removed). Pipelining is the only thing that can
+hide it.
+
+### 5a. A/B — PR #28506 *as written* is a **9× REGRESSION** here
+
+Bracketed A/B, one variable (`--load-format`), 4 distinct nodes, n=2 per arm.
+
+| point | node | weight | eff BW | total | capstor same-job | tok/s | errs |
+|---|---|---|---|---|---|---|---|
+| ctl (fst, fpr=8) | nid002292 | **36.9 s** | 3.58 GB/s | 208.4 s | 5.62 | 402 | 0 |
+| **it_default** | nid002324 | **352.0 s** | **0.375 GB/s** | 510.1 s | 6.18 | 401 | 0 |
+| **it_default2** | nid002289 | **376.2 s** | **0.351 GB/s** | 542.1 s | 7.28 | 401 | 0 |
+| ctl (fst, fpr=8) | nid002293 | **42.7 s** | 3.09 GB/s | 211.6 s | 1.54 | 401 | 0 |
+
+Reproduces on two nodes. **Not contention** — capstor was healthy (6.2 / 7.3
+GB/s) during both InstantTensor runs. Outputs and throughput are fine, so the
+weights load correctly; it is purely slow.
+
+> ### THE TELL
+> InstantTensor's effective read bandwidth is **0.35–0.375 GB/s**. Phase 1.2
+> measured **single-stream** dd at **0.35–0.41 GB/s**.
+>
+> **It is reading the 132 GB model with effectively ONE stream.** Same
+> reader-starvation disease Phase 3 found in fastsafetensors — far worse.
+>
+> `instanttensor.safe_open()` exposes `concurrency` and `io_depth`.
+> **PR #28506 passes neither.** It inherits a library default that is
+> catastrophic on Lustre.
+
+**Why the headline numbers don't transfer**: InstantTensor's 32×/10× claims
+(35–45 GB/s) are **GDS on local NVMe**. GDS is unavailable here (Phase 5b), and
+it falls back to `Backend.URING`. With the read unaccelerated and untuned, there
+is nothing left to carry it.
+
+→ Merging sgl#28506 and setting `--load-format instanttensor` on this platform
+would be a **~9× cold-start regression**, not an improvement.
+
+### 5b. Knob sweep — is it *bad*, or merely *unconfigured*?  ⏳
+`SGLANG_IT_CONCURRENCY` ∈ {16, 32, 64} + one `IT_IO_DEPTH=64` point, bracketed
+by the phase-3 control. If concurrency drags 352 s toward ~35 s, the library is
+fine and **the PR is simply missing its own tuning** — an upstreamable finding.
+If not, InstantTensor is a dead end on Lustre-without-GDS.
+
+## Phase 6 (next) — graph capture  ⏳
+
