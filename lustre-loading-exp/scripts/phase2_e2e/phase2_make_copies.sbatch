@@ -15,7 +15,7 @@
 #
 #SBATCH --job-name=phase2-make-copies
 #SBATCH --partition=normal
-#SBATCH --account=infra01
+#SBATCH --account=a-infra02
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=64

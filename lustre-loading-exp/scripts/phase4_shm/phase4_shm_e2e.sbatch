@@ -18,7 +18,7 @@
 #     lustre-loading-exp/scripts/phase4_shm/phase4_shm_e2e.sbatch
 #
 #SBATCH --partition=normal
-#SBATCH --account=infra01
+#SBATCH --account=a-infra02
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=64

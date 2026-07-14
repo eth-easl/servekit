@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=llama-3.1-70b-sglang
 #SBATCH --partition=debug
-#SBATCH --account=infra01
+#SBATCH --account=a-infra02
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=32
