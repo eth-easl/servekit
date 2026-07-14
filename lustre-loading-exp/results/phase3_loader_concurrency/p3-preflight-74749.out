@@ -1,0 +1,27 @@
+job=74749 node=nid002324 tag=preflight
+started=2026-07-14T11:44:13+02:00
+[patch] installed sglang 0.5.10 at /sgl-workspace/sglang/python/sglang
+Note: switching to '1519acf37c23f2189adb93f57ca9cd2db1bebf18'.
+
+You are in 'detached HEAD' state. You can look around, make experimental
+changes and commit them, and you can discard any commits you make in this
+state without impacting any branches by switching back to a branch.
+
+If you want to create a new branch to retain commits you create, you may
+do so (now or later) by using -c with the switch command. Example:
+
+  git switch -c <new-branch-name>
+
+Or undo this operation with:
+
+  git switch -
+
+Turn off this advice by setting config variable advice.detachedHead to false
+
+[patch] cloned https://github.com/sgl-project/sglang.git @ v0.5.10 = 1519acf37c23f2189adb93f57ca9cd2db1bebf18
+[patch] verified: clone matches the image's installed weight_utils.py byte-for-byte
+[patch] swapped patched weight_utils.py into /sgl-workspace/sglang/python/sglang/srt/model_loader/
+[patch] SGLANG_FST_FILES_PER_RANK=1 (unset -> upstream behavior)
+[preflight] knob present in the installed module, defaults to 1 (upstream)
+[preflight] ALL CHECKS PASSED
+finished=2026-07-14T11:44:23+02:00
