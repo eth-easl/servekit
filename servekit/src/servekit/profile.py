@@ -227,6 +227,8 @@ def run_profile_with_bench(
     base_url: str,
     bench_config: BenchConfig,
     ready_timeout: float = 1800.0,
+    keep_alive: bool = False,
+    on_bench_done: Optional[Callable[[ProfileReport], None]] = None,
 ) -> ProfileReport:
     """Profile cold start, then benchmark the live server before tearing it down.
 
@@ -236,6 +238,13 @@ def run_profile_with_bench(
     write -> deadlock. So the drain thread keeps measuring/echoing while the
     main thread hits the server with requests. Once the benchmark finishes,
     the server is terminated and the combined report is returned.
+
+    With `keep_alive`, the server is never terminated: `on_bench_done` fires as
+    soon as the benchmark finishes (so a caller can write the report while the
+    server is still up) and we then block until the server exits on its own.
+    We stay alive rather than detaching because we own the server's stdout pipe
+    -- exiting would close the read end and SIGPIPE the server on its next log
+    line, and the drain thread is what keeps the pipe from filling anyway.
     """
     spawn_time = time.time()
     proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
@@ -243,7 +252,10 @@ def run_profile_with_bench(
     ready_event = threading.Event()
     holder: dict = {}
 
-    def _on_ready(_: ProfileReport) -> None:
+    def _on_ready(report: ProfileReport) -> None:
+        # Keep it: under keep_alive the drain thread does not return until the
+        # server exits, so this is the only complete report available in time.
+        holder["ready_report"] = report
         ready_event.set()
 
     def _drain() -> None:
@@ -262,6 +274,20 @@ def run_profile_with_bench(
     if ready_event.is_set():
         print("\n[SERVEKIT] server ready -> running post-ready benchmark", flush=True)
         bench_result = run_benchmark(base_url, bench_config).to_dict()
+
+    # Ready + benched: hand the report over now, then get out of the way. On a
+    # failed run there is no ready_report and nothing to keep alive, so we fall
+    # through and tear down as usual.
+    if keep_alive and holder.get("ready_report") is not None:
+        report = holder["ready_report"]
+        report.command = " ".join(command)
+        report.benchmark = bench_result
+        if on_bench_done is not None:
+            on_bench_done(report)
+        print("[SERVEKIT] --keep-alive: server left running, draining until it exits", flush=True)
+        proc.wait()
+        drain.join(timeout=10)
+        return report
 
     # Measurement done: stop the server and let the drain thread finish.
     proc.terminate()

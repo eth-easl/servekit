@@ -39,7 +39,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     if not argv or argv[0] != "profile":
         print(
-            "usage: servekit profile [--out PATH] [--timeout SECONDS] [--bench ...] -- <command...>",
+            "usage: servekit profile [--out PATH] [--timeout SECONDS] [--bench [--keep-alive] ...] -- <command...>",
             file=sys.stderr,
         )
         return 2
@@ -50,6 +50,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--out", type=Path, default=None)
     parser.add_argument("--timeout", type=float, default=1800.0, help="seconds to wait for the ready signal")
     parser.add_argument("--bench", action="store_true", help="benchmark the live server after it reports ready")
+    parser.add_argument(
+        "--keep-alive",
+        action="store_true",
+        help="with --bench: leave the server running after the benchmark (report is written as soon as the bench ends)",
+    )
     parser.add_argument("--bench-url", default=None, help="server base URL (default: derived from --host/--port)")
     parser.add_argument("--bench-requests", type=int, default=50)
     parser.add_argument("--bench-input-len", type=int, default=512, help="approx prompt length in words")
@@ -87,8 +92,21 @@ def main(argv: Optional[List[str]] = None) -> int:
             seed=args.bench_seed,
             correctness=not args.no_correctness,
         )
-        report = run_profile_with_bench(command, base_url, cfg, ready_timeout=args.timeout)
-        emit(report)
+        if args.keep_alive:
+            # The server outlives the bench, so the report must be written the
+            # moment the bench ends -- not on return, which is now "when the
+            # server exits". emit fires from the callback on a good run; a run
+            # that never got ready has no bench and nothing to keep alive, so
+            # the callback never fires and we emit the failure here.
+            report = run_profile_with_bench(
+                command, base_url, cfg, ready_timeout=args.timeout,
+                keep_alive=True, on_bench_done=emit,
+            )
+            if not report.success:
+                emit(report)
+        else:
+            report = run_profile_with_bench(command, base_url, cfg, ready_timeout=args.timeout)
+            emit(report)
     else:
         emitted = {"done": False}
 
