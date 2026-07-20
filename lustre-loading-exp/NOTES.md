@@ -21,6 +21,7 @@ loader is the worst possible choice on Lustre.** Best config found:
 | fastsafetensors (upstream) | 69–88 s | 242–258 s |
 | **fastsafetensors + files_per_rank=8** | **37–43 s** | **208–212 s** |
 | InstantTensor (PR sgl#28506, as written) | **352–376 s** ⚠️ | 510–542 s |
+| InstantTensor, best tuned (`concurrency=16`) | **244 s** ⚠️ | — |
 
 **≈5.4× faster total cold start** than the default, with identical outputs and
 throughput (401–402 tok/s, 0 errors everywhere).
@@ -33,7 +34,7 @@ GB/s** on the *unmodified native layout*; the loaders were getting 0.35–1.8.
 
 | what it does | files in flight | eff BW |
 |---|---|---|
-| InstantTensor @ PR defaults | ~1 (!) | 0.35 GB/s |
+| InstantTensor (bottleneck is a per-tensor sync, not reads) | n/a | 0.36–0.54 GB/s |
 | fastsafetensors upstream (TP=4) | 4 | 1.5–1.9 GB/s |
 | **fastsafetensors + our patch** | **30** | **3.1–3.6 GB/s** |
 | raw dd, O_DIRECT | 30 | 6.7–8.6 GB/s |
@@ -44,10 +45,12 @@ GB/s** on the *unmodified native layout*; the loaders were getting 0.35–1.8.
   layout. Requires copying 141 GB/layout, not plug-and-play, buys nothing.
 - **/dev/shm staging** — 198.8 s incl. staging vs 208.2 s. A wash, for 141 GB
   of RAM. Only wins for *warm restarts*.
-- **InstantTensor (PR sgl#28506)** — a **9× regression** here. Its headline
-  numbers are GDS on local NVMe; GDS is unavailable on bristen (`nvidia_fs` not
-  loaded) and the PR passes none of the library's own `concurrency`/`io_depth`
-  knobs, so it reads with ~1 stream.
+- **InstantTensor (PR sgl#28506)** — a **9× regression** as written, and still
+  **~4× slower than our patch even fully tuned**. It yields per-**tensor** (723
+  of them, ~0.34 s each — a per-tensor cross-rank sync) where fastsafetensors
+  yields per-**file** (30). Read-concurrency knobs cannot touch that, and its
+  headline numbers come from GDS, which bristen does not have (`nvidia_fs` not
+  loaded). **Structural, not configurational. Do not adopt.**
 
 ### Where the time goes now
 
@@ -493,11 +496,50 @@ is nothing left to carry it.
 → Merging sgl#28506 and setting `--load-format instanttensor` on this platform
 would be a **~9× cold-start regression**, not an improvement.
 
-### 5b. Knob sweep — is it *bad*, or merely *unconfigured*?  ⏳
-`SGLANG_IT_CONCURRENCY` ∈ {16, 32, 64} + one `IT_IO_DEPTH=64` point, bracketed
-by the phase-3 control. If concurrency drags 352 s toward ~35 s, the library is
-fine and **the PR is simply missing its own tuning** — an upstreamable finding.
-If not, InstantTensor is a dead end on Lustre-without-GDS.
+### 5b. Knob sweep — it is **BAD**, not merely unconfigured  ✅
+
+Ran under a heavily contended capstor (the control moved 37 → 60 s for identical
+code), so **read these numbers only against their own bracket**, never against
+the Phase-3 table.
+
+| point | knobs | weight | eff BW |
+|---|---|---|---|
+| ctl (fst, fpr=8) | — | **62.6 s** | 2.11 GB/s |
+| it_default | none (PR as written) | 352–376 s | 0.36 |
+| it_c16 | `concurrency=16` | **244.0 s** | 0.54 |
+| it_c32 | `concurrency=32` | **245.0 s** | 0.54 |
+| it_c64_d64 | `concurrency=64, io_depth=64` | **276.7 s** | 0.48 |
+| ctl (fst, fpr=8) | — | **58.6 s** | 2.25 GB/s |
+
+Control bracket is tight (58.6 / 62.6 s) → the comparison is sound.
+
+Concurrency buys a one-time ~30% (352 → 244 s) and then **flatlines**: 16, 32 and
+64 are indistinguishable. **Still ~4× slower than our patched fastsafetensors,
+fully tuned.**
+
+> ### CORRECTION to 5a's diagnosis: it is NOT reading with one stream
+> The 0.35 GB/s ≈ single-stream-dd coincidence was a red herring. The plateau
+> gives the real cause away — look at its progress bar:
+> ```
+> Loading safetensors using InstantTensor loader: 0/723 [...] ~2-4 it/s
+> ```
+> **It iterates over 723 individual TENSORS at ~3/s. 723 ÷ 3 ≈ 240 s** — exactly
+> what we measure, at *every* concurrency setting. The bottleneck is a fixed
+> **~0.34 s per-tensor cost**, almost certainly a per-tensor cross-rank
+> broadcast/sync on the TP=4 path.
+>
+> fastsafetensors yields per **file** (30). InstantTensor yields per **tensor**
+> (723). At TP=4 that is 723 collectives instead of 8. Read concurrency cannot
+> touch a per-tensor sync — which is precisely why turning it up does nothing.
+
+**VERDICT: InstantTensor is a dead end on this platform.** The failure is
+structural, not configurational, and its headline numbers come from GDS, which
+bristen does not have. Do not adopt sgl#28506 here.
+
+*(Caveat, recorded: `it_c64` was killed by an external SIGTERM at 14:36:40 —
+not a timeout, not an OOM, unattributed. It does not change the verdict:
+`it_c32` (245 s) and `it_c64_d64` (277 s) straddle it, and the plateau is
+already established by c16 ≈ c32.)*
 
 ## Phase 6 (next) — graph capture  ⏳
 
