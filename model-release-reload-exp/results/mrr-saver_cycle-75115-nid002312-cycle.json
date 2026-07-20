@@ -1,0 +1,864 @@
+{
+  "tags": [
+    "weights"
+  ],
+  "model": "/capstor/store/cscs/swissai/infra01/hf_models/models/meta-llama/Llama-3.1-70B-Instruct",
+  "load_format": "fastsafetensors",
+  "responses": {
+    "release_memory_occupation": {
+      "status": 200,
+      "body": null
+    },
+    "resume_memory_occupation": {
+      "status": 200,
+      "body": null
+    },
+    "update_weights_from_disk": {
+      "status": 200,
+      "body": {
+        "success": true,
+        "message": "Succeeded to update model weights.",
+        "num_paused_requests": 0
+      }
+    }
+  },
+  "bench_after_reload": {
+    "base_url": "http://127.0.0.1:8080",
+    "correctness": {
+      "max_new_tokens": 64,
+      "results": [
+        {
+          "prompt": "The capital of France is",
+          "output": " QuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestion"
+        },
+        {
+          "prompt": "Explain in one sentence why the sky is blue.",
+          "output": " QuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestion##QuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestion###QuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestion##QuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestion###QuestionQuestionQuestionQuestion"
+        },
+        {
+          "prompt": "List the first 10 prime numbers.",
+          "output": "assistantassistantassistantassistantassistantassistant"
+        },
+        {
+          "prompt": "Q: If a train travels 60 km in 1.5 hours, what is its average speed? A:",
+          "output": "assistantassistant"
+        },
+        {
+          "prompt": "def fibonacci(n):",
+          "output": "QuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestion##QuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestionQuestion"
+        },
+        {
+          "prompt": "The three laws of thermodynamics are:",
+          "output": "assistantassistantassistantassistant"
+        }
+      ]
+    },
+    "throughput": {
+      "requests": 64,
+      "completed": 64,
+      "errors": 0,
+      "concurrency": 16,
+      "input_len": 512,
+      "output_len": 128,
+      "wall_s": 20.402,
+      "output_tokens": 8192,
+      "output_tok_per_s": 401.5,
+      "requests_per_s": 3.137,
+      "latency_s": {
+        "mean": 5.099,
+        "p50": 5.102,
+        "p99": 5.111,
+        "max": 5.112
+      }
+    },
+    "errors": []
+  },
+  "correctness_identical": [
+    false,
+    false,
+    false,
+    false,
+    false,
+    false
+  ],
+  "snapshots": [
+    {
+      "label": "S1_post_bench",
+      "t": 1784220113.1215556,
+      "compute_apps": [
+        {
+          "pid": "116586",
+          "gpu_used": "61998 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4883132 kB",
+          "smaps_Rss": "4906772 kB",
+          "smaps_Pss": "4330740 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "116587",
+          "gpu_used": "416 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4881492 kB",
+          "smaps_Rss": "4911144 kB",
+          "smaps_Pss": "4335382 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "116589",
+          "gpu_used": "416 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4908132 kB",
+          "smaps_Rss": "4933788 kB",
+          "smaps_Pss": "4358146 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "116588",
+          "gpu_used": "416 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4885448 kB",
+          "smaps_Rss": "4908672 kB",
+          "smaps_Pss": "4332474 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "116586",
+          "gpu_used": "416 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4883132 kB",
+          "smaps_Rss": "4906772 kB",
+          "smaps_Pss": "4330740 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "116587",
+          "gpu_used": "61930 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4881492 kB",
+          "smaps_Rss": "4911144 kB",
+          "smaps_Pss": "4335382 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "116589",
+          "gpu_used": "416 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4908132 kB",
+          "smaps_Rss": "4933788 kB",
+          "smaps_Pss": "4358146 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "116588",
+          "gpu_used": "416 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4885448 kB",
+          "smaps_Rss": "4908672 kB",
+          "smaps_Pss": "4332474 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "116586",
+          "gpu_used": "416 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4883132 kB",
+          "smaps_Rss": "4906772 kB",
+          "smaps_Pss": "4330740 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "116587",
+          "gpu_used": "416 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4881492 kB",
+          "smaps_Rss": "4911144 kB",
+          "smaps_Pss": "4335382 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "116589",
+          "gpu_used": "416 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4908132 kB",
+          "smaps_Rss": "4933788 kB",
+          "smaps_Pss": "4358146 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "116588",
+          "gpu_used": "62308 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4885448 kB",
+          "smaps_Rss": "4908672 kB",
+          "smaps_Pss": "4332474 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "116586",
+          "gpu_used": "416 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4883132 kB",
+          "smaps_Rss": "4906772 kB",
+          "smaps_Pss": "4330740 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "116587",
+          "gpu_used": "416 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4881492 kB",
+          "smaps_Rss": "4911144 kB",
+          "smaps_Pss": "4335382 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "116589",
+          "gpu_used": "62146 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4908132 kB",
+          "smaps_Rss": "4933788 kB",
+          "smaps_Pss": "4358146 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "116588",
+          "gpu_used": "416 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4885448 kB",
+          "smaps_Rss": "4908672 kB",
+          "smaps_Pss": "4332474 kB",
+          "smaps_Locked": "16 kB"
+        }
+      ],
+      "gpus": [
+        {
+          "index": "0",
+          "used": "63276 MiB",
+          "total": "81920 MiB"
+        },
+        {
+          "index": "1",
+          "used": "63208 MiB",
+          "total": "81920 MiB"
+        },
+        {
+          "index": "2",
+          "used": "63586 MiB",
+          "total": "81920 MiB"
+        },
+        {
+          "index": "3",
+          "used": "63424 MiB",
+          "total": "81920 MiB"
+        }
+      ],
+      "meminfo": {
+        "MemTotal": "527371608 kB",
+        "MemAvailable": "475575588 kB",
+        "Cached": "104146052 kB"
+      }
+    },
+    {
+      "label": "S2_post_release",
+      "t": 1784220114.150409,
+      "compute_apps": [
+        {
+          "pid": "116586",
+          "gpu_used": "17242 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4883132 kB",
+          "smaps_Rss": "4906772 kB",
+          "smaps_Pss": "4330725 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "116587",
+          "gpu_used": "416 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4881492 kB",
+          "smaps_Rss": "4911144 kB",
+          "smaps_Pss": "4335370 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "116589",
+          "gpu_used": "416 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4908132 kB",
+          "smaps_Rss": "4933788 kB",
+          "smaps_Pss": "4358134 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "116588",
+          "gpu_used": "416 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4885448 kB",
+          "smaps_Rss": "4908672 kB",
+          "smaps_Pss": "4332460 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "116586",
+          "gpu_used": "416 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4883132 kB",
+          "smaps_Rss": "4906772 kB",
+          "smaps_Pss": "4330725 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "116587",
+          "gpu_used": "18166 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4881492 kB",
+          "smaps_Rss": "4911144 kB",
+          "smaps_Pss": "4335370 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "116589",
+          "gpu_used": "416 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4908132 kB",
+          "smaps_Rss": "4933788 kB",
+          "smaps_Pss": "4358134 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "116588",
+          "gpu_used": "416 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4885448 kB",
+          "smaps_Rss": "4908672 kB",
+          "smaps_Pss": "4332460 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "116586",
+          "gpu_used": "416 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4883132 kB",
+          "smaps_Rss": "4906772 kB",
+          "smaps_Pss": "4330725 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "116587",
+          "gpu_used": "416 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4881492 kB",
+          "smaps_Rss": "4911144 kB",
+          "smaps_Pss": "4335370 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "116589",
+          "gpu_used": "416 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4908132 kB",
+          "smaps_Rss": "4933788 kB",
+          "smaps_Pss": "4358134 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "116588",
+          "gpu_used": "19966 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4885448 kB",
+          "smaps_Rss": "4908672 kB",
+          "smaps_Pss": "4332460 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "116586",
+          "gpu_used": "416 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4883132 kB",
+          "smaps_Rss": "4906772 kB",
+          "smaps_Pss": "4330725 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "116587",
+          "gpu_used": "416 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4881492 kB",
+          "smaps_Rss": "4911144 kB",
+          "smaps_Pss": "4335370 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "116589",
+          "gpu_used": "18382 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4908132 kB",
+          "smaps_Rss": "4933788 kB",
+          "smaps_Pss": "4358134 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "116588",
+          "gpu_used": "416 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4885448 kB",
+          "smaps_Rss": "4908672 kB",
+          "smaps_Pss": "4332460 kB",
+          "smaps_Locked": "16 kB"
+        }
+      ],
+      "gpus": [
+        {
+          "index": "0",
+          "used": "18520 MiB",
+          "total": "81920 MiB"
+        },
+        {
+          "index": "1",
+          "used": "19444 MiB",
+          "total": "81920 MiB"
+        },
+        {
+          "index": "2",
+          "used": "21244 MiB",
+          "total": "81920 MiB"
+        },
+        {
+          "index": "3",
+          "used": "19660 MiB",
+          "total": "81920 MiB"
+        }
+      ],
+      "meminfo": {
+        "MemTotal": "527371608 kB",
+        "MemAvailable": "475606096 kB",
+        "Cached": "104146052 kB"
+      }
+    },
+    {
+      "label": "S3_post_resume",
+      "t": 1784220115.1411004,
+      "compute_apps": [
+        {
+          "pid": "116586",
+          "gpu_used": "62062 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4883132 kB",
+          "smaps_Rss": "4906772 kB",
+          "smaps_Pss": "4330725 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "116587",
+          "gpu_used": "416 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4881492 kB",
+          "smaps_Rss": "4911144 kB",
+          "smaps_Pss": "4335370 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "116589",
+          "gpu_used": "416 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4908132 kB",
+          "smaps_Rss": "4933788 kB",
+          "smaps_Pss": "4358134 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "116588",
+          "gpu_used": "416 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4885448 kB",
+          "smaps_Rss": "4908672 kB",
+          "smaps_Pss": "4332460 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "116586",
+          "gpu_used": "416 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4883132 kB",
+          "smaps_Rss": "4906772 kB",
+          "smaps_Pss": "4330725 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "116587",
+          "gpu_used": "61994 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4881492 kB",
+          "smaps_Rss": "4911144 kB",
+          "smaps_Pss": "4335370 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "116589",
+          "gpu_used": "416 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4908132 kB",
+          "smaps_Rss": "4933788 kB",
+          "smaps_Pss": "4358134 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "116588",
+          "gpu_used": "416 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4885448 kB",
+          "smaps_Rss": "4908672 kB",
+          "smaps_Pss": "4332460 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "116586",
+          "gpu_used": "416 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4883132 kB",
+          "smaps_Rss": "4906772 kB",
+          "smaps_Pss": "4330725 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "116587",
+          "gpu_used": "416 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4881492 kB",
+          "smaps_Rss": "4911144 kB",
+          "smaps_Pss": "4335370 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "116589",
+          "gpu_used": "416 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4908132 kB",
+          "smaps_Rss": "4933788 kB",
+          "smaps_Pss": "4358134 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "116588",
+          "gpu_used": "62372 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4885448 kB",
+          "smaps_Rss": "4908672 kB",
+          "smaps_Pss": "4332460 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "116586",
+          "gpu_used": "416 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4883132 kB",
+          "smaps_Rss": "4906772 kB",
+          "smaps_Pss": "4330725 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "116587",
+          "gpu_used": "416 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4881492 kB",
+          "smaps_Rss": "4911144 kB",
+          "smaps_Pss": "4335370 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "116589",
+          "gpu_used": "62210 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4908132 kB",
+          "smaps_Rss": "4933788 kB",
+          "smaps_Pss": "4358134 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "116588",
+          "gpu_used": "416 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4885448 kB",
+          "smaps_Rss": "4908672 kB",
+          "smaps_Pss": "4332460 kB",
+          "smaps_Locked": "16 kB"
+        }
+      ],
+      "gpus": [
+        {
+          "index": "0",
+          "used": "63340 MiB",
+          "total": "81920 MiB"
+        },
+        {
+          "index": "1",
+          "used": "63272 MiB",
+          "total": "81920 MiB"
+        },
+        {
+          "index": "2",
+          "used": "63650 MiB",
+          "total": "81920 MiB"
+        },
+        {
+          "index": "3",
+          "used": "63488 MiB",
+          "total": "81920 MiB"
+        }
+      ],
+      "meminfo": {
+        "MemTotal": "527371608 kB",
+        "MemAvailable": "475581352 kB",
+        "Cached": "104146052 kB"
+      }
+    },
+    {
+      "label": "S4_post_reload",
+      "t": 1784220154.262189,
+      "compute_apps": [
+        {
+          "pid": "116586",
+          "gpu_used": "61888 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4885652 kB",
+          "smaps_Rss": "4906768 kB",
+          "smaps_Pss": "4330724 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "116587",
+          "gpu_used": "416 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4893572 kB",
+          "smaps_Rss": "4918292 kB",
+          "smaps_Pss": "4342521 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "116589",
+          "gpu_used": "416 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4925892 kB",
+          "smaps_Rss": "4948888 kB",
+          "smaps_Pss": "4373237 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "116588",
+          "gpu_used": "416 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4894112 kB",
+          "smaps_Rss": "4916264 kB",
+          "smaps_Pss": "4340055 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "116586",
+          "gpu_used": "416 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4885652 kB",
+          "smaps_Rss": "4906768 kB",
+          "smaps_Pss": "4330724 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "116587",
+          "gpu_used": "61820 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4893572 kB",
+          "smaps_Rss": "4918292 kB",
+          "smaps_Pss": "4342521 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "116589",
+          "gpu_used": "416 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4925892 kB",
+          "smaps_Rss": "4948888 kB",
+          "smaps_Pss": "4373237 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "116588",
+          "gpu_used": "416 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4894112 kB",
+          "smaps_Rss": "4916264 kB",
+          "smaps_Pss": "4340055 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "116586",
+          "gpu_used": "416 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4885652 kB",
+          "smaps_Rss": "4906768 kB",
+          "smaps_Pss": "4330724 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "116587",
+          "gpu_used": "416 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4893572 kB",
+          "smaps_Rss": "4918292 kB",
+          "smaps_Pss": "4342521 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "116589",
+          "gpu_used": "416 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4925892 kB",
+          "smaps_Rss": "4948888 kB",
+          "smaps_Pss": "4373237 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "116588",
+          "gpu_used": "62198 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4894112 kB",
+          "smaps_Rss": "4916264 kB",
+          "smaps_Pss": "4340055 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "116586",
+          "gpu_used": "416 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4885652 kB",
+          "smaps_Rss": "4906768 kB",
+          "smaps_Pss": "4330724 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "116587",
+          "gpu_used": "416 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4893572 kB",
+          "smaps_Rss": "4918292 kB",
+          "smaps_Pss": "4342521 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "116589",
+          "gpu_used": "62036 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4925892 kB",
+          "smaps_Rss": "4948888 kB",
+          "smaps_Pss": "4373237 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "116588",
+          "gpu_used": "416 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4894112 kB",
+          "smaps_Rss": "4916264 kB",
+          "smaps_Pss": "4340055 kB",
+          "smaps_Locked": "16 kB"
+        }
+      ],
+      "gpus": [
+        {
+          "index": "0",
+          "used": "63166 MiB",
+          "total": "81920 MiB"
+        },
+        {
+          "index": "1",
+          "used": "63098 MiB",
+          "total": "81920 MiB"
+        },
+        {
+          "index": "2",
+          "used": "63476 MiB",
+          "total": "81920 MiB"
+        },
+        {
+          "index": "3",
+          "used": "63314 MiB",
+          "total": "81920 MiB"
+        }
+      ],
+      "meminfo": {
+        "MemTotal": "527371608 kB",
+        "MemAvailable": "475669340 kB",
+        "Cached": "103338536 kB"
+      }
+    }
+  ],
+  "timings_s": {
+    "release_memory_occupation": 0.31,
+    "resume_memory_occupation": 0.2,
+    "update_weights_from_disk": 38.36,
+    "rebench": 30.81
+  }
+}

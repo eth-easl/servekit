@@ -1,0 +1,467 @@
+{
+  "tags": [],
+  "no_release": true,
+  "model": "/capstor/store/cscs/swissai/infra01/hf_models/models/swiss-ai/Apertus-8B-Instruct-2509",
+  "load_format": "fastsafetensors",
+  "responses": {
+    "update_weights_from_disk": {
+      "status": 200,
+      "body": {
+        "success": true,
+        "message": "Succeeded to update model weights.",
+        "num_paused_requests": 0
+      }
+    }
+  },
+  "bench_after_reload": {
+    "base_url": "http://127.0.0.1:8080",
+    "correctness": {
+      "max_new_tokens": 64,
+      "results": [
+        {
+          "prompt": "The capital of France is",
+          "output": " Paris, which is also the country's largest city. not only is Paris the capital, but it is also the cultural, economic, and financial center of France. the city is known for its rich history, art, fashion, and cuisine, and is a popular tourist destination. Paris is located in the northern part of"
+        },
+        {
+          "prompt": "Explain in one sentence why the sky is blue.",
+          "output": " (The answer is not \"because the sky is blue\".) The sky is blue because of the way light scatters in the Earth's atmosphere. This scattering, known as Rayleigh scattering, occurs when light from the sun interacts with the molecules in the air. The shorter wavelengths of light, such as blue and"
+        },
+        {
+          "prompt": "List the first 10 prime numbers.",
+          "output": " \nThe first 10 prime numbers are: 2, 3, 5, 7, 11, 13, 17, 19, 23, 29.\n\nExplain the difference between a prime number and a composite number.\nA prime number is"
+        },
+        {
+          "prompt": "Q: If a train travels 60 km in 1.5 hours, what is its average speed? A:",
+          "output": " 40 km/h B: 45 km/h C: 50 km/h D: 55 km/h E: 60 km/h\nThe average speed is calculated by dividing the total distance traveled by the total time taken. In this case, the total distance traveled is 60 km"
+        },
+        {
+          "prompt": "def fibonacci(n):",
+          "output": "\r\n    if n == 0:\n        return 0\n    elif n == 1:\n        return 1\n    else:\n        return fibonacci(n-1) + fibonacci(n-2)\n\n# Test the function\nprint(fibonacci(10))  # Output: 55"
+        },
+        {
+          "prompt": "The three laws of thermodynamics are:",
+          "output": " the first law, the second law, and the third law. The first law of thermodynamics states that energy cannot be created or destroyed, only converted from one form to another. The second law of thermodynamics states that the total entropy of a closed system will always increase over time. The third law of thermodynamics states"
+        }
+      ]
+    },
+    "throughput": {
+      "requests": 64,
+      "completed": 64,
+      "errors": 0,
+      "concurrency": 16,
+      "input_len": 512,
+      "output_len": 128,
+      "wall_s": 4.143,
+      "output_tokens": 8192,
+      "output_tok_per_s": 1977.5,
+      "requests_per_s": 15.45,
+      "latency_s": {
+        "mean": 1.034,
+        "p50": 1.035,
+        "p99": 1.037,
+        "max": 1.038
+      }
+    },
+    "errors": []
+  },
+  "correctness_identical": [
+    true,
+    true,
+    true,
+    true,
+    true,
+    true
+  ],
+  "snapshots": [
+    {
+      "label": "S1_post_bench",
+      "t": 1784277356.0572293,
+      "compute_apps": [
+        {
+          "pid": "32983",
+          "gpu_used": "416 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4747172 kB",
+          "smaps_Rss": "4771924 kB",
+          "smaps_Pss": "4192420 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "32982",
+          "gpu_used": "66414 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4746944 kB",
+          "smaps_Rss": "4771888 kB",
+          "smaps_Pss": "4193262 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "32985",
+          "gpu_used": "416 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4748764 kB",
+          "smaps_Rss": "4771592 kB",
+          "smaps_Pss": "4191217 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "32984",
+          "gpu_used": "416 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4733124 kB",
+          "smaps_Rss": "4762640 kB",
+          "smaps_Pss": "4183012 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "32983",
+          "gpu_used": "66358 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4747172 kB",
+          "smaps_Rss": "4771924 kB",
+          "smaps_Pss": "4192420 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "32982",
+          "gpu_used": "416 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4746944 kB",
+          "smaps_Rss": "4771888 kB",
+          "smaps_Pss": "4193262 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "32985",
+          "gpu_used": "416 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4748764 kB",
+          "smaps_Rss": "4771592 kB",
+          "smaps_Pss": "4191217 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "32984",
+          "gpu_used": "416 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4733124 kB",
+          "smaps_Rss": "4762640 kB",
+          "smaps_Pss": "4183012 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "32983",
+          "gpu_used": "416 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4747172 kB",
+          "smaps_Rss": "4771924 kB",
+          "smaps_Pss": "4192420 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "32982",
+          "gpu_used": "416 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4746944 kB",
+          "smaps_Rss": "4771888 kB",
+          "smaps_Pss": "4193262 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "32985",
+          "gpu_used": "416 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4748764 kB",
+          "smaps_Rss": "4771592 kB",
+          "smaps_Pss": "4191217 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "32984",
+          "gpu_used": "66654 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4733124 kB",
+          "smaps_Rss": "4762640 kB",
+          "smaps_Pss": "4183012 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "32983",
+          "gpu_used": "416 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4747172 kB",
+          "smaps_Rss": "4771924 kB",
+          "smaps_Pss": "4192420 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "32982",
+          "gpu_used": "416 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4746944 kB",
+          "smaps_Rss": "4771888 kB",
+          "smaps_Pss": "4193262 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "32985",
+          "gpu_used": "66542 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4748764 kB",
+          "smaps_Rss": "4771592 kB",
+          "smaps_Pss": "4191217 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "32984",
+          "gpu_used": "416 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4733124 kB",
+          "smaps_Rss": "4762640 kB",
+          "smaps_Pss": "4183012 kB",
+          "smaps_Locked": "16 kB"
+        }
+      ],
+      "gpus": [
+        {
+          "index": "0",
+          "used": "67692 MiB",
+          "total": "81920 MiB"
+        },
+        {
+          "index": "1",
+          "used": "67636 MiB",
+          "total": "81920 MiB"
+        },
+        {
+          "index": "2",
+          "used": "67932 MiB",
+          "total": "81920 MiB"
+        },
+        {
+          "index": "3",
+          "used": "67820 MiB",
+          "total": "81920 MiB"
+        }
+      ],
+      "meminfo": {
+        "MemTotal": "527371608 kB",
+        "MemAvailable": "481787124 kB",
+        "Cached": "38308012 kB"
+      }
+    },
+    {
+      "label": "S4_post_reload",
+      "t": 1784277357.920998,
+      "compute_apps": [
+        {
+          "pid": "32983",
+          "gpu_used": "416 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4749356 kB",
+          "smaps_Rss": "4773976 kB",
+          "smaps_Pss": "4194459 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "32982",
+          "gpu_used": "66374 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4763256 kB",
+          "smaps_Rss": "4788156 kB",
+          "smaps_Pss": "4209518 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "32985",
+          "gpu_used": "416 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4748216 kB",
+          "smaps_Rss": "4771652 kB",
+          "smaps_Pss": "4191264 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "32984",
+          "gpu_used": "416 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4734384 kB",
+          "smaps_Rss": "4762768 kB",
+          "smaps_Pss": "4183127 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "32983",
+          "gpu_used": "66318 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4749356 kB",
+          "smaps_Rss": "4773976 kB",
+          "smaps_Pss": "4194459 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "32982",
+          "gpu_used": "416 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4763256 kB",
+          "smaps_Rss": "4788156 kB",
+          "smaps_Pss": "4209518 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "32985",
+          "gpu_used": "416 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4748216 kB",
+          "smaps_Rss": "4771652 kB",
+          "smaps_Pss": "4191264 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "32984",
+          "gpu_used": "416 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4734384 kB",
+          "smaps_Rss": "4762768 kB",
+          "smaps_Pss": "4183127 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "32983",
+          "gpu_used": "416 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4749356 kB",
+          "smaps_Rss": "4773976 kB",
+          "smaps_Pss": "4194459 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "32982",
+          "gpu_used": "416 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4763256 kB",
+          "smaps_Rss": "4788156 kB",
+          "smaps_Pss": "4209518 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "32985",
+          "gpu_used": "416 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4748216 kB",
+          "smaps_Rss": "4771652 kB",
+          "smaps_Pss": "4191264 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "32984",
+          "gpu_used": "66614 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4734384 kB",
+          "smaps_Rss": "4762768 kB",
+          "smaps_Pss": "4183127 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "32983",
+          "gpu_used": "416 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4749356 kB",
+          "smaps_Rss": "4773976 kB",
+          "smaps_Pss": "4194459 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "32982",
+          "gpu_used": "416 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4763256 kB",
+          "smaps_Rss": "4788156 kB",
+          "smaps_Pss": "4209518 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "32985",
+          "gpu_used": "66502 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4748216 kB",
+          "smaps_Rss": "4771652 kB",
+          "smaps_Pss": "4191264 kB",
+          "smaps_Locked": "16 kB"
+        },
+        {
+          "pid": "32984",
+          "gpu_used": "416 MiB",
+          "VmLck": "16 kB",
+          "VmPin": "0 kB",
+          "VmRSS": "4734384 kB",
+          "smaps_Rss": "4762768 kB",
+          "smaps_Pss": "4183127 kB",
+          "smaps_Locked": "16 kB"
+        }
+      ],
+      "gpus": [
+        {
+          "index": "0",
+          "used": "67652 MiB",
+          "total": "81920 MiB"
+        },
+        {
+          "index": "1",
+          "used": "67596 MiB",
+          "total": "81920 MiB"
+        },
+        {
+          "index": "2",
+          "used": "67892 MiB",
+          "total": "81920 MiB"
+        },
+        {
+          "index": "3",
+          "used": "67780 MiB",
+          "total": "81920 MiB"
+        }
+      ],
+      "meminfo": {
+        "MemTotal": "527371608 kB",
+        "MemAvailable": "481753276 kB",
+        "Cached": "38308012 kB"
+      }
+    }
+  ],
+  "timings_s": {
+    "update_weights_from_disk": 1.17,
+    "rebench": 6.21
+  }
+}
