@@ -1,0 +1,32 @@
+job=74968 node=nid002288 slot=15 model=/capstor/store/cscs/swissai/infra01/hf_models/models/meta-llama/Llama-3.1-70B-Instruct
+repeats=5 conc=32 bs=16M
+csv=/iopsstor/scratch/cscs/yboughizane/simple-serving-stack/lustre-contention-exp/results/contention-74968-nid002288.csv
+started=2026-07-16T02:01:51+02:00
+host=nid002288 shards=30 total=141.1GB bs=16M (O_DIRECT)
+concurrency,total_bytes,wall_s,agg_GBps
+32,141107497872,18.39,7.67
+2026-07-16T02:01:51+02:00,1,32,141107497872,18.39,7.146
+host=nid002288 shards=30 total=141.1GB bs=16M (O_DIRECT)
+concurrency,total_bytes,wall_s,agg_GBps
+32,141107497872,18.07,7.81
+2026-07-16T02:02:09+02:00,2,32,141107497872,18.07,7.273
+host=nid002288 shards=30 total=141.1GB bs=16M (O_DIRECT)
+concurrency,total_bytes,wall_s,agg_GBps
+32,141107497872,16.79,8.40
+2026-07-16T02:02:27+02:00,3,32,141107497872,16.79,7.827
+host=nid002288 shards=30 total=141.1GB bs=16M (O_DIRECT)
+concurrency,total_bytes,wall_s,agg_GBps
+32,141107497872,16.57,8.52
+2026-07-16T02:02:44+02:00,4,32,141107497872,16.57,7.931
+host=nid002288 shards=30 total=141.1GB bs=16M (O_DIRECT)
+concurrency,total_bytes,wall_s,agg_GBps
+32,141107497872,15.93,8.86
+2026-07-16T02:03:01+02:00,5,32,141107497872,15.93,8.250
+finished=2026-07-16T02:03:17+02:00
+=== /iopsstor/scratch/cscs/yboughizane/simple-serving-stack/lustre-contention-exp/results/contention-74968-nid002288.csv ===
+iso_time,run_index,concurrency,total_bytes,wall_s,agg_GiBps
+2026-07-16T02:01:51+02:00,1,32,141107497872,18.39,7.146
+2026-07-16T02:02:09+02:00,2,32,141107497872,18.07,7.273
+2026-07-16T02:02:27+02:00,3,32,141107497872,16.79,7.827
+2026-07-16T02:02:44+02:00,4,32,141107497872,16.57,7.931
+2026-07-16T02:03:01+02:00,5,32,141107497872,15.93,8.250

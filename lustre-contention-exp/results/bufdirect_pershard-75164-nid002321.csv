@@ -1,0 +1,91 @@
+mode,pass,shard,ost_idx,wall_s,MBps
+buffered,buffered  (cold),model-00030-of-00030.safetensors,15,2.48,847.3
+buffered,buffered  (cold),model-00017-of-00030.safetensors,16,4.52,1031.9
+buffered,buffered  (cold),model-00005-of-00030.safetensors,98,5.22,893.5
+buffered,buffered  (cold),model-00011-of-00030.safetensors,59,5.25,888.4
+buffered,buffered  (cold),model-00007-of-00030.safetensors,139,5.48,851.1
+buffered,buffered  (cold),model-00019-of-00030.safetensors,105,5.50,902.9
+buffered,buffered  (cold),model-00020-of-00030.safetensors,46,5.63,828.4
+buffered,buffered  (cold),model-00026-of-00030.safetensors,59,5.65,825.5
+buffered,buffered  (cold),model-00015-of-00030.safetensors,133,5.71,816.8
+buffered,buffered  (cold),model-00027-of-00030.safetensors,76,5.82,801.4
+buffered,buffered  (cold),model-00021-of-00030.safetensors,80,5.90,790.5
+buffered,buffered  (cold),model-00028-of-00030.safetensors,23,5.92,844.5
+buffered,buffered  (cold),model-00009-of-00030.safetensors,107,6.01,826.3
+buffered,buffered  (cold),model-00013-of-00030.safetensors,2,6.01,831.9
+buffered,buffered  (cold),model-00001-of-00030.safetensors,117,6.04,759.0
+buffered,buffered  (cold),model-00023-of-00030.safetensors,70,6.12,816.9
+buffered,buffered  (cold),model-00016-of-00030.safetensors,13,6.13,760.9
+buffered,buffered  (cold),model-00024-of-00030.safetensors,130,6.14,808.8
+buffered,buffered  (cold),model-00022-of-00030.safetensors,56,6.15,758.4
+buffered,buffered  (cold),model-00025-of-00030.safetensors,15,6.19,753.5
+buffered,buffered  (cold),model-00012-of-00030.safetensors,93,6.22,749.9
+buffered,buffered  (cold),model-00010-of-00030.safetensors,30,6.25,746.3
+buffered,buffered  (cold),model-00002-of-00030.safetensors,30,6.28,742.7
+buffered,buffered  (cold),model-00003-of-00030.safetensors,30,6.29,794.9
+buffered,buffered  (cold),model-00006-of-00030.safetensors,46,6.28,742.7
+buffered,buffered  (cold),model-00029-of-00030.safetensors,93,6.33,784.5
+buffered,buffered  (cold),model-00008-of-00030.safetensors,149,6.45,775.1
+buffered,buffered  (cold),model-00004-of-00030.safetensors,11,6.47,767.6
+buffered,buffered  (cold),model-00014-of-00030.safetensors,86,6.62,750.2
+buffered,buffered  (cold),model-00018-of-00030.safetensors,8,25.19,198.5
+direct,O_DIRECT,model-00030-of-00030.safetensors,15,9.89,212.5
+direct,O_DIRECT,model-00001-of-00030.safetensors,117,11.46,400.0
+direct,O_DIRECT,model-00017-of-00030.safetensors,16,11.87,392.9
+direct,O_DIRECT,model-00012-of-00030.safetensors,93,12.68,367.8
+direct,O_DIRECT,model-00020-of-00030.safetensors,46,12.67,368.1
+direct,O_DIRECT,model-00029-of-00030.safetensors,93,12.72,390.4
+direct,O_DIRECT,model-00006-of-00030.safetensors,46,12.88,362.1
+direct,O_DIRECT,model-00004-of-00030.safetensors,11,13.01,381.7
+direct,O_DIRECT,model-00022-of-00030.safetensors,56,13.04,357.7
+direct,O_DIRECT,model-00008-of-00030.safetensors,149,13.08,382.2
+direct,O_DIRECT,model-00027-of-00030.safetensors,76,13.16,354.4
+direct,O_DIRECT,model-00024-of-00030.safetensors,130,13.25,374.8
+direct,O_DIRECT,model-00028-of-00030.safetensors,23,13.28,376.5
+direct,O_DIRECT,model-00011-of-00030.safetensors,59,13.45,346.8
+direct,O_DIRECT,model-00015-of-00030.safetensors,133,13.46,346.5
+direct,O_DIRECT,model-00005-of-00030.safetensors,98,13.47,346.3
+direct,O_DIRECT,model-00016-of-00030.safetensors,13,13.46,346.5
+direct,O_DIRECT,model-00026-of-00030.safetensors,59,13.78,338.5
+direct,O_DIRECT,model-00021-of-00030.safetensors,80,13.84,337.0
+direct,O_DIRECT,model-00014-of-00030.safetensors,86,13.85,358.6
+direct,O_DIRECT,model-00009-of-00030.safetensors,107,13.92,356.8
+direct,O_DIRECT,model-00007-of-00030.safetensors,139,13.96,334.1
+direct,O_DIRECT,model-00023-of-00030.safetensors,70,13.94,358.7
+direct,O_DIRECT,model-00010-of-00030.safetensors,30,14.22,328.0
+direct,O_DIRECT,model-00002-of-00030.safetensors,30,14.46,322.6
+direct,O_DIRECT,model-00003-of-00030.safetensors,30,14.94,334.7
+direct,O_DIRECT,model-00013-of-00030.safetensors,2,15.67,319.1
+direct,O_DIRECT,model-00025-of-00030.safetensors,15,16.54,282.0
+direct,O_DIRECT,model-00019-of-00030.safetensors,105,17.36,286.1
+direct,O_DIRECT,model-00018-of-00030.safetensors,8,180.35,27.7
+buffered,buffered  (WARM/RAM),model-00018-of-00030.safetensors,8,0.76,6578.6
+buffered,buffered  (WARM/RAM),model-00030-of-00030.safetensors,15,3.18,660.8
+buffered,buffered  (WARM/RAM),model-00001-of-00030.safetensors,117,4.65,985.9
+buffered,buffered  (WARM/RAM),model-00003-of-00030.safetensors,30,4.87,1026.6
+buffered,buffered  (WARM/RAM),model-00011-of-00030.safetensors,59,4.91,949.9
+buffered,buffered  (WARM/RAM),model-00012-of-00030.safetensors,93,5.02,929.1
+buffered,buffered  (WARM/RAM),model-00002-of-00030.safetensors,30,5.09,916.3
+buffered,buffered  (WARM/RAM),model-00010-of-00030.safetensors,30,5.11,912.7
+buffered,buffered  (WARM/RAM),model-00005-of-00030.safetensors,98,5.12,911.0
+buffered,buffered  (WARM/RAM),model-00015-of-00030.safetensors,133,5.23,891.8
+buffered,buffered  (WARM/RAM),model-00007-of-00030.safetensors,139,5.54,841.9
+buffered,buffered  (WARM/RAM),model-00027-of-00030.safetensors,76,5.97,781.3
+buffered,buffered  (WARM/RAM),model-00020-of-00030.safetensors,46,6.05,770.9
+buffered,buffered  (WARM/RAM),model-00009-of-00030.safetensors,107,6.08,816.8
+buffered,buffered  (WARM/RAM),model-00013-of-00030.safetensors,2,6.11,818.3
+buffered,buffered  (WARM/RAM),model-00022-of-00030.safetensors,56,6.12,762.1
+buffered,buffered  (WARM/RAM),model-00006-of-00030.safetensors,46,6.14,759.6
+buffered,buffered  (WARM/RAM),model-00017-of-00030.safetensors,16,6.15,758.4
+buffered,buffered  (WARM/RAM),model-00025-of-00030.safetensors,15,6.28,742.7
+buffered,buffered  (WARM/RAM),model-00014-of-00030.safetensors,86,6.33,784.5
+buffered,buffered  (WARM/RAM),model-00023-of-00030.safetensors,70,6.33,789.8
+buffered,buffered  (WARM/RAM),model-00028-of-00030.safetensors,23,6.39,782.4
+buffered,buffered  (WARM/RAM),model-00016-of-00030.safetensors,13,6.53,714.3
+buffered,buffered  (WARM/RAM),model-00024-of-00030.safetensors,130,6.59,753.6
+buffered,buffered  (WARM/RAM),model-00019-of-00030.safetensors,105,6.64,747.9
+buffered,buffered  (WARM/RAM),model-00026-of-00030.safetensors,59,6.66,700.3
+buffered,buffered  (WARM/RAM),model-00008-of-00030.safetensors,149,6.75,740.7
+buffered,buffered  (WARM/RAM),model-00029-of-00030.safetensors,93,6.82,728.2
+buffered,buffered  (WARM/RAM),model-00004-of-00030.safetensors,11,6.88,721.8
+buffered,buffered  (WARM/RAM),model-00021-of-00030.safetensors,80,6.93,673.0

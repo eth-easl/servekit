@@ -1,0 +1,54 @@
+job=75149 node=nid002297 started=2026-07-17T11:22:27+02:00
+store mount instance=ffff9240fdce6000
+ost of sick shard : 8
+ost of ctrl shard : 16
+max_rpcs_in_flight: 68
+max_pages_per_rpc : 4096
+
+############ A. dd, bs=16M, QD=1 (the probe that reported 0.6 GB/s)
+  1024 MiB in 42.5 s -> 24.1 MB/s
+  read-RPCs-in-flight histogram on OST 8:
+      depth 1:		       639  52  52   |          0   0   0
+      depth 2:		       149  12  64   |          0   0   0
+      depth 3:		        70   5  70   |          0   0   0
+      depth 4:		        85   6  77   |          0   0   0
+      depth 5:		        24   1  79   |          0   0   0
+      depth 6:		        22   1  80   |          0   0   0
+      depth 7:		        22   1  82   |          0   0   0
+      depth 8:		        64   5  87   |          0   0   0
+      depth 9:		         9   0  88   |          0   0   0
+      depth 10:		         4   0  88   |          0   0   0
+      depth 11:		         4   0  89   |          0   0   0
+      depth 12:		         4   0  89   |          0   0   0
+
+############ B. same file, same O_DIRECT, N parallel readers (queue depth only)
+   readers         MB/s
+         1         25.0
+         2         44.2
+         4         95.4
+         8        182.0
+        16        320.1
+        32        510.3
+
+############ C. fastsafetensors reading THE SAME sick shard
+  import ok
+Traceback (most recent call last):
+  File "/iopsstor/scratch/cscs/yboughizane/simple-serving-stack/lustre-contention-exp/results/fst_one_75149.py", line 2, in <module>
+    from fastsafetensors import SafeTensorsFileLoader, SingleGroup
+ModuleNotFoundError: No module named 'fastsafetensors'
+srun: error: nid002297: task 0: Exited with exit code 1
+  read-RPCs-in-flight histogram on OST 8:
+      depth 1:		       714  44  44   |          0   0   0
+      depth 2:		       211  13  57   |          0   0   0
+      depth 3:		        76   4  62   |          0   0   0
+      depth 4:		       147   9  71   |          0   0   0
+      depth 5:		        28   1  73   |          0   0   0
+      depth 6:		        26   1  74   |          0   0   0
+      depth 7:		        26   1  76   |          0   0   0
+      depth 8:		       122   7  84   |          0   0   0
+      depth 9:		        11   0  84   |          0   0   0
+      depth 10:		         6   0  85   |          0   0   0
+      depth 11:		         6   0  85   |          0   0   0
+      depth 12:		         6   0  85   |          0   0   0
+
+finished=2026-07-17T11:25:00+02:00
