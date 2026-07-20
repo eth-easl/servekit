@@ -1,0 +1,7 @@
+job=75079 node=nid002325
+started=2026-07-16T11:34:13+02:00
+##### STEP 1: bundle (in container) #####
+== bundle step: id=0 os=jammy
+srun: Job step aborted: Waiting up to 32 seconds for job step to finish.
+[2026-07-16T11:50:43.311] error: *** STEP 75079.0 ON nid002325 CANCELLED AT 2026-07-16T11:50:43 DUE to SIGNAL Terminated ***
+[2026-07-16T11:50:43.312] error: *** JOB 75079 ON nid002325 CANCELLED AT 2026-07-16T11:50:43 DUE to SIGNAL Terminated ***

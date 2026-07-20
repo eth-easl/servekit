@@ -1,0 +1,121 @@
+job=75080 node=nid002288
+started=2026-07-16T11:51:47+02:00
+##### STEP 1: bundle (in container) #####
+== bundle step: id=0 os=jammy
+all artifacts already built -- nothing to do:
+  criu    : /iopsstor/scratch/cscs/yboughizane/simple-serving-stack/cuda-checkpoint-exp/bin/criu: error while loading shared libraries: libbsd.so.0: cannot open shared object file: No such file or directory
+  counter : 1004528 bytes
+  hostlibs: libnet.so.1
+(delete bin/criu or src/counter to force a rebuild)
+bundle_exit=0
+
+##### STEP 2: checkpoint/restore test (bare host) #####
+
+========== environment (bare host, normal user) ==========
+node=nid002288 uid=1609 Seccomp=0
+NVIDIA A100-SXM4-80GB, 590.48.01
+cuda-checkpoint: present
+
+========== GATE cuda-ckpt: evict GPU state to host RAM and restore it (live process, no criu) ==========
+tick_ms=1000  freeze_window=8s  (=> ~8 ticks expected if NOT frozen)
+counter pid=120091  tick=7
+GPU procs while running:
+  120091, 418 MiB
+state: running
+-- lock + checkpoint (device memory -> host RAM, GPU released) --
+   lock rc=0
+   checkpoint rc=0
+   state: checkpointed
+   last tick while checkpointed: tick=9
+GPU procs while checkpointed (expect NO entry for 120091):
+   watching for 8s while checkpointed...
+   confirmed FROZEN: still tick=9 after 8s (~8 ticks should have elapsed)
+-- restore + unlock (reattach to GPU) --
+   restore rc=0
+   unlock rc=0
+   state: running
+   letting it run 7s to show it keeps ticking...
+   first tick after restore : tick=10  <- the proof; must be tick=10 (= froze+1)
+   counter now at           : tick=18  <- only how far it got during the ~7s sleep; not a correctness signal
+GATE cuda-ckpt  : PASS  device memory intact: froze at 9, resumed at exactly 10, still ticking (now 18)
+-- sequence integrity check --
+  RESULT: contiguous tick=1..18, no reset/gap/jump (froze at 9)
+-- ticks around the checkpoint boundary (froze at tick=9) --
+  tick=7   <- before checkpoint
+  tick=8   <- before checkpoint
+  tick=9   <- before checkpoint
+  tick=10   <- FIRST tick after restore (must be 10)
+  tick=11
+  tick=12
+
+========== now re-exec into unshare -Urpf for the criu gates ==========
+
+========== criu environment (inside unshare -Urpf) ==========
+uid=0 pid=1 (own pidns)  Seccomp=0 (0=none)
+CapEff=000001ffffffffff
+criu  : Version: 3.19
+
+========== GATE map-files: can we OPEN /proc/PID/map_files/* ? (criu depends on it) ==========
+GATE map-files  : FAIL  open() EPERM (readlink=/usr/bin/sleep
+ok)
+                   The kernel gates open() of /proc/PID/map_files behind
+                   checkpoint_restore_ns_capable(&init_user_ns): CAP_SYS_ADMIN or
+                   CAP_CHECKPOINT_RESTORE in the INITIAL userns. Namespace-root cannot
+                   satisfy it, so criu cannot dump ANY process without admin action.
+
+========== GATE criu-cpu: criu dump/restore of a plain CPU process ==========
+/iopsstor/scratch/cscs/yboughizane/simple-serving-stack/cuda-checkpoint-exp/scripts/run_host.sh: line 107:    14 Killed                  sleep 300
+GATE criu-cpu   : FAIL  criu dump rc=1
+(00.163323) Error (criu/net.c:1252): net: Unexpected error: -1(Operation not permitted)
+(00.164636) Error (criu/util.c:1519): rlimit: Can't setup RLIMIT_NOFILE for self: Operation not permitted
+(00.369647) Error (criu/proc_parse.c:379): Failed to resolve mapping 55aae2dd2000 filename
+(00.369666) Error (criu/proc_parse.c:693): Can't open 22's mapfile link 55aae2dd2000: Operation not permitted
+(00.369691) Error (criu/cr-dump.c:1563): Collect mappings (pid: 22) failed with -1
+(00.371837) Error (criu/cr-dump.c:2098): Dumping FAILED.
+
+criu-gpu gate skipped (criu cannot dump even a plain process).
+/iopsstor/scratch/cscs/yboughizane/simple-serving-stack/cuda-checkpoint-exp/scripts/run_host.sh: line 214: 120091 Killed                  "${EXP_DIR}/src/counter" "${LOG}" "${TICK_MS}" < /dev/null > /dev/null 2>&1
+test_exit=0
+
+##### STEP 3: cuda-checkpoint INSIDE the container #####
+
+========== environment (bare host, normal user) ==========
+node=nid002288 uid=1609 Seccomp=2
+NVIDIA A100-SXM4-80GB, 590.48.01
+cuda-checkpoint: present
+
+========== GATE cuda-ckpt: evict GPU state to host RAM and restore it (live process, no criu) ==========
+tick_ms=1000  freeze_window=8s  (=> ~8 ticks expected if NOT frozen)
+counter pid=121015  tick=7
+GPU procs while running:
+  121015, 418 MiB
+state: running
+-- lock + checkpoint (device memory -> host RAM, GPU released) --
+   lock rc=0
+   checkpoint rc=0
+   state: checkpointed
+   last tick while checkpointed: tick=9
+GPU procs while checkpointed (expect NO entry for 121015):
+   watching for 8s while checkpointed...
+   confirmed FROZEN: still tick=9 after 8s (~8 ticks should have elapsed)
+-- restore + unlock (reattach to GPU) --
+   restore rc=0
+   unlock rc=0
+   state: running
+   letting it run 7s to show it keeps ticking...
+   first tick after restore : tick=10  <- the proof; must be tick=10 (= froze+1)
+   counter now at           : tick=18  <- only how far it got during the ~7s sleep; not a correctness signal
+GATE cuda-ckpt  : PASS  device memory intact: froze at 9, resumed at exactly 10, still ticking (now 18)
+-- sequence integrity check --
+  RESULT: contiguous tick=1..18, no reset/gap/jump (froze at 9)
+-- ticks around the checkpoint boundary (froze at tick=9) --
+  tick=7   <- before checkpoint
+  tick=8   <- before checkpoint
+  tick=9   <- before checkpoint
+  tick=10   <- FIRST tick after restore (must be 10)
+  tick=11
+  tick=12
+
+(SKIP_CRIU=1: criu gates skipped)
+container_test_exit=0
+finished=2026-07-16T11:53:03+02:00
