@@ -1,0 +1,37 @@
+job=75159 node=nid002297 started=2026-07-17T12:18:14+02:00
+=== 1. patch applies against the image-pinned clone ===
+[patch] installed sglang 0.5.10 at /sgl-workspace/sglang/python/sglang
+[patch] 1 patch(es) -> 1 distinct file(s)
+Note: switching to '1519acf37c23f2189adb93f57ca9cd2db1bebf18'.
+
+You are in 'detached HEAD' state. You can look around, make experimental
+changes and commit them, and you can discard any commits you make in this
+state without impacting any branches by switching back to a branch.
+
+If you want to create a new branch to retain commits you create, you may
+do so (now or later) by using -c with the switch command. Example:
+
+  git switch -c <new-branch-name>
+
+Or undo this operation with:
+
+  git switch -
+
+Turn off this advice by setting config variable advice.detachedHead to false
+
+[patch] cloned https://github.com/sgl-project/sglang.git @ v0.5.10 = 1519acf37c23f2189adb93f57ca9cd2db1bebf18
+[patch] verified: all 1 file(s) match the image byte-for-byte
+[patch]   applied fst_threads.patch
+[patch]   swapped srt/model_loader/weight_utils.py
+[patch] done
+=== 2. patched file carries both knobs ===
+  ok: SGLANG_FST_FILES_PER_RANK present
+  ok: SGLANG_FST_MAX_THREADS present
+  ok: SGLANG_FST_BBUF_SIZE_KB present
+=== 3. fastsafetensors accepts the kwargs we intend to pass ===
+  ok: max_threads accepted, default = 16
+  ok: bbuf_size_kb accepted, default = 16384
+=== 4. null path is upstream (no env set) ===
+  ok: fpr=1 -> chunk=pg.size(); kwargs={}; rank_file_map == enumerate()
+PREFLIGHT OK
+finished=2026-07-17T12:18:26+02:00
