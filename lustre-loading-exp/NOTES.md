@@ -541,5 +541,69 @@ not a timeout, not an OOM, unattributed. It does not change the verdict:
 `it_c32` (245 s) and `it_c64_d64` (277 s) straddle it, and the plateau is
 already established by c16 ≈ c32.)*
 
+## Phase 4b — the sliced stage is CPU-bound, and `srun -c 64` was halving it  ✅
+
+The sliced stager (`stage_to_shm_sliced.sh`, 64 slices, 1744 concurrent `dd`s)
+measured **19.4–20.2 GB/s** in `stage_compare.sbatch` but only **11.5–12.2 GB/s**
+in every e2e job that used it. Same script, same slices, same model — and on
+**nid002297 five minutes apart** (75166 sliced leg 13:20 → 19.36; 75168 stage
+13:25 → 11.66), so node variation and Lustre drift were already excluded.
+
+Two things differed between those runs, not one:
+
+- **CPU count.** `stage_compare.sbatch` calls the stager *directly in the batch
+  step*. Under `--exclusive` that step gets the whole node — `sacct` confirms
+  `75166.batch AllocCPUS=128` despite `ReqCPUS=32`. The e2e runs it under
+  `srun --cpus-per-task=64`, which appears as step `.0` with **AllocCPUS=64**.
+- **The container** (`--environment=$EDF`).
+
+`scripts/phase4_shm/stage_isolate_container.sbatch` (job 75713, nid002280)
+separates them — one job, one node, four legs, minutes apart:
+
+| leg | CPUs | container | GB/s | stage |
+|---|---|---|---|---|
+| `batch_bare` | 128 | no | **20.54** | 6.87 s |
+| `srun_bare_64` | 64 | no | 12.07 | 11.69 s |
+| `srun_ctr_64` | 64 | yes | 11.59 | 12.18 s |
+| `srun_ctr_128` | 128 | yes | **18.35** | 7.69 s |
+
+> **KEY FINDING: it is CPU count, not the container.** At fixed 64 CPUs the
+> container costs 12.07 → 11.59 = **4%**. At fixed container, 64 → 128 CPUs is
+> 11.59 → 18.35 = **1.58×**. The stage is CPU-bound: O_DIRECT reads DMA into the
+> user buffer, but all 141 GB are then **memcpy'd by the CPU** into tmpfs pages —
+> ~40 GB/s of memory traffic at these rates.
+
+`/dev/shm` came back byte-identical across all four legs (same tmpfs, same
+`size=369160116k`; container adds only `nosuid,noexec`), so a differing tmpfs
+mount is ruled out as well.
+
+Mechanism, worth remembering: `TaskPlugin=task/affinity`, so srun restricts via
+`sched_setaffinity`, **not** the cgroup cpuset. Every leg printed
+`cpuset: 0-127` while `nproc` read 128/64/64/128. The affinity mask is inherited
+by children, so all 1744 forked `dd`s are confined to it. Reading
+`cpuset.cpus.effective` alone would have shown "no restriction" and missed this
+entirely.
+
+**RECOMMENDATION (not applied — recipe, not a code change).** The e2e scripts
+(`phase4_shm_sliced_e2e.sbatch`, `shm-weight-loading-exp` phase1) declare
+`#SBATCH --cpus-per-task=64` and the inner `srun` passes `${SLURM_CPUS_PER_TASK}`
+through. Raising the **job-level** directive to 128 takes the stage
+**~12.2 s → ~7.7 s, ≈4.5 s of cold start for free**. It must be the job-level
+value: the `srun_ctr_128` leg only ran because `--exclusive` had 128 CPUs
+available, and SLURM warned `Job step's --cpus-per-task value exceeds that of
+job (128 > 64). Job step may never run.`
+
+Two caveats: scaling is sublinear (2× CPUs → 1.58×), so 128 is about where this
+stops paying and there is no further CPU headroom on the node; and giving SGLang
+128 CPUs may shift other cold-start phases (TP worker spawn, torch thread
+counts), so the e2e total is not guaranteed to drop by the full 4.5 s.
+
+**Methodological lesson, same family as Phase 1.2's.** A bandwidth number from a
+*differently launched step* is worth no more than one from a different job. The
+first isolation script drafted for this held CPU count fixed at 64 in both legs
+and varied only the container — it would have returned "bare ≈ container ≈ 12
+GB/s", declared the container innocent, and read as a dead end while the real
+variable was never moved. Vary the thing you have not yet excluded.
+
 ## Phase 6 (next) — graph capture  ⏳
 

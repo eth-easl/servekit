@@ -165,3 +165,14 @@ on Lustre and/or on tmpfs.
 - Residual OS page-cache contamination between end-to-end runs on a reused node.
 - 263 GB `du` vs ~132 GB safetensors: confirm SGLang only reads the safetensors
   (ignore any `original/` pth checkpoint) so staging copies the right subset.
+
+## Follow-up (not yet implemented): staging/startup overlap correctness
+
+Overlapping the sliced `/dev/shm` stage with SGLang's import window is free
+when staging finishes first, but under Lustre contention (2-6x swings,
+already documented) staging could outlast the import window. Safe design:
+atomic `rename()` from a `.tmp` staging path into the final path, plus a
+small SGLang patch (reuse `scripts/lib/patch_sglang_in_container.sh`'s
+clone-diff-verify harness) that waits on the final path's existence right
+before the loader opens weight files. Not needed until overlap is actually
+implemented.
