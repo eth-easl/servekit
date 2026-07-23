@@ -1,0 +1,35 @@
+{
+  "command": "python -m sglang.launch_server --model-path /capstor/store/cscs/swissai/infra01/hf_models/models/swiss-ai/Apertus-8B-Instruct-2509 --host 0.0.0.0 --port 8080 --served-model-name swiss-ai/Apertus-8B-Instruct-2509 --tp-size 1 --dp-size 4 --trust-remote-code --context-length 32768 --mem-fraction-static 0.85 --max-running-requests 256 --load-format fastsafetensors --enable-metrics",
+  "started_at": 1784707529.122953,
+  "ready_at": null,
+  "success": false,
+  "total_duration_s": 0.0,
+  "phases": [
+    {
+      "name": "process_startup",
+      "duration_s": 17.01,
+      "source": "wall_clock"
+    },
+    {
+      "name": "unknown",
+      "duration_s": 25.25,
+      "source": "wall_clock"
+    },
+    {
+      "name": "torch_distributed_init",
+      "duration_s": 0.99,
+      "source": "engine_reported"
+    },
+    {
+      "name": "unknown",
+      "duration_s": 1.81,
+      "source": "wall_clock"
+    },
+    {
+      "name": "weight_loading",
+      "duration_s": 29.32,
+      "source": "engine_reported"
+    }
+  ],
+  "benchmark": null
+}

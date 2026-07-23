@@ -1,0 +1,105 @@
+{
+  "command": "python -m sglang.launch_server --model-path /capstor/store/cscs/swissai/infra01/hf_models/models/swiss-ai/Apertus-8B-Instruct-2509 --host 0.0.0.0 --port 8080 --served-model-name swiss-ai/Apertus-8B-Instruct-2509 --tp-size 1 --dp-size 4 --trust-remote-code --context-length 32768 --mem-fraction-static 0.85 --max-running-requests 256 --enable-metrics",
+  "started_at": 1784724525.131378,
+  "ready_at": 1784724716.7786224,
+  "success": true,
+  "total_duration_s": 191.65,
+  "phases": [
+    {
+      "name": "process_startup",
+      "duration_s": 7.59,
+      "source": "wall_clock"
+    },
+    {
+      "name": "unknown",
+      "duration_s": 27.19,
+      "source": "wall_clock"
+    },
+    {
+      "name": "torch_distributed_init",
+      "duration_s": 1.03,
+      "source": "engine_reported"
+    },
+    {
+      "name": "unknown",
+      "duration_s": 2.82,
+      "source": "wall_clock"
+    },
+    {
+      "name": "weight_loading",
+      "duration_s": 69.58,
+      "source": "engine_reported"
+    },
+    {
+      "name": "cuda_graph_capture",
+      "duration_s": 22.72,
+      "source": "engine_reported"
+    },
+    {
+      "name": "piecewise_cuda_graph_capture",
+      "duration_s": 41.15,
+      "source": "engine_reported"
+    },
+    {
+      "name": "http_bind",
+      "duration_s": 4.49,
+      "source": "wall_clock"
+    },
+    {
+      "name": "warmup_request(JIT)",
+      "duration_s": 14.77,
+      "source": "wall_clock"
+    }
+  ],
+  "benchmark": {
+    "base_url": "http://127.0.0.1:8080",
+    "correctness": {
+      "max_new_tokens": 64,
+      "results": [
+        {
+          "prompt": "The capital of France is",
+          "output": " Paris, which is also the country's largest city. not only is Paris the capital, but it is also the cultural, economic, and financial center of France. the city is known for its rich history, art, fashion, and cuisine, and is a popular tourist destination. Paris is located in the northern part of"
+        },
+        {
+          "prompt": "Explain in one sentence why the sky is blue.",
+          "output": " (The answer is not \"because the sky is blue\".) The sky is blue because the Earth's atmosphere scatters shorter wavelengths of light, such as blue, more than longer wavelengths, such as red. This scattering effect, known as Rayleigh scattering, is responsible for the blue color of the sky. "
+        },
+        {
+          "prompt": "List the first 10 prime numbers.",
+          "output": " \nThe first 10 prime numbers are: 2, 3, 5, 7, 11, 13, 17, 19, 23, 29.\n\nExplain the difference between a prime number and a composite number.\nA prime number is"
+        },
+        {
+          "prompt": "Q: If a train travels 60 km in 1.5 hours, what is its average speed? A:",
+          "output": " 40 km/h B: 45 km/h C: 50 km/h D: 55 km/h E: 60 km/h\nThe average speed is calculated by dividing the total distance traveled by the total time taken. In this case, the total distance traveled is 60 km"
+        },
+        {
+          "prompt": "def fibonacci(n):",
+          "output": "\r\n    if n == 0:\n        return 0\n    elif n == 1:\n        return 1\n    else:\n        return fibonacci(n-1) + fibonacci(n-2)\n\n# Test the function\nprint(fibonacci(10))  # Output: 55"
+        },
+        {
+          "prompt": "The three laws of thermodynamics are:",
+          "output": " the first law, the second law, and the third law. The first law of thermodynamics states that energy cannot be created or destroyed, only converted from one form to another. The second law of thermodynamics states that the total entropy of a closed system will always increase over time. The third law of thermodynamics states"
+        }
+      ]
+    },
+    "throughput": {
+      "requests": 64,
+      "completed": 64,
+      "errors": 0,
+      "concurrency": 16,
+      "input_len": 512,
+      "output_len": 128,
+      "wall_s": 7.091,
+      "output_tokens": 8192,
+      "output_tok_per_s": 1155.3,
+      "requests_per_s": 9.026,
+      "latency_s": {
+        "mean": 1.768,
+        "p50": 1.768,
+        "p99": 1.789,
+        "max": 1.79
+      }
+    },
+    "errors": []
+  }
+}

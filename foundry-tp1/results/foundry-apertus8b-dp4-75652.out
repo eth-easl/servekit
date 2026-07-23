@@ -1,0 +1,909 @@
+clearing archive: /iopsstor/scratch/cscs/yboughizane/simple-serving-stack/foundry-tp1/results/foundry_archive_apertus8b_dp4
+job=75652 node=nid002804 mode=save model=/capstor/store/cscs/swissai/infra01/hf_models/models/swiss-ai/Apertus-8B-Instruct-2509
+dp=4 tp=1 mem_fraction_static=0.85 max_model_len=32768
+archive=/iopsstor/scratch/cscs/yboughizane/simple-serving-stack/foundry-tp1/results/foundry_archive_apertus8b_dp4
+profile_out=/iopsstor/scratch/cscs/yboughizane/simple-serving-stack/foundry-tp1/results/apertus8b-dp4-save-75652-nid002804-profile.json
+started=2026-07-22T14:35:59+02:00
+NOTE: for MODE=load, submit with --exclude=nid002804 if this is the save run
+/usr/local/lib/python3.12/dist-packages/torchao/quantization/quant_api.py:1731: SyntaxWarning: invalid escape sequence '\.'
+  """Configuration class for applying different quantization configs to modules or parameters based on their fully qualified names (FQNs).
+patching sglang at /sgl-workspace/sglang/python/sglang/srt
+wrote /sgl-workspace/sglang/python/sglang/srt/foundry_shim.py
+skip  pool_configurator.py: already provided by this sglang
+patch server_args.py
+patch server_args.py
+patch server_args.py
+patch managers/scheduler.py
+patch model_executor/model_runner.py
+patch managers/data_parallel_controller.py
+ok: ServerArgs.foundry_graph_extension_config_path present
+ok: MemoryPoolConfig import path agrees with the engine
+foundry: /opt/foundry/python/foundry/__init__.py
+[SERVEKIT] profiling cold start of: python -m sglang.launch_server --model-path /capstor/store/cscs/swissai/infra01/hf_models/models/swiss-ai/Apertus-8B-Instruct-2509 --host 0.0.0.0 --port 8080 --served-model-name swiss-ai/Apertus-8B-Instruct-2509 --tp-size 1 --dp-size 4 --trust-remote-code --context-length 32768 --mem-fraction-static 0.85 --max-running-requests 256 --enable-metrics --foundry-graph-extension-config-path /iopsstor/scratch/cscs/yboughizane/simple-serving-stack/foundry-tp1/foundry_save.toml
+[SERVEKIT] will benchmark http://127.0.0.1:8080 after ready
+/sgl-workspace/sglang/python/sglang/launch_server.py:54: UserWarning: 'python -m sglang.launch_server' is still supported, but 'sglang serve' is the recommended entrypoint.
+  Example: sglang serve --model-path <model> [options]
+  warnings.warn(
+[2026-07-22 14:36:58] Attention backend not specified. Use flashinfer backend by default.
+[2026-07-22 14:36:58] [Foundry] SGLang hooks installing: mode=save workspace=/iopsstor/scratch/cscs/yboughizane/simple-serving-stack/foundry-tp1/results/foundry_archive_apertus8b_dp4
+[2026-07-22 14:37:00] [Foundry] SGLang hooks installed
+[2026-07-22 14:37:00] Foundry SGLang integration activated from /iopsstor/scratch/cscs/yboughizane/simple-serving-stack/foundry-tp1/foundry_save.toml
+[2026-07-22 14:37:00] server_args=ServerArgs(model_path='/capstor/store/cscs/swissai/infra01/hf_models/models/swiss-ai/Apertus-8B-Instruct-2509', tokenizer_path='/capstor/store/cscs/swissai/infra01/hf_models/models/swiss-ai/Apertus-8B-Instruct-2509', tokenizer_mode='auto', tokenizer_backend='huggingface', tokenizer_worker_num=1, skip_tokenizer_init=False, load_format='auto', model_loader_extra_config='{}', trust_remote_code=True, context_length=32768, is_embedding=False, enable_multimodal=None, revision=None, model_impl='auto', host='0.0.0.0', port=8080, fastapi_root_path='', grpc_mode=False, skip_server_warmup=False, warmups=None, nccl_port=None, checkpoint_engine_wait_weights_before_ready=False, ssl_keyfile=None, ssl_certfile=None, ssl_ca_certs=None, ssl_keyfile_password=None, enable_ssl_refresh=False, enable_http2=False, dtype='auto', quantization=None, quantization_param_path=None, kv_cache_dtype='auto', enable_fp32_lm_head=False, modelopt_quant=None, modelopt_checkpoint_restore_path=None, modelopt_checkpoint_save_path=None, modelopt_export_path=None, quantize_and_serve=False, rl_quant_profile=None, mem_fraction_static=0.85, max_running_requests=256, max_queued_requests=None, max_total_tokens=None, chunked_prefill_size=8192, enable_dynamic_chunking=False, max_prefill_tokens=16384, prefill_max_requests=None, schedule_policy='fcfs', enable_priority_scheduling=False, disable_priority_preemption=False, default_priority_value=None, abort_on_priority_when_disabled=False, schedule_low_priority_values_first=False, priority_scheduling_preemption_threshold=10, schedule_conservativeness=1.0, page_size=1, swa_full_tokens_ratio=0.8, disable_hybrid_swa_memory=False, radix_eviction_policy='lru', enable_prefill_delayer=False, prefill_delayer_max_delay_passes=30, prefill_delayer_token_usage_low_watermark=None, prefill_delayer_forward_passes_buckets=None, prefill_delayer_wait_seconds_buckets=None, device='cuda', tp_size=1, pp_size=1, pp_max_micro_batch_size=None, pp_async_batch_depth=0, stream_interval=1, batch_notify_size=16, stream_response_default_include_usage=False, incremental_streaming_output=False, enable_streaming_session=False, random_seed=425460184, constrained_json_whitespace_pattern=None, constrained_json_disable_any_whitespace=False, watchdog_timeout=300, soft_watchdog_timeout=None, dist_timeout=None, download_dir=None, model_checksum=None, base_gpu_id=0, gpu_id_step=1, sleep_on_idle=False, use_ray=False, custom_sigquit_handler=None, log_level='info', log_level_http=None, log_requests=False, log_requests_level=2, log_requests_format='text', log_requests_target=None, uvicorn_access_log_exclude_prefixes=[], crash_dump_folder=None, show_time_cost=False, enable_metrics=True, grpc_http_sidecar_port=None, enable_mfu_metrics=False, enable_metrics_for_all_schedulers=False, tokenizer_metrics_custom_labels_header='x-custom-labels', tokenizer_metrics_allowed_custom_labels=None, extra_metric_labels=None, bucket_time_to_first_token=None, bucket_inter_token_latency=None, bucket_e2e_request_latency=None, prompt_tokens_buckets=None, generation_tokens_buckets=None, gc_warning_threshold_secs=0.0, decode_log_interval=40, enable_request_time_stats_logging=False, kv_events_config=None, enable_trace=False, otlp_traces_endpoint='localhost:4317', export_metrics_to_file=False, export_metrics_to_file_dir=None, api_key=None, admin_api_key=None, served_model_name='swiss-ai/Apertus-8B-Instruct-2509', weight_version='default', chat_template=None, hf_chat_template_name=None, completion_template=None, file_storage_path='sglang_storage', enable_cache_report=False, reasoning_parser=None, strip_thinking_cache=False, tool_call_parser=None, tool_server=None, sampling_defaults='model', dp_size=4, load_balance_method='round_robin', attn_cp_size=1, moe_dp_size=1, dist_init_addr=None, nnodes=1, node_rank=0, json_model_override_args='{}', preferred_sampling_params=None, enable_lora=None, enable_lora_overlap_loading=None, max_lora_rank=None, lora_target_modules=None, lora_paths=None, max_loaded_loras=None, max_loras_per_batch=8, lora_eviction_policy='lru', lora_backend='csgmv', max_lora_chunk_size=16, experts_shared_outer_loras=None, lora_use_virtual_experts=False, lora_strict_loading=False, attention_backend='flashinfer', decode_attention_backend=None, prefill_attention_backend=None, sampling_backend='flashinfer', grammar_backend='xgrammar', mm_attention_backend=None, fp8_gemm_runner_backend='auto', fp4_gemm_runner_backend='auto', nsa_prefill_backend=None, nsa_decode_backend=None, disable_flashinfer_autotune=True, foundry_graph_extension_config_path='/iopsstor/scratch/cscs/yboughizane/simple-serving-stack/foundry-tp1/foundry_save.toml', mamba_backend='triton', speculative_algorithm=None, speculative_draft_model_path=None, speculative_draft_model_revision=None, speculative_draft_load_format=None, speculative_num_steps=None, speculative_eagle_topk=None, speculative_num_draft_tokens=None, speculative_dflash_block_size=None, speculative_dflash_draft_window_size=None, speculative_accept_threshold_single=1.0, speculative_accept_threshold_acc=1.0, speculative_token_map=None, speculative_attention_mode='prefill', speculative_draft_attention_backend=None, speculative_moe_runner_backend='auto', speculative_moe_a2a_backend=None, speculative_draft_model_quantization=None, speculative_adaptive=False, speculative_adaptive_config=None, speculative_skip_dp_mlp_sync=False, speculative_ngram_min_bfs_breadth=1, speculative_ngram_max_bfs_breadth=10, speculative_ngram_match_type='BFS', speculative_ngram_max_trie_depth=18, speculative_ngram_capacity=10000000, speculative_ngram_external_corpus_path=None, speculative_ngram_external_sam_budget=0, speculative_ngram_external_corpus_max_tokens=10000000, enable_multi_layer_eagle=False, ep_size=1, moe_a2a_backend='none', moe_runner_backend='auto', record_nolora_graph=True, flashinfer_mxfp4_moe_precision='default', enable_flashinfer_allreduce_fusion=False, enforce_disable_flashinfer_allreduce_fusion=False, enable_aiter_allreduce_fusion=False, deepep_mode='auto', ep_num_redundant_experts=0, ep_dispatch_algorithm=None, init_expert_location='trivial', enable_eplb=False, eplb_algorithm='auto', eplb_rebalance_num_iterations=1000, eplb_rebalance_layers_per_chunk=None, eplb_min_rebalancing_utilization_threshold=1.0, expert_distribution_recorder_mode=None, expert_distribution_recorder_buffer_size=1000, enable_expert_distribution_metrics=False, deepep_config=None, moe_dense_tp_size=None, elastic_ep_backend=None, enable_elastic_expert_backup=False, mooncake_ib_device=None, elastic_ep_rejoin=False, max_mamba_cache_size=None, mamba_ssm_dtype=None, mamba_full_memory_ratio=0.9, mamba_scheduler_strategy='no_buffer', mamba_track_interval=256, linear_attn_backend='triton', linear_attn_decode_backend=None, linear_attn_prefill_backend=None, enable_hierarchical_cache=False, hicache_ratio=2.0, hicache_size=0, hicache_write_policy='write_through', hicache_io_backend='kernel', hicache_mem_layout='layer_first', hicache_storage_backend=None, hicache_storage_prefetch_policy='best_effort', hicache_storage_backend_extra_config=None, enable_hisparse=False, hisparse_config=None, enable_lmcache=False, kt_weight_path=None, kt_method='AMXINT4', kt_cpuinfer=None, kt_threadpool_count=2, kt_num_gpu_experts=None, kt_max_deferred_experts_per_token=None, dllm_algorithm=None, dllm_algorithm_config=None, cpu_offload_gb=0, offload_group_size=-1, offload_num_in_group=1, offload_prefetch_step=1, offload_mode='cpu', enable_mis=False, disable_radix_cache=False, cuda_graph_max_bs=256, cuda_graph_bs=[1, 2, 4, 8, 12, 16, 24, 32, 40, 48, 56, 64, 72, 80, 88, 96, 104, 112, 120, 128, 136, 144, 152, 160, 168, 176, 184, 192, 200, 208, 216, 224, 232, 240, 248, 256], disable_cuda_graph=False, disable_cuda_graph_padding=False, enable_breakable_cuda_graph=False, enable_profile_cuda_graph=False, enable_cudagraph_gc=False, debug_cuda_graph=False, enable_layerwise_nvtx_marker=False, enable_nccl_nvls=False, enable_symm_mem=False, disable_flashinfer_cutlass_moe_fp4_allgather=False, enable_tokenizer_batch_encode=False, disable_tokenizer_batch_decode=False, disable_outlines_disk_cache=False, disable_custom_all_reduce=False, enable_mscclpp=False, enable_torch_symm_mem=False, pre_warm_nccl=False, disable_overlap_schedule=False, enable_mixed_chunk=False, enable_dp_attention=False, enable_dp_attention_local_control_broadcast=False, enable_dp_lm_head=False, enable_two_batch_overlap=False, enable_single_batch_overlap=False, tbo_token_distribution_threshold=0.48, enable_torch_compile=False, disable_piecewise_cuda_graph=True, enforce_piecewise_cuda_graph=False, enable_torch_compile_debug_mode=False, torch_compile_max_bs=32, piecewise_cuda_graph_max_tokens=8192, piecewise_cuda_graph_tokens=[4, 8, 12, 16, 20, 24, 28, 32, 48, 64, 80, 96, 112, 128, 144, 160, 176, 192, 208, 224, 240, 256, 288, 320, 352, 384, 416, 448, 480, 512, 576, 640, 704, 768, 832, 896, 960, 1024, 1280, 1536, 1792, 2048, 2304, 2560, 2816, 3072, 3328, 3584, 3840, 4096, 4608, 5120, 5632, 6144, 6656, 7168, 7680, 8192], piecewise_cuda_graph_compiler='eager', torchao_config='', enable_nan_detection=False, enable_p2p_check=False, triton_attention_reduce_in_fp32=False, triton_attention_num_kv_splits=8, triton_attention_split_tile_size=None, num_continuous_decode_steps=1, delete_ckpt_after_loading=False, enable_memory_saver=False, enable_weights_cpu_backup=False, enable_draft_weights_cpu_backup=False, allow_auto_truncate=False, enable_custom_logit_processor=False, flashinfer_mla_disable_ragged=False, disable_shared_experts_fusion=False, enforce_shared_experts_fusion=False, disable_chunked_prefix_cache=False, disable_fast_image_processor=False, keep_mm_feature_on_device=False, enable_return_hidden_states=False, enable_return_routed_experts=False, scheduler_recv_interval=1, numa_node=None, enable_deterministic_inference=False, rl_on_policy_target=None, enable_attn_tp_input_scattered=False, gc_threshold=None, enable_nsa_prefill_context_parallel=False, nsa_prefill_cp_mode='round-robin-split', enable_fused_qk_norm_rope=False, enable_precise_embedding_interpolation=False, enable_fused_moe_sum_all_reduce=False, enable_prefill_context_parallel=False, prefill_cp_mode='in-seq-split', enable_dynamic_batch_tokenizer=False, dynamic_batch_tokenizer_batch_size=32, dynamic_batch_tokenizer_batch_timeout=0.002, debug_tensor_dump_output_folder=None, debug_tensor_dump_layers=None, debug_tensor_dump_input_file=None, debug_tensor_dump_inject=False, disaggregation_mode='null', disaggregation_transfer_backend='mooncake', disaggregation_bootstrap_port=8998, disaggregation_ib_device=None, disaggregation_decode_enable_radix_cache=False, disaggregation_decode_enable_offload_kvcache=False, num_reserved_decode_tokens=512, disaggregation_decode_polling_interval=1, encoder_only=False, language_only=False, encoder_transfer_backend='zmq_to_scheduler', encoder_urls=[], enable_adaptive_dispatch_to_encoder=False, custom_weight_loader=[], weight_loader_disable_mmap=False, weight_loader_prefetch_checkpoints=False, weight_loader_prefetch_num_threads=4, remote_instance_weight_loader_seed_instance_ip=None, remote_instance_weight_loader_seed_instance_service_port=None, remote_instance_weight_loader_send_weights_group_ports=None, remote_instance_weight_loader_backend='nccl', remote_instance_weight_loader_start_seed_via_transfer_engine=False, engine_info_bootstrap_port=6789, modelexpress_config=None, enable_pdmux=False, pdmux_config_path=None, sm_group_num=8, enable_broadcast_mm_inputs_process=False, enable_prefix_mm_cache=False, mm_enable_dp_encoder=False, mm_process_config={}, limit_mm_data_per_request=None, enable_mm_global_cache=False, decrypted_config_file=None, decrypted_draft_config_file=None, forward_hooks=None, enable_quant_communications=False, msprobe_dump_config=None)
+[2026-07-22 14:37:02] Tokenizer loaded as generic TokenizersBackend for /capstor/store/cscs/swissai/infra01/hf_models/models/swiss-ai/Apertus-8B-Instruct-2509, retrying with use_fast=False
+[2026-07-22 14:37:03] Loading tokenizer for /capstor/store/cscs/swissai/infra01/hf_models/models/swiss-ai/Apertus-8B-Instruct-2509 directly as PreTrainedTokenizerFast (bypassing AutoTokenizer)
+[2026-07-22 14:37:04] Tokenizer for /capstor/store/cscs/swissai/infra01/hf_models/models/swiss-ai/Apertus-8B-Instruct-2509 is still TokenizersBackend after retries with --trust-remote-code. Model-specific tokenizer attributes may be missing.
+[2026-07-22 14:37:04] Using default HuggingFace chat template with detected content format: openai
+[2026-07-22 14:37:10] [Foundry] SGLang spawn -> install_hooks: 9721.4 ms
+[2026-07-22 14:37:10] [Foundry] SGLang hooks installing: mode=save workspace=/iopsstor/scratch/cscs/yboughizane/simple-serving-stack/foundry-tp1/results/foundry_archive_apertus8b_dp4
+[2026-07-22 14:37:10] [Foundry] SGLang hooks installed
+[2026-07-22 14:37:10] Foundry SGLang integration activated from /iopsstor/scratch/cscs/yboughizane/simple-serving-stack/foundry-tp1/foundry_save.toml
+[2026-07-22 14:37:10] Launch DP0 starting at GPU #0.
+[2026-07-22 14:37:10] Launch DP1 starting at GPU #1.
+[2026-07-22 14:37:10] NUMA affinity is already constrained for process, skipping NUMA node configuration for GPU. Remove your constraints to allow automatic configuration.
+[2026-07-22 14:37:10] Launch DP2 starting at GPU #2.
+[2026-07-22 14:37:10] Launch DP3 starting at GPU #3.
+[2026-07-22 14:37:10] NUMA affinity is already constrained for process, skipping NUMA node configuration for GPU. Remove your constraints to allow automatic configuration.
+[2026-07-22 14:37:10] NUMA affinity is already constrained for process, skipping NUMA node configuration for GPU. Remove your constraints to allow automatic configuration.
+[2026-07-22 14:37:10] NUMA affinity is already constrained for process, skipping NUMA node configuration for GPU. Remove your constraints to allow automatic configuration.
+[2026-07-22 14:37:11] Tokenizer loaded as generic TokenizersBackend for /capstor/store/cscs/swissai/infra01/hf_models/models/swiss-ai/Apertus-8B-Instruct-2509, retrying with use_fast=False
+[2026-07-22 14:37:12] Loading tokenizer for /capstor/store/cscs/swissai/infra01/hf_models/models/swiss-ai/Apertus-8B-Instruct-2509 directly as PreTrainedTokenizerFast (bypassing AutoTokenizer)
+[2026-07-22 14:37:13] Tokenizer for /capstor/store/cscs/swissai/infra01/hf_models/models/swiss-ai/Apertus-8B-Instruct-2509 is still TokenizersBackend after retries with --trust-remote-code. Model-specific tokenizer attributes may be missing.
+[2026-07-22 14:37:22 DP3] Tokenizer loaded as generic TokenizersBackend for /capstor/store/cscs/swissai/infra01/hf_models/models/swiss-ai/Apertus-8B-Instruct-2509, retrying with use_fast=False
+[2026-07-22 14:37:22 DP2] Tokenizer loaded as generic TokenizersBackend for /capstor/store/cscs/swissai/infra01/hf_models/models/swiss-ai/Apertus-8B-Instruct-2509, retrying with use_fast=False
+[2026-07-22 14:37:22 DP0] Tokenizer loaded as generic TokenizersBackend for /capstor/store/cscs/swissai/infra01/hf_models/models/swiss-ai/Apertus-8B-Instruct-2509, retrying with use_fast=False
+[2026-07-22 14:37:22 DP1] Tokenizer loaded as generic TokenizersBackend for /capstor/store/cscs/swissai/infra01/hf_models/models/swiss-ai/Apertus-8B-Instruct-2509, retrying with use_fast=False
+[2026-07-22 14:37:23 DP3] Loading tokenizer for /capstor/store/cscs/swissai/infra01/hf_models/models/swiss-ai/Apertus-8B-Instruct-2509 directly as PreTrainedTokenizerFast (bypassing AutoTokenizer)
+[2026-07-22 14:37:23 DP1] Loading tokenizer for /capstor/store/cscs/swissai/infra01/hf_models/models/swiss-ai/Apertus-8B-Instruct-2509 directly as PreTrainedTokenizerFast (bypassing AutoTokenizer)
+[2026-07-22 14:37:23 DP2] Loading tokenizer for /capstor/store/cscs/swissai/infra01/hf_models/models/swiss-ai/Apertus-8B-Instruct-2509 directly as PreTrainedTokenizerFast (bypassing AutoTokenizer)
+[2026-07-22 14:37:23 DP0] Loading tokenizer for /capstor/store/cscs/swissai/infra01/hf_models/models/swiss-ai/Apertus-8B-Instruct-2509 directly as PreTrainedTokenizerFast (bypassing AutoTokenizer)
+[2026-07-22 14:37:24 DP3] Tokenizer for /capstor/store/cscs/swissai/infra01/hf_models/models/swiss-ai/Apertus-8B-Instruct-2509 is still TokenizersBackend after retries with --trust-remote-code. Model-specific tokenizer attributes may be missing.
+[2026-07-22 14:37:24 DP2] Tokenizer for /capstor/store/cscs/swissai/infra01/hf_models/models/swiss-ai/Apertus-8B-Instruct-2509 is still TokenizersBackend after retries with --trust-remote-code. Model-specific tokenizer attributes may be missing.
+[2026-07-22 14:37:24 DP1] Tokenizer for /capstor/store/cscs/swissai/infra01/hf_models/models/swiss-ai/Apertus-8B-Instruct-2509 is still TokenizersBackend after retries with --trust-remote-code. Model-specific tokenizer attributes may be missing.
+[2026-07-22 14:37:24 DP0] Tokenizer for /capstor/store/cscs/swissai/infra01/hf_models/models/swiss-ai/Apertus-8B-Instruct-2509 is still TokenizersBackend after retries with --trust-remote-code. Model-specific tokenizer attributes may be missing.
+[2026-07-22 14:37:25 DP2] [Foundry] SGLang rank=2 workspace_dir=/iopsstor/scratch/cscs/yboughizane/simple-serving-stack/foundry-tp1/results/foundry_archive_apertus8b_dp4/rank_2
+[2026-07-22 14:37:25 DP3] [Foundry] SGLang rank=3 workspace_dir=/iopsstor/scratch/cscs/yboughizane/simple-serving-stack/foundry-tp1/results/foundry_archive_apertus8b_dp4/rank_3
+[2026-07-22 14:37:25 DP0] [Foundry] SGLang rank=0 workspace_dir=/iopsstor/scratch/cscs/yboughizane/simple-serving-stack/foundry-tp1/results/foundry_archive_apertus8b_dp4/rank_0
+[2026-07-22 14:37:25 DP1] [Foundry] SGLang rank=1 workspace_dir=/iopsstor/scratch/cscs/yboughizane/simple-serving-stack/foundry-tp1/results/foundry_archive_apertus8b_dp4/rank_1
+[2026-07-22 14:37:27 DP1] [Foundry] SGLang graph extension setup completed in 1.584 s
+[2026-07-22 14:37:27 DP3] [Foundry] SGLang graph extension setup completed in 1.584 s
+[2026-07-22 14:37:27 DP3] [Foundry] SGLang alloc_offset[after_setup_graph_ext]=33554432 (32.00 MB)
+[2026-07-22 14:37:27 DP1] [Foundry] SGLang alloc_offset[after_setup_graph_ext]=33554432 (32.00 MB)
+[2026-07-22 14:37:27 DP1] Init torch distributed begin.
+[2026-07-22 14:37:27 DP3] Init torch distributed begin.
+[2026-07-22 14:37:27 DP0] [Foundry] SGLang graph extension setup completed in 1.590 s
+[2026-07-22 14:37:27 DP0] [Foundry] SGLang alloc_offset[after_setup_graph_ext]=33554432 (32.00 MB)
+[2026-07-22 14:37:27 DP0] Init torch distributed begin.
+[2026-07-22 14:37:27 DP2] [Foundry] SGLang graph extension setup completed in 1.591 s
+[2026-07-22 14:37:27 DP2] [Foundry] SGLang alloc_offset[after_setup_graph_ext]=33554432 (32.00 MB)
+[2026-07-22 14:37:27 DP2] Init torch distributed begin.
+[2026-07-22 14:37:29 DP2] Init torch distributed ends. elapsed=1.98 s, mem usage=0.07 GB
+[2026-07-22 14:37:29 DP2] [Foundry] SGLang alloc_offset[after_init_torch_dist]=35651584 (34.00 MB)
+[2026-07-22 14:37:29 DP2] [Foundry] SGLang skipped allocator to scratch boundary 1073741824
+[2026-07-22 14:37:29 DP2] [Foundry] SGLang alloc_offset[after_scratch_skip]=1073741824 (1024.00 MB)
+[2026-07-22 14:37:29 DP1] Init torch distributed ends. elapsed=2.01 s, mem usage=0.07 GB
+[2026-07-22 14:37:29 DP1] [Foundry] SGLang alloc_offset[after_init_torch_dist]=35651584 (34.00 MB)
+[2026-07-22 14:37:29 DP1] [Foundry] SGLang skipped allocator to scratch boundary 1073741824
+[2026-07-22 14:37:29 DP1] [Foundry] SGLang alloc_offset[after_scratch_skip]=1073741824 (1024.00 MB)
+[2026-07-22 14:37:29 DP3] Init torch distributed ends. elapsed=2.02 s, mem usage=0.07 GB
+[2026-07-22 14:37:29 DP3] [Foundry] SGLang alloc_offset[after_init_torch_dist]=35651584 (34.00 MB)
+[2026-07-22 14:37:29 DP3] [Foundry] SGLang skipped allocator to scratch boundary 1073741824
+[2026-07-22 14:37:29 DP3] [Foundry] SGLang alloc_offset[after_scratch_skip]=1073741824 (1024.00 MB)
+[2026-07-22 14:37:29 DP0] Init torch distributed ends. elapsed=2.01 s, mem usage=0.07 GB
+[2026-07-22 14:37:29 DP0] [Foundry] SGLang alloc_offset[after_init_torch_dist]=35651584 (34.00 MB)
+[2026-07-22 14:37:29 DP0] [Foundry] SGLang skipped allocator to scratch boundary 1073741824
+[2026-07-22 14:37:29 DP0] [Foundry] SGLang alloc_offset[after_scratch_skip]=1073741824 (1024.00 MB)
+[2026-07-22 14:37:32 DP1] Load weight begin. avail mem=78.71 GB
+[2026-07-22 14:37:32 DP3] Load weight begin. avail mem=78.71 GB
+[2026-07-22 14:37:32 DP0] Load weight begin. avail mem=78.71 GB
+[2026-07-22 14:37:32 DP2] Load weight begin. avail mem=78.71 GB
+
+Multi-thread loading shards:   0% Completed | 0/4 [00:00<?, ?it/s]
+Multi-thread loading shards:   0% Completed | 0/4 [00:00<?, ?it/s]
+Multi-thread loading shards:   0% Completed | 0/4 [00:00<?, ?it/s]
+Multi-thread loading shards:   0% Completed | 0/4 [00:00<?, ?it/s]
+Multi-thread loading shards:  25% Completed | 1/4 [00:22<01:07, 22.63s/it]
+Multi-thread loading shards:  25% Completed | 1/4 [00:22<01:07, 22.62s/it]
+Multi-thread loading shards:  25% Completed | 1/4 [00:22<01:07, 22.62s/it]
+Multi-thread loading shards:  25% Completed | 1/4 [00:22<01:07, 22.63s/it]
+Multi-thread loading shards:  50% Completed | 2/4 [00:39<00:38, 19.13s/it]
+Multi-thread loading shards:  50% Completed | 2/4 [00:39<00:38, 19.14s/it]
+Multi-thread loading shards:  50% Completed | 2/4 [00:39<00:38, 19.14s/it]
+Multi-thread loading shards:  50% Completed | 2/4 [00:39<00:38, 19.13s/it]
+Multi-thread loading shards:  75% Completed | 3/4 [01:06<00:22, 22.86s/it]
+Multi-thread loading shards:  75% Completed | 3/4 [01:06<00:22, 22.86s/it]
+Multi-thread loading shards:  75% Completed | 3/4 [01:06<00:22, 22.86s/it]
+Multi-thread loading shards:  75% Completed | 3/4 [01:06<00:22, 22.86s/it]
+Multi-thread loading shards: 100% Completed | 4/4 [01:11<00:00, 15.86s/it]
+Multi-thread loading shards: 100% Completed | 4/4 [01:11<00:00, 15.86s/it]
+Multi-thread loading shards: 100% Completed | 4/4 [01:11<00:00, 15.86s/it]
+Multi-thread loading shards: 100% Completed | 4/4 [01:11<00:00, 15.86s/it]
+Multi-thread loading shards: 100% Completed | 4/4 [01:11<00:00, 17.93s/it]
+Multi-thread loading shards: 100% Completed | 4/4 [01:11<00:00, 17.93s/it]
+Multi-thread loading shards: 100% Completed | 4/4 [01:11<00:00, 17.94s/it]
+
+
+
+Multi-thread loading shards: 100% Completed | 4/4 [01:11<00:00, 17.94s/it]
+[2026-07-22 14:38:53 DP2] Load weight end. elapsed=81.02 s, type=ApertusForCausalLM, avail mem=63.68 GB, mem usage=15.03 GB.
+[2026-07-22 14:38:53 DP2] Using KV cache dtype: torch.bfloat16
+[2026-07-22 14:38:53 DP2] [Foundry] SGLang alloc_offset[before_init_memory_pool]=17263755264 (16464.00 MB)
+[2026-07-22 14:38:53 DP2] KV Cache is allocated. #tokens: 424915, K size: 25.93 GB, V size: 25.93 GB
+[2026-07-22 14:38:53 DP2] Memory pool end. avail mem=11.77 GB
+[2026-07-22 14:38:53 DP2] [Foundry] SGLang alloc_offset[after_init_memory_pool]=72999763968 (69618.00 MB)
+[2026-07-22 14:38:53 DP2] [Foundry] Saved SGLang warmup state to /iopsstor/scratch/cscs/yboughizane/simple-serving-stack/foundry-tp1/results/foundry_archive_apertus8b_dp4/warmup_state.json
+[2026-07-22 14:38:53 DP1] Load weight end. elapsed=81.12 s, type=ApertusForCausalLM, avail mem=63.68 GB, mem usage=15.03 GB.
+[2026-07-22 14:38:53 DP0] Load weight end. elapsed=81.12 s, type=ApertusForCausalLM, avail mem=63.68 GB, mem usage=15.03 GB.
+[2026-07-22 14:38:53 DP3] Load weight end. elapsed=81.12 s, type=ApertusForCausalLM, avail mem=63.68 GB, mem usage=15.03 GB.
+[2026-07-22 14:38:53 DP1] Using KV cache dtype: torch.bfloat16
+[2026-07-22 14:38:53 DP0] Using KV cache dtype: torch.bfloat16
+[2026-07-22 14:38:53 DP3] Using KV cache dtype: torch.bfloat16
+[2026-07-22 14:38:53 DP1] [Foundry] SGLang alloc_offset[before_init_memory_pool]=17263755264 (16464.00 MB)
+[2026-07-22 14:38:53 DP0] [Foundry] SGLang alloc_offset[before_init_memory_pool]=17263755264 (16464.00 MB)
+[2026-07-22 14:38:53 DP3] [Foundry] SGLang alloc_offset[before_init_memory_pool]=17263755264 (16464.00 MB)
+[2026-07-22 14:38:53 DP1] KV Cache is allocated. #tokens: 424915, K size: 25.93 GB, V size: 25.93 GB
+[2026-07-22 14:38:53 DP1] Memory pool end. avail mem=11.77 GB
+[2026-07-22 14:38:53 DP1] [Foundry] SGLang alloc_offset[after_init_memory_pool]=72999763968 (69618.00 MB)
+[2026-07-22 14:38:53 DP0] KV Cache is allocated. #tokens: 424915, K size: 25.93 GB, V size: 25.93 GB
+[2026-07-22 14:38:53 DP0] Memory pool end. avail mem=11.77 GB
+[2026-07-22 14:38:53 DP0] [Foundry] SGLang alloc_offset[after_init_memory_pool]=72999763968 (69618.00 MB)
+[2026-07-22 14:38:53 DP3] KV Cache is allocated. #tokens: 424915, K size: 25.93 GB, V size: 25.93 GB
+[2026-07-22 14:38:53 DP3] Memory pool end. avail mem=11.77 GB
+[2026-07-22 14:38:53 DP3] [Foundry] SGLang alloc_offset[after_init_memory_pool]=72999763968 (69618.00 MB)
+[2026-07-22 14:38:53 DP0] [Foundry] Saved SGLang warmup state to /iopsstor/scratch/cscs/yboughizane/simple-serving-stack/foundry-tp1/results/foundry_archive_apertus8b_dp4/warmup_state.json
+[2026-07-22 14:38:53 DP2] [Foundry] SGLang kernel_warmup skipped in save mode
+[2026-07-22 14:38:53 DP2] Capture cuda graph begin. This can take up to several minutes. avail mem=11.35 GB
+[2026-07-22 14:38:53 DP2] Capture cuda graph bs [1, 2, 4, 8, 12, 16, 24, 32, 40, 48, 56, 64, 72, 80, 88, 96, 104, 112, 120, 128, 136, 144, 152, 160, 168, 176, 184, 192, 200, 208, 216, 224, 232, 240, 248, 256]
+[2026-07-22 14:38:53 DP2] [Foundry] SGLang alloc_offset[save_before_pre_init]=73612132352 (70202.00 MB)
+[2026-07-22 14:38:53 DP1] [Foundry] SGLang kernel_warmup skipped in save mode
+[2026-07-22 14:38:53 DP1] Capture cuda graph begin. This can take up to several minutes. avail mem=11.35 GB
+[2026-07-22 14:38:53 DP1] Capture cuda graph bs [1, 2, 4, 8, 12, 16, 24, 32, 40, 48, 56, 64, 72, 80, 88, 96, 104, 112, 120, 128, 136, 144, 152, 160, 168, 176, 184, 192, 200, 208, 216, 224, 232, 240, 248, 256]
+[2026-07-22 14:38:53 DP1] [Foundry] SGLang alloc_offset[save_before_pre_init]=73612132352 (70202.00 MB)
+[2026-07-22 14:38:53 DP3] [Foundry] SGLang kernel_warmup skipped in save mode
+[2026-07-22 14:38:53 DP0] [Foundry] SGLang kernel_warmup skipped in save mode
+[2026-07-22 14:38:53 DP3] Capture cuda graph begin. This can take up to several minutes. avail mem=11.35 GB
+[2026-07-22 14:38:53 DP0] Capture cuda graph begin. This can take up to several minutes. avail mem=11.35 GB
+[2026-07-22 14:38:53 DP3] Capture cuda graph bs [1, 2, 4, 8, 12, 16, 24, 32, 40, 48, 56, 64, 72, 80, 88, 96, 104, 112, 120, 128, 136, 144, 152, 160, 168, 176, 184, 192, 200, 208, 216, 224, 232, 240, 248, 256]
+[2026-07-22 14:38:53 DP0] Capture cuda graph bs [1, 2, 4, 8, 12, 16, 24, 32, 40, 48, 56, 64, 72, 80, 88, 96, 104, 112, 120, 128, 136, 144, 152, 160, 168, 176, 184, 192, 200, 208, 216, 224, 232, 240, 248, 256]
+[2026-07-22 14:38:53 DP3] [Foundry] SGLang alloc_offset[save_before_pre_init]=73612132352 (70202.00 MB)
+[2026-07-22 14:38:53 DP0] [Foundry] SGLang alloc_offset[save_before_pre_init]=73612132352 (70202.00 MB)
+[2026-07-22 14:38:59 DP0] [Foundry] SGLang alloc_offset[save_after_pre_init]=73989619712 (70562.00 MB)
+[2026-07-22 14:38:59 DP1] [Foundry] SGLang alloc_offset[save_after_pre_init]=73989619712 (70562.00 MB)
+[2026-07-22 14:38:59 DP3] [Foundry] SGLang alloc_offset[save_after_pre_init]=73989619712 (70562.00 MB)
+[2026-07-22 14:38:59 DP2] [Foundry] SGLang alloc_offset[save_after_pre_init]=73989619712 (70562.00 MB)
+
+  0%|          | 0/36 [00:00<?, ?it/s]
+Capturing batches (bs=256 avail_mem=10.84 GB):   0%|          | 0/36 [00:00<?, ?it/s]
+  0%|          | 0/36 [00:00<?, ?it/s]
+Capturing batches (bs=256 avail_mem=10.84 GB):   0%|          | 0/36 [00:00<?, ?it/s]
+  0%|          | 0/36 [00:00<?, ?it/s]
+Capturing batches (bs=256 avail_mem=10.84 GB):   0%|          | 0/36 [00:00<?, ?it/s]
+  0%|          | 0/36 [00:00<?, ?it/s]
+Capturing batches (bs=256 avail_mem=10.84 GB):   0%|          | 0/36 [00:00<?, ?it/s]2026-07-22 14:39:00,720 - CUTE_DSL - WARNING - [handle_import_error] - Unexpected error during package walk: cutlass.cute.experimental
+[2026-07-22 14:39:00 DP1] Unexpected error during package walk: cutlass.cute.experimental
+2026-07-22 14:39:00,720 - CUTE_DSL - WARNING - [handle_import_error] - Unexpected error during package walk: cutlass.cute.experimental
+[2026-07-22 14:39:00 DP3] Unexpected error during package walk: cutlass.cute.experimental
+2026-07-22 14:39:00,721 - CUTE_DSL - WARNING - [handle_import_error] - Unexpected error during package walk: cutlass.cute.experimental
+[2026-07-22 14:39:00 DP0] Unexpected error during package walk: cutlass.cute.experimental
+2026-07-22 14:39:00,721 - CUTE_DSL - WARNING - [handle_import_error] - Unexpected error during package walk: cutlass.cute.experimental
+[2026-07-22 14:39:00 DP2] Unexpected error during package walk: cutlass.cute.experimental
+[2026-07-22 14:39:20 DP0] [Foundry] Saved SGLang CUDA graph graph_0_FULL_t256_r256_UX_pcN.json key=256
+
+Capturing batches (bs=256 avail_mem=10.84 GB):   3%|▎         | 1/36 [00:20<12:04, 20.69s/it]
+Capturing batches (bs=248 avail_mem=10.66 GB):   3%|▎         | 1/36 [00:20<12:04, 20.69s/it][2026-07-22 14:39:20 DP1] [Foundry] Saved SGLang CUDA graph graph_0_FULL_t256_r256_UX_pcN.json key=256
+
+Capturing batches (bs=256 avail_mem=10.84 GB):   3%|▎         | 1/36 [00:20<12:03, 20.68s/it]
+Capturing batches (bs=248 avail_mem=10.66 GB):   3%|▎         | 1/36 [00:20<12:03, 20.68s/it][2026-07-22 14:39:20 DP3] [Foundry] Saved SGLang CUDA graph graph_0_FULL_t256_r256_UX_pcN.json key=256
+
+Capturing batches (bs=256 avail_mem=10.84 GB):   3%|▎         | 1/36 [00:20<12:05, 20.74s/it]
+Capturing batches (bs=248 avail_mem=10.66 GB):   3%|▎         | 1/36 [00:20<12:05, 20.74s/it][2026-07-22 14:39:20 DP0] [Foundry] Saved SGLang CUDA graph graph_1_FULL_t248_r248_UX_pcN.json key=248
+
+Capturing batches (bs=240 avail_mem=10.66 GB):   3%|▎         | 1/36 [00:20<12:04, 20.69s/it][2026-07-22 14:39:20 DP1] [Foundry] Saved SGLang CUDA graph graph_1_FULL_t248_r248_UX_pcN.json key=248
+
+Capturing batches (bs=240 avail_mem=10.66 GB):   3%|▎         | 1/36 [00:20<12:03, 20.68s/it][2026-07-22 14:39:20 DP3] [Foundry] Saved SGLang CUDA graph graph_1_FULL_t248_r248_UX_pcN.json key=248
+
+Capturing batches (bs=240 avail_mem=10.66 GB):   3%|▎         | 1/36 [00:20<12:05, 20.74s/it][2026-07-22 14:39:20 DP0] [Foundry] Saved SGLang CUDA graph graph_2_FULL_t240_r240_UX_pcN.json key=240
+
+Capturing batches (bs=240 avail_mem=10.66 GB):   8%|▊         | 3/36 [00:20<02:58,  5.41s/it]
+Capturing batches (bs=232 avail_mem=10.65 GB):   8%|▊         | 3/36 [00:20<02:58,  5.41s/it][2026-07-22 14:39:20 DP1] [Foundry] Saved SGLang CUDA graph graph_2_FULL_t240_r240_UX_pcN.json key=240
+
+Capturing batches (bs=240 avail_mem=10.66 GB):   8%|▊         | 3/36 [00:20<02:58,  5.41s/it]
+Capturing batches (bs=232 avail_mem=10.65 GB):   8%|▊         | 3/36 [00:20<02:58,  5.41s/it][2026-07-22 14:39:20 DP2] [Foundry] Saved SGLang CUDA graph graph_0_FULL_t256_r256_UX_pcN.json key=256
+
+Capturing batches (bs=256 avail_mem=10.84 GB):   3%|▎         | 1/36 [00:20<12:08, 20.81s/it]
+Capturing batches (bs=248 avail_mem=10.66 GB):   3%|▎         | 1/36 [00:20<12:08, 20.81s/it][2026-07-22 14:39:20 DP3] [Foundry] Saved SGLang CUDA graph graph_2_FULL_t240_r240_UX_pcN.json key=240
+
+Capturing batches (bs=240 avail_mem=10.66 GB):   8%|▊         | 3/36 [00:20<02:59,  5.42s/it]
+Capturing batches (bs=232 avail_mem=10.65 GB):   8%|▊         | 3/36 [00:20<02:59,  5.42s/it][2026-07-22 14:39:20 DP1] [Foundry] Saved SGLang CUDA graph graph_3_FULL_t232_r232_UX_pcN.json key=232
+
+Capturing batches (bs=224 avail_mem=10.64 GB):   8%|▊         | 3/36 [00:20<02:58,  5.41s/it][2026-07-22 14:39:20 DP0] [Foundry] Saved SGLang CUDA graph graph_3_FULL_t232_r232_UX_pcN.json key=232
+
+Capturing batches (bs=224 avail_mem=10.64 GB):   8%|▊         | 3/36 [00:20<02:58,  5.41s/it][2026-07-22 14:39:20 DP2] [Foundry] Saved SGLang CUDA graph graph_1_FULL_t248_r248_UX_pcN.json key=248
+
+Capturing batches (bs=240 avail_mem=10.66 GB):   3%|▎         | 1/36 [00:20<12:08, 20.81s/it][2026-07-22 14:39:20 DP3] [Foundry] Saved SGLang CUDA graph graph_3_FULL_t232_r232_UX_pcN.json key=232
+
+Capturing batches (bs=224 avail_mem=10.64 GB):   8%|▊         | 3/36 [00:20<02:59,  5.42s/it][2026-07-22 14:39:20 DP1] [Foundry] Saved SGLang CUDA graph graph_4_FULL_t224_r224_UX_pcN.json key=224
+
+Capturing batches (bs=224 avail_mem=10.64 GB):  14%|█▍        | 5/36 [00:20<01:22,  2.66s/it]
+Capturing batches (bs=216 avail_mem=10.63 GB):  14%|█▍        | 5/36 [00:20<01:22,  2.66s/it][2026-07-22 14:39:20 DP0] [Foundry] Saved SGLang CUDA graph graph_4_FULL_t224_r224_UX_pcN.json key=224
+
+Capturing batches (bs=224 avail_mem=10.64 GB):  14%|█▍        | 5/36 [00:20<01:22,  2.66s/it]
+Capturing batches (bs=216 avail_mem=10.63 GB):  14%|█▍        | 5/36 [00:20<01:22,  2.66s/it][2026-07-22 14:39:20 DP2] [Foundry] Saved SGLang CUDA graph graph_2_FULL_t240_r240_UX_pcN.json key=240
+
+Capturing batches (bs=240 avail_mem=10.66 GB):   8%|▊         | 3/36 [00:20<02:59,  5.45s/it]
+Capturing batches (bs=232 avail_mem=10.65 GB):   8%|▊         | 3/36 [00:20<02:59,  5.45s/it][2026-07-22 14:39:20 DP3] [Foundry] Saved SGLang CUDA graph graph_4_FULL_t224_r224_UX_pcN.json key=224
+
+Capturing batches (bs=224 avail_mem=10.64 GB):  14%|█▍        | 5/36 [00:20<01:22,  2.67s/it]
+Capturing batches (bs=216 avail_mem=10.63 GB):  14%|█▍        | 5/36 [00:20<01:22,  2.67s/it][2026-07-22 14:39:20 DP1] [Foundry] Saved SGLang CUDA graph graph_5_FULL_t216_r216_UX_pcN.json key=216
+
+Capturing batches (bs=208 avail_mem=10.62 GB):  14%|█▍        | 5/36 [00:20<01:22,  2.66s/it][2026-07-22 14:39:20 DP0] [Foundry] Saved SGLang CUDA graph graph_5_FULL_t216_r216_UX_pcN.json key=216
+
+Capturing batches (bs=208 avail_mem=10.62 GB):  14%|█▍        | 5/36 [00:21<01:22,  2.66s/it][2026-07-22 14:39:20 DP2] [Foundry] Saved SGLang CUDA graph graph_3_FULL_t232_r232_UX_pcN.json key=232
+
+Capturing batches (bs=224 avail_mem=10.64 GB):   8%|▊         | 3/36 [00:21<02:59,  5.45s/it][2026-07-22 14:39:20 DP3] [Foundry] Saved SGLang CUDA graph graph_5_FULL_t216_r216_UX_pcN.json key=216
+
+Capturing batches (bs=208 avail_mem=10.62 GB):  14%|█▍        | 5/36 [00:21<01:22,  2.67s/it][2026-07-22 14:39:20 DP1] [Foundry] Saved SGLang CUDA graph graph_6_FULL_t208_r208_UX_pcN.json key=208
+
+Capturing batches (bs=208 avail_mem=10.62 GB):  19%|█▉        | 7/36 [00:21<00:45,  1.56s/it]
+Capturing batches (bs=200 avail_mem=10.62 GB):  19%|█▉        | 7/36 [00:21<00:45,  1.56s/it][2026-07-22 14:39:20 DP0] [Foundry] Saved SGLang CUDA graph graph_6_FULL_t208_r208_UX_pcN.json key=208
+
+Capturing batches (bs=208 avail_mem=10.62 GB):  19%|█▉        | 7/36 [00:21<00:45,  1.56s/it]
+Capturing batches (bs=200 avail_mem=10.62 GB):  19%|█▉        | 7/36 [00:21<00:45,  1.56s/it][2026-07-22 14:39:20 DP2] [Foundry] Saved SGLang CUDA graph graph_4_FULL_t224_r224_UX_pcN.json key=224
+
+Capturing batches (bs=224 avail_mem=10.64 GB):  14%|█▍        | 5/36 [00:21<01:23,  2.68s/it]
+Capturing batches (bs=216 avail_mem=10.63 GB):  14%|█▍        | 5/36 [00:21<01:23,  2.68s/it][2026-07-22 14:39:20 DP3] [Foundry] Saved SGLang CUDA graph graph_6_FULL_t208_r208_UX_pcN.json key=208
+
+Capturing batches (bs=208 avail_mem=10.62 GB):  19%|█▉        | 7/36 [00:21<00:45,  1.57s/it]
+Capturing batches (bs=200 avail_mem=10.62 GB):  19%|█▉        | 7/36 [00:21<00:45,  1.57s/it][2026-07-22 14:39:20 DP1] [Foundry] Saved SGLang CUDA graph graph_7_FULL_t200_r200_UX_pcN.json key=200
+
+Capturing batches (bs=192 avail_mem=10.61 GB):  19%|█▉        | 7/36 [00:21<00:45,  1.56s/it][2026-07-22 14:39:20 DP0] [Foundry] Saved SGLang CUDA graph graph_7_FULL_t200_r200_UX_pcN.json key=200
+
+Capturing batches (bs=192 avail_mem=10.61 GB):  19%|█▉        | 7/36 [00:21<00:45,  1.56s/it][2026-07-22 14:39:20 DP2] [Foundry] Saved SGLang CUDA graph graph_5_FULL_t216_r216_UX_pcN.json key=216
+
+Capturing batches (bs=208 avail_mem=10.62 GB):  14%|█▍        | 5/36 [00:21<01:23,  2.68s/it][2026-07-22 14:39:20 DP1] [Foundry] Saved SGLang CUDA graph graph_8_FULL_t192_r192_UX_pcN.json key=192
+
+Capturing batches (bs=192 avail_mem=10.61 GB):  25%|██▌       | 9/36 [00:21<00:26,  1.00it/s]
+Capturing batches (bs=184 avail_mem=10.60 GB):  25%|██▌       | 9/36 [00:21<00:26,  1.00it/s][2026-07-22 14:39:20 DP3] [Foundry] Saved SGLang CUDA graph graph_7_FULL_t200_r200_UX_pcN.json key=200
+
+Capturing batches (bs=192 avail_mem=10.61 GB):  19%|█▉        | 7/36 [00:21<00:45,  1.57s/it][2026-07-22 14:39:20 DP0] [Foundry] Saved SGLang CUDA graph graph_8_FULL_t192_r192_UX_pcN.json key=192
+
+Capturing batches (bs=192 avail_mem=10.61 GB):  25%|██▌       | 9/36 [00:21<00:26,  1.00it/s]
+Capturing batches (bs=184 avail_mem=10.60 GB):  25%|██▌       | 9/36 [00:21<00:26,  1.00it/s][2026-07-22 14:39:20 DP2] [Foundry] Saved SGLang CUDA graph graph_6_FULL_t208_r208_UX_pcN.json key=208
+
+Capturing batches (bs=208 avail_mem=10.62 GB):  19%|█▉        | 7/36 [00:21<00:45,  1.57s/it]
+Capturing batches (bs=200 avail_mem=10.62 GB):  19%|█▉        | 7/36 [00:21<00:45,  1.57s/it][2026-07-22 14:39:20 DP3] [Foundry] Saved SGLang CUDA graph graph_8_FULL_t192_r192_UX_pcN.json key=192
+
+Capturing batches (bs=192 avail_mem=10.61 GB):  25%|██▌       | 9/36 [00:21<00:27,  1.00s/it]
+Capturing batches (bs=184 avail_mem=10.60 GB):  25%|██▌       | 9/36 [00:21<00:27,  1.00s/it][2026-07-22 14:39:20 DP1] [Foundry] Saved SGLang CUDA graph graph_9_FULL_t184_r184_UX_pcN.json key=184
+
+Capturing batches (bs=176 avail_mem=10.59 GB):  25%|██▌       | 9/36 [00:21<00:26,  1.00it/s][2026-07-22 14:39:20 DP0] [Foundry] Saved SGLang CUDA graph graph_9_FULL_t184_r184_UX_pcN.json key=184
+
+Capturing batches (bs=176 avail_mem=10.59 GB):  25%|██▌       | 9/36 [00:21<00:26,  1.00it/s][2026-07-22 14:39:20 DP2] [Foundry] Saved SGLang CUDA graph graph_7_FULL_t200_r200_UX_pcN.json key=200
+
+Capturing batches (bs=192 avail_mem=10.61 GB):  19%|█▉        | 7/36 [00:21<00:45,  1.57s/it][2026-07-22 14:39:20 DP1] [Foundry] Saved SGLang CUDA graph graph_10_FULL_t176_r176_UX_pcN.json key=176
+
+Capturing batches (bs=176 avail_mem=10.59 GB):  31%|███       | 11/36 [00:21<00:16,  1.49it/s]
+Capturing batches (bs=168 avail_mem=10.58 GB):  31%|███       | 11/36 [00:21<00:16,  1.49it/s][2026-07-22 14:39:20 DP3] [Foundry] Saved SGLang CUDA graph graph_9_FULL_t184_r184_UX_pcN.json key=184
+
+Capturing batches (bs=176 avail_mem=10.59 GB):  25%|██▌       | 9/36 [00:21<00:27,  1.00s/it][2026-07-22 14:39:20 DP0] [Foundry] Saved SGLang CUDA graph graph_10_FULL_t176_r176_UX_pcN.json key=176
+
+Capturing batches (bs=176 avail_mem=10.59 GB):  31%|███       | 11/36 [00:21<00:16,  1.49it/s]
+Capturing batches (bs=168 avail_mem=10.58 GB):  31%|███       | 11/36 [00:21<00:16,  1.49it/s][2026-07-22 14:39:20 DP2] [Foundry] Saved SGLang CUDA graph graph_8_FULL_t192_r192_UX_pcN.json key=192
+
+Capturing batches (bs=192 avail_mem=10.61 GB):  25%|██▌       | 9/36 [00:21<00:27,  1.00s/it]
+Capturing batches (bs=184 avail_mem=10.60 GB):  25%|██▌       | 9/36 [00:21<00:27,  1.00s/it][2026-07-22 14:39:20 DP1] [Foundry] Saved SGLang CUDA graph graph_11_FULL_t168_r168_UX_pcN.json key=168
+
+Capturing batches (bs=160 avail_mem=10.58 GB):  31%|███       | 11/36 [00:21<00:16,  1.49it/s][2026-07-22 14:39:20 DP3] [Foundry] Saved SGLang CUDA graph graph_10_FULL_t176_r176_UX_pcN.json key=176
+
+Capturing batches (bs=176 avail_mem=10.59 GB):  31%|███       | 11/36 [00:21<00:16,  1.49it/s]
+Capturing batches (bs=168 avail_mem=10.58 GB):  31%|███       | 11/36 [00:21<00:16,  1.49it/s][2026-07-22 14:39:20 DP0] [Foundry] Saved SGLang CUDA graph graph_11_FULL_t168_r168_UX_pcN.json key=168
+
+Capturing batches (bs=160 avail_mem=10.58 GB):  31%|███       | 11/36 [00:21<00:16,  1.49it/s][2026-07-22 14:39:21 DP2] [Foundry] Saved SGLang CUDA graph graph_9_FULL_t184_r184_UX_pcN.json key=184
+
+Capturing batches (bs=176 avail_mem=10.59 GB):  25%|██▌       | 9/36 [00:21<00:27,  1.00s/it][2026-07-22 14:39:21 DP3] [Foundry] Saved SGLang CUDA graph graph_11_FULL_t168_r168_UX_pcN.json key=168
+
+Capturing batches (bs=160 avail_mem=10.58 GB):  31%|███       | 11/36 [00:21<00:16,  1.49it/s][2026-07-22 14:39:21 DP2] [Foundry] Saved SGLang CUDA graph graph_10_FULL_t176_r176_UX_pcN.json key=176
+
+Capturing batches (bs=176 avail_mem=10.59 GB):  31%|███       | 11/36 [00:21<00:16,  1.48it/s]
+Capturing batches (bs=168 avail_mem=10.58 GB):  31%|███       | 11/36 [00:21<00:16,  1.48it/s][2026-07-22 14:39:21 DP2] [Foundry] Saved SGLang CUDA graph graph_11_FULL_t168_r168_UX_pcN.json key=168
+
+Capturing batches (bs=160 avail_mem=10.58 GB):  31%|███       | 11/36 [00:21<00:16,  1.48it/s][2026-07-22 14:39:21 DP1] [Foundry] Saved SGLang CUDA graph graph_12_FULL_t160_r160_UX_pcN.json key=160
+
+Capturing batches (bs=160 avail_mem=10.58 GB):  36%|███▌      | 13/36 [00:22<00:14,  1.63it/s]
+Capturing batches (bs=152 avail_mem=10.57 GB):  36%|███▌      | 13/36 [00:22<00:14,  1.63it/s][2026-07-22 14:39:21 DP0] [Foundry] Saved SGLang CUDA graph graph_12_FULL_t160_r160_UX_pcN.json key=160
+
+Capturing batches (bs=160 avail_mem=10.58 GB):  36%|███▌      | 13/36 [00:22<00:14,  1.63it/s]
+Capturing batches (bs=152 avail_mem=10.57 GB):  36%|███▌      | 13/36 [00:22<00:14,  1.63it/s][2026-07-22 14:39:21 DP1] [Foundry] Saved SGLang CUDA graph graph_13_FULL_t152_r152_UX_pcN.json key=152
+
+Capturing batches (bs=144 avail_mem=10.56 GB):  36%|███▌      | 13/36 [00:22<00:14,  1.63it/s][2026-07-22 14:39:21 DP3] [Foundry] Saved SGLang CUDA graph graph_12_FULL_t160_r160_UX_pcN.json key=160
+
+Capturing batches (bs=160 avail_mem=10.58 GB):  36%|███▌      | 13/36 [00:22<00:14,  1.62it/s]
+Capturing batches (bs=152 avail_mem=10.57 GB):  36%|███▌      | 13/36 [00:22<00:14,  1.62it/s][2026-07-22 14:39:21 DP0] [Foundry] Saved SGLang CUDA graph graph_13_FULL_t152_r152_UX_pcN.json key=152
+
+Capturing batches (bs=144 avail_mem=10.56 GB):  36%|███▌      | 13/36 [00:22<00:14,  1.63it/s][2026-07-22 14:39:22 DP1] [Foundry] Saved SGLang CUDA graph graph_14_FULL_t144_r144_UX_pcN.json key=144
+
+Capturing batches (bs=144 avail_mem=10.56 GB):  42%|████▏     | 15/36 [00:22<00:09,  2.29it/s]
+Capturing batches (bs=136 avail_mem=10.55 GB):  42%|████▏     | 15/36 [00:22<00:09,  2.29it/s][2026-07-22 14:39:22 DP0] [Foundry] Saved SGLang CUDA graph graph_14_FULL_t144_r144_UX_pcN.json key=144
+
+Capturing batches (bs=144 avail_mem=10.56 GB):  42%|████▏     | 15/36 [00:22<00:09,  2.29it/s]
+Capturing batches (bs=136 avail_mem=10.55 GB):  42%|████▏     | 15/36 [00:22<00:09,  2.29it/s][2026-07-22 14:39:22 DP3] [Foundry] Saved SGLang CUDA graph graph_13_FULL_t152_r152_UX_pcN.json key=152
+
+Capturing batches (bs=144 avail_mem=10.56 GB):  36%|███▌      | 13/36 [00:22<00:14,  1.62it/s][2026-07-22 14:39:22 DP2] [Foundry] Saved SGLang CUDA graph graph_12_FULL_t160_r160_UX_pcN.json key=160
+
+Capturing batches (bs=160 avail_mem=10.58 GB):  36%|███▌      | 13/36 [00:22<00:14,  1.62it/s]
+Capturing batches (bs=152 avail_mem=10.57 GB):  36%|███▌      | 13/36 [00:22<00:14,  1.62it/s][2026-07-22 14:39:22 DP1] [Foundry] Saved SGLang CUDA graph graph_15_FULL_t136_r136_UX_pcN.json key=136
+
+Capturing batches (bs=128 avail_mem=10.54 GB):  42%|████▏     | 15/36 [00:22<00:09,  2.29it/s][2026-07-22 14:39:22 DP0] [Foundry] Saved SGLang CUDA graph graph_15_FULL_t136_r136_UX_pcN.json key=136
+
+Capturing batches (bs=128 avail_mem=10.54 GB):  42%|████▏     | 15/36 [00:22<00:09,  2.29it/s][2026-07-22 14:39:22 DP3] [Foundry] Saved SGLang CUDA graph graph_14_FULL_t144_r144_UX_pcN.json key=144
+
+Capturing batches (bs=144 avail_mem=10.56 GB):  42%|████▏     | 15/36 [00:22<00:09,  2.27it/s]
+Capturing batches (bs=136 avail_mem=10.55 GB):  42%|████▏     | 15/36 [00:22<00:09,  2.27it/s][2026-07-22 14:39:22 DP2] [Foundry] Saved SGLang CUDA graph graph_13_FULL_t152_r152_UX_pcN.json key=152
+
+Capturing batches (bs=144 avail_mem=10.56 GB):  36%|███▌      | 13/36 [00:22<00:14,  1.62it/s][2026-07-22 14:39:22 DP1] [Foundry] Saved SGLang CUDA graph graph_16_FULL_t128_r128_UX_pcN.json key=128
+
+Capturing batches (bs=128 avail_mem=10.54 GB):  47%|████▋     | 17/36 [00:22<00:06,  3.13it/s]
+Capturing batches (bs=120 avail_mem=10.53 GB):  47%|████▋     | 17/36 [00:22<00:06,  3.13it/s][2026-07-22 14:39:22 DP3] [Foundry] Saved SGLang CUDA graph graph_15_FULL_t136_r136_UX_pcN.json key=136
+
+Capturing batches (bs=128 avail_mem=10.54 GB):  42%|████▏     | 15/36 [00:22<00:09,  2.27it/s][2026-07-22 14:39:22 DP0] [Foundry] Saved SGLang CUDA graph graph_16_FULL_t128_r128_UX_pcN.json key=128
+
+Capturing batches (bs=128 avail_mem=10.54 GB):  47%|████▋     | 17/36 [00:22<00:06,  3.11it/s]
+Capturing batches (bs=120 avail_mem=10.53 GB):  47%|████▋     | 17/36 [00:22<00:06,  3.11it/s][2026-07-22 14:39:22 DP2] [Foundry] Saved SGLang CUDA graph graph_14_FULL_t144_r144_UX_pcN.json key=144
+
+Capturing batches (bs=144 avail_mem=10.56 GB):  42%|████▏     | 15/36 [00:22<00:09,  2.29it/s]
+Capturing batches (bs=136 avail_mem=10.55 GB):  42%|████▏     | 15/36 [00:22<00:09,  2.29it/s][2026-07-22 14:39:22 DP1] [Foundry] Saved SGLang CUDA graph graph_17_FULL_t120_r120_UX_pcN.json key=120
+
+Capturing batches (bs=112 avail_mem=10.52 GB):  47%|████▋     | 17/36 [00:22<00:06,  3.13it/s][2026-07-22 14:39:22 DP2] [Foundry] Saved SGLang CUDA graph graph_15_FULL_t136_r136_UX_pcN.json key=136
+
+Capturing batches (bs=128 avail_mem=10.54 GB):  42%|████▏     | 15/36 [00:22<00:09,  2.29it/s][2026-07-22 14:39:22 DP3] [Foundry] Saved SGLang CUDA graph graph_16_FULL_t128_r128_UX_pcN.json key=128
+
+Capturing batches (bs=128 avail_mem=10.54 GB):  47%|████▋     | 17/36 [00:22<00:06,  3.10it/s]
+Capturing batches (bs=120 avail_mem=10.53 GB):  47%|████▋     | 17/36 [00:22<00:06,  3.10it/s][2026-07-22 14:39:22 DP0] [Foundry] Saved SGLang CUDA graph graph_17_FULL_t120_r120_UX_pcN.json key=120
+
+Capturing batches (bs=112 avail_mem=10.52 GB):  47%|████▋     | 17/36 [00:22<00:06,  3.11it/s][2026-07-22 14:39:22 DP1] [Foundry] Saved SGLang CUDA graph graph_18_FULL_t112_r112_UX_pcN.json key=112
+
+Capturing batches (bs=112 avail_mem=10.52 GB):  53%|█████▎    | 19/36 [00:22<00:04,  4.14it/s]
+Capturing batches (bs=104 avail_mem=10.51 GB):  53%|█████▎    | 19/36 [00:22<00:04,  4.14it/s][2026-07-22 14:39:22 DP3] [Foundry] Saved SGLang CUDA graph graph_17_FULL_t120_r120_UX_pcN.json key=120
+
+Capturing batches (bs=112 avail_mem=10.52 GB):  47%|████▋     | 17/36 [00:22<00:06,  3.10it/s][2026-07-22 14:39:22 DP2] [Foundry] Saved SGLang CUDA graph graph_16_FULL_t128_r128_UX_pcN.json key=128
+
+Capturing batches (bs=128 avail_mem=10.54 GB):  47%|████▋     | 17/36 [00:22<00:06,  3.12it/s]
+Capturing batches (bs=120 avail_mem=10.53 GB):  47%|████▋     | 17/36 [00:22<00:06,  3.12it/s][2026-07-22 14:39:22 DP0] [Foundry] Saved SGLang CUDA graph graph_18_FULL_t112_r112_UX_pcN.json key=112
+
+Capturing batches (bs=112 avail_mem=10.52 GB):  53%|█████▎    | 19/36 [00:22<00:04,  4.09it/s]
+Capturing batches (bs=104 avail_mem=10.51 GB):  53%|█████▎    | 19/36 [00:22<00:04,  4.09it/s][2026-07-22 14:39:22 DP1] [Foundry] Saved SGLang CUDA graph graph_19_FULL_t104_r104_UX_pcN.json key=104
+
+Capturing batches (bs=96 avail_mem=10.51 GB):  53%|█████▎    | 19/36 [00:22<00:04,  4.14it/s] [2026-07-22 14:39:22 DP3] [Foundry] Saved SGLang CUDA graph graph_18_FULL_t112_r112_UX_pcN.json key=112
+
+Capturing batches (bs=112 avail_mem=10.52 GB):  53%|█████▎    | 19/36 [00:22<00:04,  4.10it/s]
+Capturing batches (bs=104 avail_mem=10.51 GB):  53%|█████▎    | 19/36 [00:22<00:04,  4.10it/s][2026-07-22 14:39:22 DP2] [Foundry] Saved SGLang CUDA graph graph_17_FULL_t120_r120_UX_pcN.json key=120
+
+Capturing batches (bs=112 avail_mem=10.52 GB):  47%|████▋     | 17/36 [00:22<00:06,  3.12it/s][2026-07-22 14:39:22 DP0] [Foundry] Saved SGLang CUDA graph graph_19_FULL_t104_r104_UX_pcN.json key=104
+
+Capturing batches (bs=96 avail_mem=10.51 GB):  53%|█████▎    | 19/36 [00:22<00:04,  4.09it/s] [2026-07-22 14:39:22 DP1] [Foundry] Saved SGLang CUDA graph graph_20_FULL_t96_r96_UX_pcN.json key=96
+
+Capturing batches (bs=96 avail_mem=10.51 GB):  58%|█████▊    | 21/36 [00:22<00:02,  5.31it/s]
+Capturing batches (bs=88 avail_mem=10.50 GB):  58%|█████▊    | 21/36 [00:22<00:02,  5.31it/s][2026-07-22 14:39:22 DP3] [Foundry] Saved SGLang CUDA graph graph_19_FULL_t104_r104_UX_pcN.json key=104
+
+Capturing batches (bs=96 avail_mem=10.51 GB):  53%|█████▎    | 19/36 [00:22<00:04,  4.10it/s] [2026-07-22 14:39:22 DP2] [Foundry] Saved SGLang CUDA graph graph_18_FULL_t112_r112_UX_pcN.json key=112
+
+Capturing batches (bs=112 avail_mem=10.52 GB):  53%|█████▎    | 19/36 [00:22<00:04,  4.12it/s]
+Capturing batches (bs=104 avail_mem=10.51 GB):  53%|█████▎    | 19/36 [00:22<00:04,  4.12it/s][2026-07-22 14:39:22 DP0] [Foundry] Saved SGLang CUDA graph graph_20_FULL_t96_r96_UX_pcN.json key=96
+
+Capturing batches (bs=96 avail_mem=10.51 GB):  58%|█████▊    | 21/36 [00:22<00:02,  5.21it/s]
+Capturing batches (bs=88 avail_mem=10.50 GB):  58%|█████▊    | 21/36 [00:22<00:02,  5.21it/s][2026-07-22 14:39:22 DP1] [Foundry] Saved SGLang CUDA graph graph_21_FULL_t88_r88_UX_pcN.json key=88
+
+Capturing batches (bs=80 avail_mem=10.49 GB):  58%|█████▊    | 21/36 [00:22<00:02,  5.31it/s][2026-07-22 14:39:22 DP3] [Foundry] Saved SGLang CUDA graph graph_20_FULL_t96_r96_UX_pcN.json key=96
+
+Capturing batches (bs=96 avail_mem=10.51 GB):  58%|█████▊    | 21/36 [00:22<00:02,  5.25it/s]
+Capturing batches (bs=88 avail_mem=10.50 GB):  58%|█████▊    | 21/36 [00:22<00:02,  5.25it/s][2026-07-22 14:39:22 DP2] [Foundry] Saved SGLang CUDA graph graph_19_FULL_t104_r104_UX_pcN.json key=104
+
+Capturing batches (bs=96 avail_mem=10.51 GB):  53%|█████▎    | 19/36 [00:22<00:04,  4.12it/s] [2026-07-22 14:39:22 DP0] [Foundry] Saved SGLang CUDA graph graph_21_FULL_t88_r88_UX_pcN.json key=88
+
+Capturing batches (bs=80 avail_mem=10.49 GB):  58%|█████▊    | 21/36 [00:22<00:02,  5.21it/s][2026-07-22 14:39:22 DP1] [Foundry] Saved SGLang CUDA graph graph_22_FULL_t80_r80_UX_pcN.json key=80
+
+Capturing batches (bs=80 avail_mem=10.49 GB):  64%|██████▍   | 23/36 [00:22<00:01,  6.57it/s]
+Capturing batches (bs=72 avail_mem=10.48 GB):  64%|██████▍   | 23/36 [00:22<00:01,  6.57it/s][2026-07-22 14:39:22 DP3] [Foundry] Saved SGLang CUDA graph graph_21_FULL_t88_r88_UX_pcN.json key=88
+
+Capturing batches (bs=80 avail_mem=10.49 GB):  58%|█████▊    | 21/36 [00:23<00:02,  5.25it/s][2026-07-22 14:39:22 DP2] [Foundry] Saved SGLang CUDA graph graph_20_FULL_t96_r96_UX_pcN.json key=96
+
+Capturing batches (bs=96 avail_mem=10.51 GB):  58%|█████▊    | 21/36 [00:23<00:02,  5.28it/s]
+Capturing batches (bs=88 avail_mem=10.50 GB):  58%|█████▊    | 21/36 [00:23<00:02,  5.28it/s][2026-07-22 14:39:22 DP0] [Foundry] Saved SGLang CUDA graph graph_22_FULL_t80_r80_UX_pcN.json key=80
+
+Capturing batches (bs=80 avail_mem=10.49 GB):  64%|██████▍   | 23/36 [00:23<00:02,  6.45it/s]
+Capturing batches (bs=72 avail_mem=10.48 GB):  64%|██████▍   | 23/36 [00:23<00:02,  6.45it/s][2026-07-22 14:39:22 DP1] [Foundry] Saved SGLang CUDA graph graph_23_FULL_t72_r72_UX_pcN.json key=72
+
+Capturing batches (bs=64 avail_mem=10.47 GB):  64%|██████▍   | 23/36 [00:23<00:01,  6.57it/s][2026-07-22 14:39:22 DP3] [Foundry] Saved SGLang CUDA graph graph_22_FULL_t80_r80_UX_pcN.json key=80
+
+Capturing batches (bs=80 avail_mem=10.49 GB):  64%|██████▍   | 23/36 [00:23<00:01,  6.51it/s]
+Capturing batches (bs=72 avail_mem=10.48 GB):  64%|██████▍   | 23/36 [00:23<00:01,  6.51it/s][2026-07-22 14:39:22 DP2] [Foundry] Saved SGLang CUDA graph graph_21_FULL_t88_r88_UX_pcN.json key=88
+
+Capturing batches (bs=80 avail_mem=10.49 GB):  58%|█████▊    | 21/36 [00:23<00:02,  5.28it/s][2026-07-22 14:39:22 DP0] [Foundry] Saved SGLang CUDA graph graph_23_FULL_t72_r72_UX_pcN.json key=72
+
+Capturing batches (bs=64 avail_mem=10.47 GB):  64%|██████▍   | 23/36 [00:23<00:02,  6.45it/s][2026-07-22 14:39:22 DP1] [Foundry] Saved SGLang CUDA graph graph_24_FULL_t64_r64_UX_pcN.json key=64
+
+Capturing batches (bs=64 avail_mem=10.47 GB):  69%|██████▉   | 25/36 [00:23<00:01,  7.84it/s]
+Capturing batches (bs=56 avail_mem=10.46 GB):  69%|██████▉   | 25/36 [00:23<00:01,  7.84it/s][2026-07-22 14:39:22 DP3] [Foundry] Saved SGLang CUDA graph graph_23_FULL_t72_r72_UX_pcN.json key=72
+
+Capturing batches (bs=64 avail_mem=10.47 GB):  64%|██████▍   | 23/36 [00:23<00:01,  6.51it/s][2026-07-22 14:39:22 DP2] [Foundry] Saved SGLang CUDA graph graph_22_FULL_t80_r80_UX_pcN.json key=80
+
+Capturing batches (bs=80 avail_mem=10.49 GB):  64%|██████▍   | 23/36 [00:23<00:01,  6.57it/s]
+Capturing batches (bs=72 avail_mem=10.48 GB):  64%|██████▍   | 23/36 [00:23<00:01,  6.57it/s][2026-07-22 14:39:22 DP0] [Foundry] Saved SGLang CUDA graph graph_24_FULL_t64_r64_UX_pcN.json key=64
+
+Capturing batches (bs=64 avail_mem=10.47 GB):  69%|██████▉   | 25/36 [00:23<00:01,  7.78it/s]
+Capturing batches (bs=56 avail_mem=10.46 GB):  69%|██████▉   | 25/36 [00:23<00:01,  7.78it/s][2026-07-22 14:39:22 DP1] [Foundry] Saved SGLang CUDA graph graph_25_FULL_t56_r56_UX_pcN.json key=56
+
+Capturing batches (bs=48 avail_mem=10.46 GB):  69%|██████▉   | 25/36 [00:23<00:01,  7.84it/s][2026-07-22 14:39:22 DP3] [Foundry] Saved SGLang CUDA graph graph_24_FULL_t64_r64_UX_pcN.json key=64
+
+Capturing batches (bs=64 avail_mem=10.47 GB):  69%|██████▉   | 25/36 [00:23<00:01,  7.85it/s]
+Capturing batches (bs=56 avail_mem=10.46 GB):  69%|██████▉   | 25/36 [00:23<00:01,  7.85it/s][2026-07-22 14:39:22 DP2] [Foundry] Saved SGLang CUDA graph graph_23_FULL_t72_r72_UX_pcN.json key=72
+
+Capturing batches (bs=64 avail_mem=10.47 GB):  64%|██████▍   | 23/36 [00:23<00:01,  6.57it/s][2026-07-22 14:39:22 DP0] [Foundry] Saved SGLang CUDA graph graph_25_FULL_t56_r56_UX_pcN.json key=56
+
+Capturing batches (bs=48 avail_mem=10.46 GB):  69%|██████▉   | 25/36 [00:23<00:01,  7.78it/s][2026-07-22 14:39:22 DP1] [Foundry] Saved SGLang CUDA graph graph_26_FULL_t48_r48_UX_pcN.json key=48
+
+Capturing batches (bs=48 avail_mem=10.46 GB):  75%|███████▌  | 27/36 [00:23<00:00,  9.24it/s]
+Capturing batches (bs=40 avail_mem=10.45 GB):  75%|███████▌  | 27/36 [00:23<00:00,  9.24it/s][2026-07-22 14:39:22 DP3] [Foundry] Saved SGLang CUDA graph graph_25_FULL_t56_r56_UX_pcN.json key=56
+
+Capturing batches (bs=48 avail_mem=10.46 GB):  69%|██████▉   | 25/36 [00:23<00:01,  7.85it/s][2026-07-22 14:39:22 DP2] [Foundry] Saved SGLang CUDA graph graph_24_FULL_t64_r64_UX_pcN.json key=64
+
+Capturing batches (bs=64 avail_mem=10.47 GB):  69%|██████▉   | 25/36 [00:23<00:01,  7.91it/s]
+Capturing batches (bs=56 avail_mem=10.46 GB):  69%|██████▉   | 25/36 [00:23<00:01,  7.91it/s][2026-07-22 14:39:22 DP0] [Foundry] Saved SGLang CUDA graph graph_26_FULL_t48_r48_UX_pcN.json key=48
+
+Capturing batches (bs=48 avail_mem=10.46 GB):  75%|███████▌  | 27/36 [00:23<00:00,  9.17it/s]
+Capturing batches (bs=40 avail_mem=10.45 GB):  75%|███████▌  | 27/36 [00:23<00:00,  9.17it/s][2026-07-22 14:39:22 DP1] [Foundry] Saved SGLang CUDA graph graph_27_FULL_t40_r40_UX_pcN.json key=40
+
+Capturing batches (bs=32 avail_mem=10.44 GB):  75%|███████▌  | 27/36 [00:23<00:00,  9.24it/s][2026-07-22 14:39:22 DP3] [Foundry] Saved SGLang CUDA graph graph_26_FULL_t48_r48_UX_pcN.json key=48
+
+Capturing batches (bs=48 avail_mem=10.46 GB):  75%|███████▌  | 27/36 [00:23<00:00,  9.22it/s]
+Capturing batches (bs=40 avail_mem=10.45 GB):  75%|███████▌  | 27/36 [00:23<00:00,  9.22it/s][2026-07-22 14:39:22 DP2] [Foundry] Saved SGLang CUDA graph graph_25_FULL_t56_r56_UX_pcN.json key=56
+
+Capturing batches (bs=48 avail_mem=10.46 GB):  69%|██████▉   | 25/36 [00:23<00:01,  7.91it/s][2026-07-22 14:39:22 DP0] [Foundry] Saved SGLang CUDA graph graph_27_FULL_t40_r40_UX_pcN.json key=40
+
+Capturing batches (bs=32 avail_mem=10.44 GB):  75%|███████▌  | 27/36 [00:23<00:00,  9.17it/s][2026-07-22 14:39:22 DP1] [Foundry] Saved SGLang CUDA graph graph_28_FULL_t32_r32_UX_pcN.json key=32
+
+Capturing batches (bs=32 avail_mem=10.44 GB):  81%|████████  | 29/36 [00:23<00:00, 10.48it/s]
+Capturing batches (bs=24 avail_mem=10.43 GB):  81%|████████  | 29/36 [00:23<00:00, 10.48it/s][2026-07-22 14:39:23 DP3] [Foundry] Saved SGLang CUDA graph graph_27_FULL_t40_r40_UX_pcN.json key=40
+
+Capturing batches (bs=32 avail_mem=10.44 GB):  75%|███████▌  | 27/36 [00:23<00:00,  9.22it/s][2026-07-22 14:39:23 DP2] [Foundry] Saved SGLang CUDA graph graph_26_FULL_t48_r48_UX_pcN.json key=48
+
+Capturing batches (bs=48 avail_mem=10.46 GB):  75%|███████▌  | 27/36 [00:23<00:00,  9.19it/s]
+Capturing batches (bs=40 avail_mem=10.45 GB):  75%|███████▌  | 27/36 [00:23<00:00,  9.19it/s][2026-07-22 14:39:23 DP0] [Foundry] Saved SGLang CUDA graph graph_28_FULL_t32_r32_UX_pcN.json key=32
+
+Capturing batches (bs=32 avail_mem=10.44 GB):  81%|████████  | 29/36 [00:23<00:00, 10.49it/s]
+Capturing batches (bs=24 avail_mem=10.43 GB):  81%|████████  | 29/36 [00:23<00:00, 10.49it/s][2026-07-22 14:39:23 DP1] [Foundry] Saved SGLang CUDA graph graph_29_FULL_t24_r24_UX_pcN.json key=24
+
+Capturing batches (bs=16 avail_mem=10.42 GB):  81%|████████  | 29/36 [00:23<00:00, 10.48it/s][2026-07-22 14:39:23 DP3] [Foundry] Saved SGLang CUDA graph graph_28_FULL_t32_r32_UX_pcN.json key=32
+
+Capturing batches (bs=32 avail_mem=10.44 GB):  81%|████████  | 29/36 [00:23<00:00, 10.39it/s]
+Capturing batches (bs=24 avail_mem=10.43 GB):  81%|████████  | 29/36 [00:23<00:00, 10.39it/s][2026-07-22 14:39:23 DP0] [Foundry] Saved SGLang CUDA graph graph_29_FULL_t24_r24_UX_pcN.json key=24
+
+Capturing batches (bs=16 avail_mem=10.42 GB):  81%|████████  | 29/36 [00:23<00:00, 10.49it/s][2026-07-22 14:39:23 DP2] [Foundry] Saved SGLang CUDA graph graph_27_FULL_t40_r40_UX_pcN.json key=40
+
+Capturing batches (bs=32 avail_mem=10.44 GB):  75%|███████▌  | 27/36 [00:23<00:00,  9.19it/s][2026-07-22 14:39:23 DP3] [Foundry] Saved SGLang CUDA graph graph_29_FULL_t24_r24_UX_pcN.json key=24
+
+Capturing batches (bs=16 avail_mem=10.42 GB):  81%|████████  | 29/36 [00:23<00:00, 10.39it/s][2026-07-22 14:39:23 DP2] [Foundry] Saved SGLang CUDA graph graph_28_FULL_t32_r32_UX_pcN.json key=32
+
+Capturing batches (bs=32 avail_mem=10.44 GB):  81%|████████  | 29/36 [00:23<00:00, 10.25it/s]
+Capturing batches (bs=24 avail_mem=10.43 GB):  81%|████████  | 29/36 [00:23<00:00, 10.25it/s][2026-07-22 14:39:23 DP2] [Foundry] Saved SGLang CUDA graph graph_29_FULL_t24_r24_UX_pcN.json key=24
+
+Capturing batches (bs=16 avail_mem=10.42 GB):  81%|████████  | 29/36 [00:23<00:00, 10.25it/s][2026-07-22 14:39:24 DP1] [Foundry] Saved SGLang CUDA graph graph_30_FULL_t16_r16_UX_pcN.json key=16
+
+Capturing batches (bs=16 avail_mem=10.42 GB):  86%|████████▌ | 31/36 [00:24<00:01,  4.45it/s]
+Capturing batches (bs=12 avail_mem=10.42 GB):  86%|████████▌ | 31/36 [00:24<00:01,  4.45it/s][2026-07-22 14:39:24 DP0] [Foundry] Saved SGLang CUDA graph graph_30_FULL_t16_r16_UX_pcN.json key=16
+
+Capturing batches (bs=16 avail_mem=10.42 GB):  86%|████████▌ | 31/36 [00:24<00:01,  4.49it/s]
+Capturing batches (bs=12 avail_mem=10.42 GB):  86%|████████▌ | 31/36 [00:24<00:01,  4.49it/s][2026-07-22 14:39:24 DP1] [Foundry] Saved SGLang CUDA graph graph_31_FULL_t12_r12_UX_pcN.json key=12
+
+Capturing batches (bs=8 avail_mem=10.41 GB):  86%|████████▌ | 31/36 [00:24<00:01,  4.45it/s] [2026-07-22 14:39:24 DP3] [Foundry] Saved SGLang CUDA graph graph_30_FULL_t16_r16_UX_pcN.json key=16
+[2026-07-22 14:39:24 DP0] [Foundry] Saved SGLang CUDA graph graph_31_FULL_t12_r12_UX_pcN.json key=12
+
+Capturing batches (bs=16 avail_mem=10.42 GB):  86%|████████▌ | 31/36 [00:24<00:01,  4.44it/s]
+Capturing batches (bs=8 avail_mem=10.41 GB):  86%|████████▌ | 31/36 [00:24<00:01,  4.49it/s] 
+Capturing batches (bs=12 avail_mem=10.42 GB):  86%|████████▌ | 31/36 [00:24<00:01,  4.44it/s][2026-07-22 14:39:24 DP1] [Foundry] Saved SGLang CUDA graph graph_32_FULL_t8_r8_UX_pcN.json key=8
+
+Capturing batches (bs=8 avail_mem=10.41 GB):  92%|█████████▏| 33/36 [00:24<00:00,  5.59it/s]
+Capturing batches (bs=4 avail_mem=10.40 GB):  92%|█████████▏| 33/36 [00:24<00:00,  5.59it/s][2026-07-22 14:39:24 DP3] [Foundry] Saved SGLang CUDA graph graph_31_FULL_t12_r12_UX_pcN.json key=12
+
+Capturing batches (bs=8 avail_mem=10.41 GB):  86%|████████▌ | 31/36 [00:24<00:01,  4.44it/s] [2026-07-22 14:39:24 DP0] [Foundry] Saved SGLang CUDA graph graph_32_FULL_t8_r8_UX_pcN.json key=8
+
+Capturing batches (bs=8 avail_mem=10.41 GB):  92%|█████████▏| 33/36 [00:24<00:00,  5.67it/s]
+Capturing batches (bs=4 avail_mem=10.40 GB):  92%|█████████▏| 33/36 [00:24<00:00,  5.67it/s][2026-07-22 14:39:24 DP2] [Foundry] Saved SGLang CUDA graph graph_30_FULL_t16_r16_UX_pcN.json key=16
+
+Capturing batches (bs=16 avail_mem=10.42 GB):  86%|████████▌ | 31/36 [00:24<00:01,  4.43it/s]
+Capturing batches (bs=12 avail_mem=10.42 GB):  86%|████████▌ | 31/36 [00:24<00:01,  4.43it/s][2026-07-22 14:39:24 DP3] [Foundry] Saved SGLang CUDA graph graph_32_FULL_t8_r8_UX_pcN.json key=8
+
+Capturing batches (bs=8 avail_mem=10.41 GB):  92%|█████████▏| 33/36 [00:24<00:00,  5.68it/s]
+Capturing batches (bs=4 avail_mem=10.40 GB):  92%|█████████▏| 33/36 [00:24<00:00,  5.68it/s][2026-07-22 14:39:24 DP0] [Foundry] Saved SGLang CUDA graph graph_33_FULL_t4_r4_UX_pcN.json key=4
+
+Capturing batches (bs=2 avail_mem=10.39 GB):  92%|█████████▏| 33/36 [00:24<00:00,  5.67it/s][2026-07-22 14:39:24 DP1] [Foundry] Saved SGLang CUDA graph graph_33_FULL_t4_r4_UX_pcN.json key=4
+
+Capturing batches (bs=2 avail_mem=10.39 GB):  92%|█████████▏| 33/36 [00:24<00:00,  5.59it/s][2026-07-22 14:39:24 DP2] [Foundry] Saved SGLang CUDA graph graph_31_FULL_t12_r12_UX_pcN.json key=12
+
+Capturing batches (bs=8 avail_mem=10.41 GB):  86%|████████▌ | 31/36 [00:24<00:01,  4.43it/s] [2026-07-22 14:39:24 DP3] [Foundry] Saved SGLang CUDA graph graph_33_FULL_t4_r4_UX_pcN.json key=4
+
+Capturing batches (bs=2 avail_mem=10.39 GB):  92%|█████████▏| 33/36 [00:24<00:00,  5.68it/s][2026-07-22 14:39:24 DP0] [Foundry] Saved SGLang CUDA graph graph_34_FULL_t2_r2_UX_pcN.json key=2
+
+Capturing batches (bs=2 avail_mem=10.39 GB):  97%|█████████▋| 35/36 [00:24<00:00,  7.00it/s]
+Capturing batches (bs=1 avail_mem=10.38 GB):  97%|█████████▋| 35/36 [00:24<00:00,  7.00it/s][2026-07-22 14:39:24 DP1] [Foundry] Saved SGLang CUDA graph graph_34_FULL_t2_r2_UX_pcN.json key=2
+
+Capturing batches (bs=2 avail_mem=10.39 GB):  97%|█████████▋| 35/36 [00:24<00:00,  6.73it/s]
+Capturing batches (bs=1 avail_mem=10.38 GB):  97%|█████████▋| 35/36 [00:24<00:00,  6.73it/s][2026-07-22 14:39:24 DP2] [Foundry] Saved SGLang CUDA graph graph_32_FULL_t8_r8_UX_pcN.json key=8
+
+Capturing batches (bs=8 avail_mem=10.41 GB):  92%|█████████▏| 33/36 [00:24<00:00,  5.58it/s]
+Capturing batches (bs=4 avail_mem=10.40 GB):  92%|█████████▏| 33/36 [00:24<00:00,  5.58it/s][2026-07-22 14:39:24 DP3] [Foundry] Saved SGLang CUDA graph graph_34_FULL_t2_r2_UX_pcN.json key=2
+
+Capturing batches (bs=2 avail_mem=10.39 GB):  97%|█████████▋| 35/36 [00:24<00:00,  6.99it/s]
+Capturing batches (bs=1 avail_mem=10.38 GB):  97%|█████████▋| 35/36 [00:24<00:00,  6.99it/s][2026-07-22 14:39:24 DP0] [Foundry] Saved SGLang CUDA graph graph_35_FULL_t1_r1_UX_pcN.json key=1
+
+Capturing batches (bs=1 avail_mem=10.38 GB): 100%|██████████| 36/36 [00:24<00:00,  1.45it/s]
+[2026-07-22 14:39:24 DP1] [Foundry] Saved SGLang CUDA graph graph_35_FULL_t1_r1_UX_pcN.json key=1
+
+Capturing batches (bs=1 avail_mem=10.38 GB): 100%|██████████| 36/36 [00:24<00:00,  1.45it/s]
+[2026-07-22 14:39:24 DP2] [Foundry] Saved SGLang CUDA graph graph_33_FULL_t4_r4_UX_pcN.json key=4
+
+Capturing batches (bs=2 avail_mem=10.39 GB):  92%|█████████▏| 33/36 [00:24<00:00,  5.58it/s][2026-07-22 14:39:24 DP3] [Foundry] Saved SGLang CUDA graph graph_35_FULL_t1_r1_UX_pcN.json key=1
+
+Capturing batches (bs=1 avail_mem=10.38 GB): 100%|██████████| 36/36 [00:24<00:00,  1.45it/s]
+[2026-07-22 14:39:24 DP2] [Foundry] Saved SGLang CUDA graph graph_34_FULL_t2_r2_UX_pcN.json key=2
+
+Capturing batches (bs=2 avail_mem=10.39 GB):  97%|█████████▋| 35/36 [00:24<00:00,  6.85it/s]
+Capturing batches (bs=1 avail_mem=10.38 GB):  97%|█████████▋| 35/36 [00:24<00:00,  6.85it/s][2026-07-22 14:39:24 DP2] [Foundry] Saved SGLang CUDA graph graph_35_FULL_t1_r1_UX_pcN.json key=1
+
+Capturing batches (bs=1 avail_mem=10.38 GB): 100%|██████████| 36/36 [00:24<00:00,  1.44it/s]
+[foundry] Saved graph_manifest.json: 6 topology groups (6 templates, 30 on-demand, 30 stripped)
+[foundry] Saved graph_manifest.json: 6 topology groups (6 templates, 30 on-demand, 30 stripped)
+[foundry] Saved graph_manifest.json: 6 topology groups (6 templates, 30 on-demand, 30 stripped)
+[foundry] Saved graph_manifest.json: 6 topology groups (6 templates, 30 on-demand, 30 stripped)
+[2026-07-22 14:39:28 DP1] [Foundry] SGLang final_alloc_offset=74172071936
+[2026-07-22 14:39:28 DP1] Capture cuda graph end. Time elapsed: 35.18 s. mem usage=0.97 GB. avail mem=10.38 GB.
+[2026-07-22 14:39:28 DP1] Disable piecewise CUDA graph because --disable-piecewise-cuda-graph is set
+[2026-07-22 14:39:28 DP3] [Foundry] SGLang final_alloc_offset=74172071936
+[2026-07-22 14:39:28 DP3] Capture cuda graph end. Time elapsed: 35.26 s. mem usage=0.97 GB. avail mem=10.38 GB.
+[2026-07-22 14:39:28 DP3] Disable piecewise CUDA graph because --disable-piecewise-cuda-graph is set
+[2026-07-22 14:39:28 DP0] [Foundry] Saved SGLang warmup state to /iopsstor/scratch/cscs/yboughizane/simple-serving-stack/foundry-tp1/results/foundry_archive_apertus8b_dp4/warmup_state.json
+[2026-07-22 14:39:28 DP0] [Foundry] SGLang final_alloc_offset=74172071936
+[2026-07-22 14:39:28 DP0] Capture cuda graph end. Time elapsed: 35.26 s. mem usage=0.97 GB. avail mem=10.38 GB.
+[2026-07-22 14:39:28 DP0] Disable piecewise CUDA graph because --disable-piecewise-cuda-graph is set
+[2026-07-22 14:39:28 DP2] [Foundry] SGLang final_alloc_offset=74172071936
+[2026-07-22 14:39:28 DP2] Capture cuda graph end. Time elapsed: 35.34 s. mem usage=0.97 GB. avail mem=10.38 GB.
+[2026-07-22 14:39:28 DP2] Disable piecewise CUDA graph because --disable-piecewise-cuda-graph is set
+[2026-07-22 14:39:29 DP1] Tokenizer loaded as generic TokenizersBackend for /capstor/store/cscs/swissai/infra01/hf_models/models/swiss-ai/Apertus-8B-Instruct-2509, retrying with use_fast=False
+[2026-07-22 14:39:30 DP3] Tokenizer loaded as generic TokenizersBackend for /capstor/store/cscs/swissai/infra01/hf_models/models/swiss-ai/Apertus-8B-Instruct-2509, retrying with use_fast=False
+[2026-07-22 14:39:30 DP0] Tokenizer loaded as generic TokenizersBackend for /capstor/store/cscs/swissai/infra01/hf_models/models/swiss-ai/Apertus-8B-Instruct-2509, retrying with use_fast=False
+[2026-07-22 14:39:30 DP2] Tokenizer loaded as generic TokenizersBackend for /capstor/store/cscs/swissai/infra01/hf_models/models/swiss-ai/Apertus-8B-Instruct-2509, retrying with use_fast=False
+[2026-07-22 14:39:31 DP1] Loading tokenizer for /capstor/store/cscs/swissai/infra01/hf_models/models/swiss-ai/Apertus-8B-Instruct-2509 directly as PreTrainedTokenizerFast (bypassing AutoTokenizer)
+[2026-07-22 14:39:31 DP2] Loading tokenizer for /capstor/store/cscs/swissai/infra01/hf_models/models/swiss-ai/Apertus-8B-Instruct-2509 directly as PreTrainedTokenizerFast (bypassing AutoTokenizer)
+[2026-07-22 14:39:31 DP3] Loading tokenizer for /capstor/store/cscs/swissai/infra01/hf_models/models/swiss-ai/Apertus-8B-Instruct-2509 directly as PreTrainedTokenizerFast (bypassing AutoTokenizer)
+[2026-07-22 14:39:31 DP0] Loading tokenizer for /capstor/store/cscs/swissai/infra01/hf_models/models/swiss-ai/Apertus-8B-Instruct-2509 directly as PreTrainedTokenizerFast (bypassing AutoTokenizer)
+[2026-07-22 14:39:32 DP1] Tokenizer for /capstor/store/cscs/swissai/infra01/hf_models/models/swiss-ai/Apertus-8B-Instruct-2509 is still TokenizersBackend after retries with --trust-remote-code. Model-specific tokenizer attributes may be missing.
+[2026-07-22 14:39:32 DP3] Tokenizer for /capstor/store/cscs/swissai/infra01/hf_models/models/swiss-ai/Apertus-8B-Instruct-2509 is still TokenizersBackend after retries with --trust-remote-code. Model-specific tokenizer attributes may be missing.
+[2026-07-22 14:39:32 DP2] Tokenizer for /capstor/store/cscs/swissai/infra01/hf_models/models/swiss-ai/Apertus-8B-Instruct-2509 is still TokenizersBackend after retries with --trust-remote-code. Model-specific tokenizer attributes may be missing.
+[2026-07-22 14:39:32 DP0] Tokenizer for /capstor/store/cscs/swissai/infra01/hf_models/models/swiss-ai/Apertus-8B-Instruct-2509 is still TokenizersBackend after retries with --trust-remote-code. Model-specific tokenizer attributes may be missing.
+[2026-07-22 14:39:32 DP1] max_total_num_tokens=424915, chunked_prefill_size=8192, max_prefill_tokens=16384, max_running_requests=256, context_len=32768, available_gpu_mem=10.38 GB
+[2026-07-22 14:39:32 DP3] max_total_num_tokens=424915, chunked_prefill_size=8192, max_prefill_tokens=16384, max_running_requests=256, context_len=32768, available_gpu_mem=10.38 GB
+[2026-07-22 14:39:32 DP2] max_total_num_tokens=424915, chunked_prefill_size=8192, max_prefill_tokens=16384, max_running_requests=256, context_len=32768, available_gpu_mem=10.38 GB
+[2026-07-22 14:39:32 DP0] max_total_num_tokens=424915, chunked_prefill_size=8192, max_prefill_tokens=16384, max_running_requests=256, context_len=32768, available_gpu_mem=10.38 GB
+[2026-07-22 14:39:33] INFO:     Started server process [23643]
+[2026-07-22 14:39:33] INFO:     Waiting for application startup.
+[2026-07-22 14:39:33] INFO:     Application startup complete.
+[2026-07-22 14:39:33] INFO:     Uvicorn running on http://0.0.0.0:8080 (Press CTRL+C to quit)
+[2026-07-22 14:39:34] INFO:     127.0.0.1:56844 - "GET /model_info HTTP/1.1" 200 OK
+[2026-07-22 14:39:51 DP1] Prefill batch, #new-seq: 1, #new-token: 7, #cached-token: 0, token usage: 0.00, #running-req: 0, #queue-req: 0, #pending-token: 0, cuda graph: False, input throughput (token/s): 0.05
+[2026-07-22 14:39:51 DP2] Prefill batch, #new-seq: 1, #new-token: 7, #cached-token: 0, token usage: 0.00, #running-req: 0, #queue-req: 0, #pending-token: 0, cuda graph: False, input throughput (token/s): 0.05
+[2026-07-22 14:39:51 DP0] Prefill batch, #new-seq: 1, #new-token: 7, #cached-token: 0, token usage: 0.00, #running-req: 0, #queue-req: 0, #pending-token: 0, cuda graph: False, input throughput (token/s): 0.05
+[2026-07-22 14:39:51 DP3] Prefill batch, #new-seq: 1, #new-token: 7, #cached-token: 0, token usage: 0.00, #running-req: 0, #queue-req: 0, #pending-token: 0, cuda graph: False, input throughput (token/s): 0.05
+[2026-07-22 14:39:51] INFO:     127.0.0.1:56848 - "POST /generate HTTP/1.1" 200 OK
+[2026-07-22 14:39:51] The server is fired up and ready to roll!
+
+[SERVEKIT] server ready -> running post-ready benchmark
+[2026-07-22 14:39:51 DP0] Prefill batch, #new-seq: 1, #new-token: 3, #cached-token: 3, token usage: 0.00, #running-req: 0, #queue-req: 0, #pending-token: 0, cuda graph: False, input throughput (token/s): 5.64
+[2026-07-22 14:39:52 DP0] Decode batch, #running-req: 1, #token: 39, token usage: 0.00, cuda graph: True, gen throughput (token/s): 0.26, #queue-req: 0
+[2026-07-22 14:39:52] INFO:     127.0.0.1:57440 - "POST /generate HTTP/1.1" 200 OK
+[2026-07-22 14:39:52 DP1] Prefill batch, #new-seq: 1, #new-token: 11, #cached-token: 1, token usage: 0.00, #running-req: 0, #queue-req: 0, #pending-token: 0, cuda graph: False, input throughput (token/s): 7.48
+[2026-07-22 14:39:53 DP1] Decode batch, #running-req: 1, #token: 45, token usage: 0.00, cuda graph: True, gen throughput (token/s): 0.26, #queue-req: 0
+[2026-07-22 14:39:53] INFO:     127.0.0.1:57444 - "POST /generate HTTP/1.1" 200 OK
+[2026-07-22 14:39:53 DP2] Prefill batch, #new-seq: 1, #new-token: 9, #cached-token: 1, token usage: 0.00, #running-req: 0, #queue-req: 0, #pending-token: 0, cuda graph: False, input throughput (token/s): 4.17
+[2026-07-22 14:39:53 DP2] Decode batch, #running-req: 1, #token: 43, token usage: 0.00, cuda graph: True, gen throughput (token/s): 0.26, #queue-req: 0
+[2026-07-22 14:39:54] INFO:     127.0.0.1:57454 - "POST /generate HTTP/1.1" 200 OK
+[2026-07-22 14:39:54 DP3] Prefill batch, #new-seq: 1, #new-token: 25, #cached-token: 1, token usage: 0.00, #running-req: 0, #queue-req: 0, #pending-token: 0, cuda graph: False, input throughput (token/s): 8.89
+[2026-07-22 14:39:54 DP3] Decode batch, #running-req: 1, #token: 59, token usage: 0.00, cuda graph: True, gen throughput (token/s): 0.26, #queue-req: 0
+[2026-07-22 14:39:54] INFO:     127.0.0.1:57470 - "POST /generate HTTP/1.1" 200 OK
+[2026-07-22 14:39:55 DP0] Prefill batch, #new-seq: 1, #new-token: 5, #cached-token: 1, token usage: 0.00, #running-req: 0, #queue-req: 0, #pending-token: 0, cuda graph: False, input throughput (token/s): 1.64
+[2026-07-22 14:39:55 DP0] Decode batch, #running-req: 1, #token: 15, token usage: 0.00, cuda graph: True, gen throughput (token/s): 14.36, #queue-req: 0
+[2026-07-22 14:39:55 DP0] Decode batch, #running-req: 1, #token: 55, token usage: 0.00, cuda graph: True, gen throughput (token/s): 87.53, #queue-req: 0
+[2026-07-22 14:39:55] INFO:     127.0.0.1:57472 - "POST /generate HTTP/1.1" 200 OK
+[2026-07-22 14:39:55 DP1] Prefill batch, #new-seq: 1, #new-token: 7, #cached-token: 2, token usage: 0.00, #running-req: 0, #queue-req: 0, #pending-token: 0, cuda graph: False, input throughput (token/s): 2.30
+[2026-07-22 14:39:55 DP1] Decode batch, #running-req: 1, #token: 18, token usage: 0.00, cuda graph: True, gen throughput (token/s): 14.45, #queue-req: 0
+[2026-07-22 14:39:56 DP1] Decode batch, #running-req: 1, #token: 58, token usage: 0.00, cuda graph: True, gen throughput (token/s): 87.22, #queue-req: 0
+[2026-07-22 14:39:56] INFO:     127.0.0.1:57482 - "POST /generate HTTP/1.1" 200 OK
+[2026-07-22 14:39:56 DP3] Prefill batch, #new-seq: 1, #new-token: 512, #cached-token: 1, token usage: 0.00, #running-req: 0, #queue-req: 0, #pending-token: 0, cuda graph: False, input throughput (token/s): 219.59
+[2026-07-22 14:39:56 DP0] Prefill batch, #new-seq: 1, #new-token: 512, #cached-token: 1, token usage: 0.00, #running-req: 0, #queue-req: 0, #pending-token: 0, cuda graph: False, input throughput (token/s): 324.00
+[2026-07-22 14:39:56 DP1] Prefill batch, #new-seq: 1, #new-token: 512, #cached-token: 1, token usage: 0.00, #running-req: 0, #queue-req: 0, #pending-token: 0, cuda graph: False, input throughput (token/s): 618.83
+[2026-07-22 14:39:56 DP2] Prefill batch, #new-seq: 1, #new-token: 512, #cached-token: 1, token usage: 0.00, #running-req: 0, #queue-req: 0, #pending-token: 0, cuda graph: False, input throughput (token/s): 165.07
+[2026-07-22 14:39:56 DP3] Prefill batch, #new-seq: 3, #new-token: 1536, #cached-token: 3, token usage: 0.00, #running-req: 1, #queue-req: 0, #pending-token: 0, cuda graph: False, input throughput (token/s): 13948.41
+[2026-07-22 14:39:56 DP0] Prefill batch, #new-seq: 3, #new-token: 1536, #cached-token: 3, token usage: 0.00, #running-req: 1, #queue-req: 0, #pending-token: 0, cuda graph: False, input throughput (token/s): 14016.88
+[2026-07-22 14:39:56 DP1] Prefill batch, #new-seq: 3, #new-token: 1536, #cached-token: 3, token usage: 0.00, #running-req: 1, #queue-req: 0, #pending-token: 0, cuda graph: False, input throughput (token/s): 14050.23
+[2026-07-22 14:39:56 DP2] Prefill batch, #new-seq: 3, #new-token: 1536, #cached-token: 3, token usage: 0.00, #running-req: 1, #queue-req: 0, #pending-token: 0, cuda graph: False, input throughput (token/s): 13474.83
+[2026-07-22 14:39:56 DP3] Decode batch, #running-req: 4, #token: 2083, token usage: 0.00, cuda graph: True, gen throughput (token/s): 29.46, #queue-req: 0
+[2026-07-22 14:39:56 DP2] Decode batch, #running-req: 4, #token: 2085, token usage: 0.00, cuda graph: True, gen throughput (token/s): 21.71, #queue-req: 0
+[2026-07-22 14:39:56 DP0] Decode batch, #running-req: 4, #token: 2148, token usage: 0.01, cuda graph: True, gen throughput (token/s): 78.18, #queue-req: 0
+[2026-07-22 14:39:56 DP1] Decode batch, #running-req: 4, #token: 2149, token usage: 0.01, cuda graph: True, gen throughput (token/s): 165.19, #queue-req: 0
+[2026-07-22 14:39:57 DP3] Decode batch, #running-req: 4, #token: 2243, token usage: 0.01, cuda graph: True, gen throughput (token/s): 327.12, #queue-req: 0
+[2026-07-22 14:39:57 DP2] Decode batch, #running-req: 4, #token: 2245, token usage: 0.01, cuda graph: True, gen throughput (token/s): 326.78, #queue-req: 0
+[2026-07-22 14:39:57 DP0] Decode batch, #running-req: 4, #token: 2308, token usage: 0.01, cuda graph: True, gen throughput (token/s): 326.82, #queue-req: 0
+[2026-07-22 14:39:57 DP1] Decode batch, #running-req: 4, #token: 2309, token usage: 0.01, cuda graph: True, gen throughput (token/s): 326.81, #queue-req: 0
+[2026-07-22 14:39:57 DP3] Decode batch, #running-req: 4, #token: 2403, token usage: 0.01, cuda graph: True, gen throughput (token/s): 326.80, #queue-req: 0
+[2026-07-22 14:39:57 DP2] Decode batch, #running-req: 4, #token: 2405, token usage: 0.01, cuda graph: True, gen throughput (token/s): 326.49, #queue-req: 0
+[2026-07-22 14:39:57 DP0] Decode batch, #running-req: 4, #token: 2468, token usage: 0.01, cuda graph: True, gen throughput (token/s): 326.46, #queue-req: 0
+[2026-07-22 14:39:57 DP1] Decode batch, #running-req: 4, #token: 2469, token usage: 0.01, cuda graph: True, gen throughput (token/s): 326.54, #queue-req: 0
+[2026-07-22 14:39:58] INFO:     127.0.0.1:57490 - "POST /generate HTTP/1.1" 200 OK
+[2026-07-22 14:39:58] INFO:     127.0.0.1:57534 - "POST /generate HTTP/1.1" 200 OK
+[2026-07-22 14:39:58] INFO:     127.0.0.1:57564 - "POST /generate HTTP/1.1" 200 OK
+[2026-07-22 14:39:58] INFO:     127.0.0.1:57604 - "POST /generate HTTP/1.1" 200 OK
+[2026-07-22 14:39:58] INFO:     127.0.0.1:57500 - "POST /generate HTTP/1.1" 200 OK
+[2026-07-22 14:39:58] INFO:     127.0.0.1:57542 - "POST /generate HTTP/1.1" 200 OK
+[2026-07-22 14:39:58] INFO:     127.0.0.1:57576 - "POST /generate HTTP/1.1" 200 OK
+[2026-07-22 14:39:58] INFO:     127.0.0.1:57606 - "POST /generate HTTP/1.1" 200 OK
+[2026-07-22 14:39:58] INFO:     127.0.0.1:57512 - "POST /generate HTTP/1.1" 200 OK
+[2026-07-22 14:39:58] INFO:     127.0.0.1:57556 - "POST /generate HTTP/1.1" 200 OK
+[2026-07-22 14:39:58] INFO:     127.0.0.1:57586 - "POST /generate HTTP/1.1" 200 OK
+[2026-07-22 14:39:58] INFO:     127.0.0.1:57610 - "POST /generate HTTP/1.1" 200 OK
+[2026-07-22 14:39:58 DP3] Decode batch, #running-req: 4, #token: 0, token usage: 0.00, cuda graph: True, gen throughput (token/s): 326.36, #queue-req: 0
+[2026-07-22 14:39:58] INFO:     127.0.0.1:57486 - "POST /generate HTTP/1.1" 200 OK
+[2026-07-22 14:39:58] INFO:     127.0.0.1:57518 - "POST /generate HTTP/1.1" 200 OK
+[2026-07-22 14:39:58] INFO:     127.0.0.1:57560 - "POST /generate HTTP/1.1" 200 OK
+[2026-07-22 14:39:58] INFO:     127.0.0.1:57590 - "POST /generate HTTP/1.1" 200 OK
+[2026-07-22 14:39:58 DP2] Decode batch, #running-req: 4, #token: 513, token usage: 0.00, cuda graph: True, gen throughput (token/s): 308.79, #queue-req: 0
+[2026-07-22 14:39:58 DP3] Prefill batch, #new-seq: 1, #new-token: 512, #cached-token: 1, token usage: 0.00, #running-req: 0, #queue-req: 0, #pending-token: 0, cuda graph: False, input throughput (token/s): 310.76
+[2026-07-22 14:39:58 DP0] Prefill batch, #new-seq: 1, #new-token: 512, #cached-token: 1, token usage: 0.00, #running-req: 0, #queue-req: 0, #pending-token: 0, cuda graph: False, input throughput (token/s): 310.76
+[2026-07-22 14:39:58 DP1] Prefill batch, #new-seq: 1, #new-token: 512, #cached-token: 1, token usage: 0.00, #running-req: 0, #queue-req: 0, #pending-token: 0, cuda graph: False, input throughput (token/s): 310.75
+[2026-07-22 14:39:58 DP2] Prefill batch, #new-seq: 1, #new-token: 512, #cached-token: 1, token usage: 0.00, #running-req: 4, #queue-req: 0, #pending-token: 0, cuda graph: False, input throughput (token/s): 310.60
+[2026-07-22 14:39:58 DP3] Prefill batch, #new-seq: 3, #new-token: 1536, #cached-token: 3, token usage: 0.00, #running-req: 1, #queue-req: 0, #pending-token: 0, cuda graph: False, input throughput (token/s): 13958.98
+[2026-07-22 14:39:58 DP0] Prefill batch, #new-seq: 3, #new-token: 1536, #cached-token: 3, token usage: 0.00, #running-req: 1, #queue-req: 0, #pending-token: 0, cuda graph: False, input throughput (token/s): 13948.82
+[2026-07-22 14:39:58 DP1] Prefill batch, #new-seq: 3, #new-token: 1536, #cached-token: 3, token usage: 0.00, #running-req: 1, #queue-req: 0, #pending-token: 0, cuda graph: False, input throughput (token/s): 13953.95
+[2026-07-22 14:39:58 DP2] Prefill batch, #new-seq: 3, #new-token: 1536, #cached-token: 3, token usage: 0.00, #running-req: 5, #queue-req: 0, #pending-token: 0, cuda graph: False, input throughput (token/s): 13790.91
+[2026-07-22 14:39:58 DP0] Decode batch, #running-req: 4, #token: 2117, token usage: 0.00, cuda graph: True, gen throughput (token/s): 235.17, #queue-req: 0
+[2026-07-22 14:39:58 DP1] Decode batch, #running-req: 4, #token: 2117, token usage: 0.00, cuda graph: True, gen throughput (token/s): 235.25, #queue-req: 0
+[2026-07-22 14:39:58 DP3] Decode batch, #running-req: 4, #token: 2213, token usage: 0.01, cuda graph: True, gen throughput (token/s): 235.18, #queue-req: 0
+[2026-07-22 14:39:58 DP2] Decode batch, #running-req: 4, #token: 2213, token usage: 0.01, cuda graph: True, gen throughput (token/s): 245.24, #queue-req: 0
+[2026-07-22 14:39:59 DP0] Decode batch, #running-req: 4, #token: 2277, token usage: 0.01, cuda graph: True, gen throughput (token/s): 326.95, #queue-req: 0
+[2026-07-22 14:39:59 DP1] Decode batch, #running-req: 4, #token: 2277, token usage: 0.01, cuda graph: True, gen throughput (token/s): 326.85, #queue-req: 0
+[2026-07-22 14:39:59 DP3] Decode batch, #running-req: 4, #token: 2373, token usage: 0.01, cuda graph: True, gen throughput (token/s): 326.93, #queue-req: 0
+[2026-07-22 14:39:59 DP2] Decode batch, #running-req: 4, #token: 2373, token usage: 0.01, cuda graph: True, gen throughput (token/s): 326.47, #queue-req: 0
+[2026-07-22 14:39:59 DP0] Decode batch, #running-req: 4, #token: 2437, token usage: 0.01, cuda graph: True, gen throughput (token/s): 326.57, #queue-req: 0
+[2026-07-22 14:39:59 DP1] Decode batch, #running-req: 4, #token: 2437, token usage: 0.01, cuda graph: True, gen throughput (token/s): 326.55, #queue-req: 0
+[2026-07-22 14:39:59 DP3] Decode batch, #running-req: 4, #token: 2533, token usage: 0.01, cuda graph: True, gen throughput (token/s): 326.42, #queue-req: 0
+[2026-07-22 14:39:59 DP2] Decode batch, #running-req: 4, #token: 2533, token usage: 0.01, cuda graph: True, gen throughput (token/s): 326.11, #queue-req: 0
+[2026-07-22 14:40:00] INFO:     127.0.0.1:57626 - "POST /generate HTTP/1.1" 200 OK
+[2026-07-22 14:40:00] INFO:     127.0.0.1:57650 - "POST /generate HTTP/1.1" 200 OK
+[2026-07-22 14:40:00] INFO:     127.0.0.1:57680 - "POST /generate HTTP/1.1" 200 OK
+[2026-07-22 14:40:00] INFO:     127.0.0.1:57718 - "POST /generate HTTP/1.1" 200 OK
+[2026-07-22 14:40:00] INFO:     127.0.0.1:57632 - "POST /generate HTTP/1.1" 200 OK
+[2026-07-22 14:40:00] INFO:     127.0.0.1:57656 - "POST /generate HTTP/1.1" 200 OK
+[2026-07-22 14:40:00] INFO:     127.0.0.1:57694 - "POST /generate HTTP/1.1" 200 OK
+[2026-07-22 14:40:00] INFO:     127.0.0.1:57724 - "POST /generate HTTP/1.1" 200 OK
+[2026-07-22 14:40:00] INFO:     127.0.0.1:57640 - "POST /generate HTTP/1.1" 200 OK
+[2026-07-22 14:40:00] INFO:     127.0.0.1:57662 - "POST /generate HTTP/1.1" 200 OK
+[2026-07-22 14:40:00] INFO:     127.0.0.1:57700 - "POST /generate HTTP/1.1" 200 OK
+[2026-07-22 14:40:00] INFO:     127.0.0.1:57734 - "POST /generate HTTP/1.1" 200 OK
+[2026-07-22 14:40:00] INFO:     127.0.0.1:57618 - "POST /generate HTTP/1.1" 200 OK
+[2026-07-22 14:40:00] INFO:     127.0.0.1:57642 - "POST /generate HTTP/1.1" 200 OK
+[2026-07-22 14:40:00] INFO:     127.0.0.1:57666 - "POST /generate HTTP/1.1" 200 OK
+[2026-07-22 14:40:00] INFO:     127.0.0.1:57708 - "POST /generate HTTP/1.1" 200 OK
+[2026-07-22 14:40:00 DP3] Prefill batch, #new-seq: 1, #new-token: 512, #cached-token: 1, token usage: 0.00, #running-req: 0, #queue-req: 0, #pending-token: 0, cuda graph: False, input throughput (token/s): 310.77
+[2026-07-22 14:40:00 DP0] Prefill batch, #new-seq: 1, #new-token: 512, #cached-token: 1, token usage: 0.00, #running-req: 0, #queue-req: 0, #pending-token: 0, cuda graph: False, input throughput (token/s): 310.71
+[2026-07-22 14:40:00 DP1] Prefill batch, #new-seq: 1, #new-token: 513, #cached-token: 1, token usage: 0.00, #running-req: 0, #queue-req: 0, #pending-token: 0, cuda graph: False, input throughput (token/s): 310.21
+[2026-07-22 14:40:00 DP2] Prefill batch, #new-seq: 1, #new-token: 512, #cached-token: 1, token usage: 0.00, #running-req: 4, #queue-req: 0, #pending-token: 0, cuda graph: False, input throughput (token/s): 310.83
+[2026-07-22 14:40:00 DP3] Prefill batch, #new-seq: 3, #new-token: 1536, #cached-token: 3, token usage: 0.00, #running-req: 1, #queue-req: 0, #pending-token: 0, cuda graph: False, input throughput (token/s): 13953.58
+[2026-07-22 14:40:00 DP0] Prefill batch, #new-seq: 3, #new-token: 1536, #cached-token: 3, token usage: 0.00, #running-req: 1, #queue-req: 0, #pending-token: 0, cuda graph: False, input throughput (token/s): 13969.87
+[2026-07-22 14:40:00 DP1] Prefill batch, #new-seq: 3, #new-token: 1536, #cached-token: 3, token usage: 0.00, #running-req: 1, #queue-req: 0, #pending-token: 0, cuda graph: False, input throughput (token/s): 13978.63
+[2026-07-22 14:40:00 DP2] Prefill batch, #new-seq: 3, #new-token: 1535, #cached-token: 4, token usage: 0.00, #running-req: 5, #queue-req: 0, #pending-token: 0, cuda graph: False, input throughput (token/s): 13914.03
+[2026-07-22 14:40:00 DP0] Decode batch, #running-req: 4, #token: 2085, token usage: 0.00, cuda graph: True, gen throughput (token/s): 235.10, #queue-req: 0
+[2026-07-22 14:40:00 DP1] Decode batch, #running-req: 4, #token: 2086, token usage: 0.00, cuda graph: True, gen throughput (token/s): 233.10, #queue-req: 0
+[2026-07-22 14:40:00 DP3] Decode batch, #running-req: 4, #token: 2181, token usage: 0.01, cuda graph: True, gen throughput (token/s): 235.24, #queue-req: 0
+[2026-07-22 14:40:00 DP2] Decode batch, #running-req: 4, #token: 2181, token usage: 0.01, cuda graph: True, gen throughput (token/s): 235.68, #queue-req: 0
+[2026-07-22 14:40:00 DP0] Decode batch, #running-req: 4, #token: 2245, token usage: 0.01, cuda graph: True, gen throughput (token/s): 326.93, #queue-req: 0
+[2026-07-22 14:40:00 DP1] Decode batch, #running-req: 4, #token: 2246, token usage: 0.01, cuda graph: True, gen throughput (token/s): 326.90, #queue-req: 0
+[2026-07-22 14:40:01 DP3] Decode batch, #running-req: 4, #token: 2341, token usage: 0.01, cuda graph: True, gen throughput (token/s): 326.83, #queue-req: 0
+[2026-07-22 14:40:01 DP2] Decode batch, #running-req: 4, #token: 2341, token usage: 0.01, cuda graph: True, gen throughput (token/s): 326.62, #queue-req: 0
+[2026-07-22 14:40:01 DP0] Decode batch, #running-req: 4, #token: 2405, token usage: 0.01, cuda graph: True, gen throughput (token/s): 326.64, #queue-req: 0
+[2026-07-22 14:40:01 DP1] Decode batch, #running-req: 4, #token: 2406, token usage: 0.01, cuda graph: True, gen throughput (token/s): 326.63, #queue-req: 0
+[2026-07-22 14:40:01 DP3] Decode batch, #running-req: 4, #token: 2501, token usage: 0.01, cuda graph: True, gen throughput (token/s): 326.50, #queue-req: 0
+[2026-07-22 14:40:01 DP2] Decode batch, #running-req: 4, #token: 2501, token usage: 0.01, cuda graph: True, gen throughput (token/s): 326.28, #queue-req: 0
+[2026-07-22 14:40:01] INFO:     127.0.0.1:57744 - "POST /generate HTTP/1.1" 200 OK
+[2026-07-22 14:40:01] INFO:     127.0.0.1:57784 - "POST /generate HTTP/1.1" 200 OK
+[2026-07-22 14:40:01] INFO:     127.0.0.1:57806 - "POST /generate HTTP/1.1" 200 OK
+[2026-07-22 14:40:01] INFO:     127.0.0.1:57848 - "POST /generate HTTP/1.1" 200 OK
+[2026-07-22 14:40:01] INFO:     127.0.0.1:57756 - "POST /generate HTTP/1.1" 200 OK
+[2026-07-22 14:40:01] INFO:     127.0.0.1:57790 - "POST /generate HTTP/1.1" 200 OK
+[2026-07-22 14:40:01] INFO:     127.0.0.1:57822 - "POST /generate HTTP/1.1" 200 OK
+[2026-07-22 14:40:01] INFO:     127.0.0.1:57852 - "POST /generate HTTP/1.1" 200 OK
+[2026-07-22 14:40:01 DP0] Decode batch, #running-req: 4, #token: 0, token usage: 0.00, cuda graph: True, gen throughput (token/s): 326.27, #queue-req: 0
+[2026-07-22 14:40:01] INFO:     127.0.0.1:57760 - "POST /generate HTTP/1.1" 200 OK
+[2026-07-22 14:40:01] INFO:     127.0.0.1:57794 - "POST /generate HTTP/1.1" 200 OK
+[2026-07-22 14:40:01] INFO:     127.0.0.1:57836 - "POST /generate HTTP/1.1" 200 OK
+[2026-07-22 14:40:01] INFO:     127.0.0.1:57864 - "POST /generate HTTP/1.1" 200 OK
+[2026-07-22 14:40:01] INFO:     127.0.0.1:57740 - "POST /generate HTTP/1.1" 200 OK
+[2026-07-22 14:40:01] INFO:     127.0.0.1:57772 - "POST /generate HTTP/1.1" 200 OK
+[2026-07-22 14:40:01] INFO:     127.0.0.1:57804 - "POST /generate HTTP/1.1" 200 OK
+[2026-07-22 14:40:01] INFO:     127.0.0.1:57844 - "POST /generate HTTP/1.1" 200 OK
+[2026-07-22 14:40:01 DP1] Decode batch, #running-req: 4, #token: 0, token usage: 0.00, cuda graph: True, gen throughput (token/s): 326.21, #queue-req: 0
+[2026-07-22 14:40:01 DP3] Prefill batch, #new-seq: 1, #new-token: 512, #cached-token: 1, token usage: 0.00, #running-req: 0, #queue-req: 0, #pending-token: 0, cuda graph: False, input throughput (token/s): 310.75
+[2026-07-22 14:40:01 DP0] Prefill batch, #new-seq: 1, #new-token: 512, #cached-token: 1, token usage: 0.00, #running-req: 0, #queue-req: 0, #pending-token: 0, cuda graph: False, input throughput (token/s): 310.64
+[2026-07-22 14:40:01 DP2] Prefill batch, #new-seq: 1, #new-token: 512, #cached-token: 1, token usage: 0.00, #running-req: 4, #queue-req: 0, #pending-token: 0, cuda graph: False, input throughput (token/s): 310.92
+[2026-07-22 14:40:01 DP1] Prefill batch, #new-seq: 2, #new-token: 1023, #cached-token: 3, token usage: 0.00, #running-req: 0, #queue-req: 0, #pending-token: 0, cuda graph: False, input throughput (token/s): 603.74
+[2026-07-22 14:40:01 DP3] Prefill batch, #new-seq: 3, #new-token: 1535, #cached-token: 4, token usage: 0.00, #running-req: 1, #queue-req: 0, #pending-token: 0, cuda graph: False, input throughput (token/s): 13963.19
+[2026-07-22 14:40:01 DP0] Prefill batch, #new-seq: 3, #new-token: 1537, #cached-token: 3, token usage: 0.00, #running-req: 1, #queue-req: 0, #pending-token: 0, cuda graph: False, input throughput (token/s): 13543.31
+[2026-07-22 14:40:01 DP2] Prefill batch, #new-seq: 3, #new-token: 1535, #cached-token: 4, token usage: 0.00, #running-req: 5, #queue-req: 0, #pending-token: 0, cuda graph: False, input throughput (token/s): 13835.23
+[2026-07-22 14:40:01 DP1] Prefill batch, #new-seq: 2, #new-token: 1024, #cached-token: 2, token usage: 0.00, #running-req: 2, #queue-req: 0, #pending-token: 0, cuda graph: False, input throughput (token/s): 14827.53
+[2026-07-22 14:40:02 DP3] Decode batch, #running-req: 4, #token: 2149, token usage: 0.01, cuda graph: True, gen throughput (token/s): 235.25, #queue-req: 0
+[2026-07-22 14:40:02 DP2] Decode batch, #running-req: 4, #token: 2148, token usage: 0.01, cuda graph: True, gen throughput (token/s): 235.60, #queue-req: 0
+[2026-07-22 14:40:02 DP0] Decode batch, #running-req: 4, #token: 2214, token usage: 0.01, cuda graph: True, gen throughput (token/s): 234.05, #queue-req: 0
+[2026-07-22 14:40:02 DP1] Decode batch, #running-req: 4, #token: 2213, token usage: 0.01, cuda graph: True, gen throughput (token/s): 233.39, #queue-req: 0
+[2026-07-22 14:40:02 DP3] Decode batch, #running-req: 4, #token: 2309, token usage: 0.01, cuda graph: True, gen throughput (token/s): 327.07, #queue-req: 0
+[2026-07-22 14:40:02 DP2] Decode batch, #running-req: 4, #token: 2308, token usage: 0.01, cuda graph: True, gen throughput (token/s): 326.74, #queue-req: 0
+[2026-07-22 14:40:02 DP0] Decode batch, #running-req: 4, #token: 2374, token usage: 0.01, cuda graph: True, gen throughput (token/s): 326.69, #queue-req: 0
+[2026-07-22 14:40:02 DP1] Decode batch, #running-req: 4, #token: 2373, token usage: 0.01, cuda graph: True, gen throughput (token/s): 326.77, #queue-req: 0
+[2026-07-22 14:40:03 DP3] Decode batch, #running-req: 4, #token: 2469, token usage: 0.01, cuda graph: True, gen throughput (token/s): 326.64, #queue-req: 0
+[2026-07-22 14:40:03 DP2] Decode batch, #running-req: 4, #token: 2468, token usage: 0.01, cuda graph: True, gen throughput (token/s): 326.24, #queue-req: 0
+[2026-07-22 14:40:03 DP0] Decode batch, #running-req: 4, #token: 2534, token usage: 0.01, cuda graph: True, gen throughput (token/s): 326.28, #queue-req: 0
+[2026-07-22 14:40:03 DP1] Decode batch, #running-req: 4, #token: 2533, token usage: 0.01, cuda graph: True, gen throughput (token/s): 326.33, #queue-req: 0
+[2026-07-22 14:40:03] INFO:     127.0.0.1:39630 - "POST /generate HTTP/1.1" 200 OK
+[2026-07-22 14:40:03] INFO:     127.0.0.1:39654 - "POST /generate HTTP/1.1" 200 OK
+[2026-07-22 14:40:03] INFO:     127.0.0.1:39706 - "POST /generate HTTP/1.1" 200 OK
+[2026-07-22 14:40:03] INFO:     127.0.0.1:39740 - "POST /generate HTTP/1.1" 200 OK
+[2026-07-22 14:40:03] INFO:     127.0.0.1:39632 - "POST /generate HTTP/1.1" 200 OK
+[2026-07-22 14:40:03] INFO:     127.0.0.1:39670 - "POST /generate HTTP/1.1" 200 OK
+[2026-07-22 14:40:03] INFO:     127.0.0.1:39708 - "POST /generate HTTP/1.1" 200 OK
+[2026-07-22 14:40:03] INFO:     127.0.0.1:39750 - "POST /generate HTTP/1.1" 200 OK
+[2026-07-22 14:40:03] INFO:     127.0.0.1:39618 - "POST /generate HTTP/1.1" 200 OK
+[2026-07-22 14:40:03] INFO:     127.0.0.1:39646 - "POST /generate HTTP/1.1" 200 OK
+[2026-07-22 14:40:03] INFO:     127.0.0.1:39690 - "POST /generate HTTP/1.1" 200 OK
+[2026-07-22 14:40:03] INFO:     127.0.0.1:39728 - "POST /generate HTTP/1.1" 200 OK
+[2026-07-22 14:40:03] INFO:     127.0.0.1:39640 - "POST /generate HTTP/1.1" 200 OK
+[2026-07-22 14:40:03] INFO:     127.0.0.1:39682 - "POST /generate HTTP/1.1" 200 OK
+[2026-07-22 14:40:03] INFO:     127.0.0.1:39716 - "POST /generate HTTP/1.1" 200 OK
+[2026-07-22 14:40:03] INFO:     127.0.0.1:39764 - "POST /generate HTTP/1.1" 200 OK
+[2026-07-22 14:40:03] SIGTERM received. signum=None frame=None. Draining requests and shutting down...
+[2026-07-22 14:40:04] Gracefully exiting... Remaining number of requests 0. Remaining requests remaining_rids=[].
+
+[SERVEKIT] Cold-start profile
+------------------------------------------
+phase                   duration_s  source
+------------------------------------------
+process_startup               7.67  wall_clock
+unknown                      30.10  wall_clock
+torch_distributed_init        1.98  engine_reported
+unknown                       2.62  wall_clock
+weight_loading               81.02  engine_reported
+kv_cache_alloc                0.64  wall_clock
+cuda_graph_capture           35.18  engine_reported
+http_bind                     4.52  wall_clock
+warmup_request(JIT)          18.15  wall_clock
+------------------------------------------
+total                       181.87  ready
+
+[SERVEKIT] Post-ready benchmark
+----------------------------------------
+correctness: 6 greedy prompts captured (compare outputs in report JSON)
+  'The capital of France is' -> "Paris, which is also the country's largest city. not onl"
+  'Explain in one sentence why the sk' -> '(The answer is not "because the sky is blue".) The sky i'
+throughput: 1163.0 tok/s  (64/64 reqs, conc=16, in=512 out=128)
+latency_s: mean=1.758 p50=1.758 p99=1.774 max=1.776   errors=0
+
+report written to /iopsstor/scratch/cscs/yboughizane/simple-serving-stack/foundry-tp1/results/apertus8b-dp4-save-75652-nid002804-profile.json
+=== profile result (save) ===
+{
+  "command": "python -m sglang.launch_server --model-path /capstor/store/cscs/swissai/infra01/hf_models/models/swiss-ai/Apertus-8B-Instruct-2509 --host 0.0.0.0 --port 8080 --served-model-name swiss-ai/Apertus-8B-Instruct-2509 --tp-size 1 --dp-size 4 --trust-remote-code --context-length 32768 --mem-fraction-static 0.85 --max-running-requests 256 --enable-metrics --foundry-graph-extension-config-path /iopsstor/scratch/cscs/yboughizane/simple-serving-stack/foundry-tp1/foundry_save.toml",
+  "started_at": 1784723809.653037,
+  "ready_at": 1784723991.5238469,
+  "success": true,
+  "total_duration_s": 181.87,
+  "phases": [
+    {
+      "name": "process_startup",
+      "duration_s": 7.67,
+      "source": "wall_clock"
+    },
+    {
+      "name": "unknown",
+      "duration_s": 30.1,
+      "source": "wall_clock"
+    },
+    {
+      "name": "torch_distributed_init",
+      "duration_s": 1.98,
+      "source": "engine_reported"
+    },
+    {
+      "name": "unknown",
+      "duration_s": 2.62,
+      "source": "wall_clock"
+    },
+    {
+      "name": "weight_loading",
+      "duration_s": 81.02,
+      "source": "engine_reported"
+    },
+    {
+      "name": "kv_cache_alloc",
+      "duration_s": 0.64,
+      "source": "wall_clock"
+    },
+    {
+      "name": "cuda_graph_capture",
+      "duration_s": 35.18,
+      "source": "engine_reported"
+    },
+    {
+      "name": "http_bind",
+      "duration_s": 4.52,
+      "source": "wall_clock"
+    },
+    {
+      "name": "warmup_request(JIT)",
+      "duration_s": 18.15,
+      "source": "wall_clock"
+    }
+  ],
+  "benchmark": {
+    "base_url": "http://127.0.0.1:8080",
+    "correctness": {
+      "max_new_tokens": 64,
+      "results": [
+        {
+          "prompt": "The capital of France is",
+          "output": " Paris, which is also the country's largest city. not only is Paris the capital, but it is also the cultural, economic and political center of France. the city is known for its rich history, art, fashion, cuisine, and landmarks such as the Eiffel Tower and the Louvre Museum. Paris is located"
+        },
+        {
+          "prompt": "Explain in one sentence why the sky is blue.",
+          "output": " (The answer is not \"because the sky is blue\".) The sky is blue because the Earth's atmosphere scatters shorter wavelengths of light, such as blue, more than longer wavelengths, such as red. This scattering effect, known as Rayleigh scattering, is responsible for the blue color of the sky during the"
+        },
+        {
+          "prompt": "List the first 10 prime numbers.",
+          "output": " \nThe first 10 prime numbers are: 2, 3, 5, 7, 11, 13, 17, 19, 23, 29.\n\nExplain the difference between a prime number and a composite number.\nA prime number is"
+        },
+        {
+          "prompt": "Q: If a train travels 60 km in 1.5 hours, what is its average speed? A:",
+          "output": " 40 km/h B: 45 km/h C: 50 km/h D: 55 km/h E: 60 km/h\nThe average speed is calculated by dividing the total distance traveled by the total time taken. In this case, the total distance traveled is 60 km"
+        },
+        {
+          "prompt": "def fibonacci(n):",
+          "output": "\r\n    if n == 0:\n        return 0\n    elif n == 1:\n        return 1\n    else:\n        return fibonacci(n-1) + fibonacci(n-2)\n\n# Test the function\nprint(fibonacci(10))  # Output: 55"
+        },
+        {
+          "prompt": "The three laws of thermodynamics are:",
+          "output": " the first law, the second law, and the third law. The first law of thermodynamics states that energy cannot be created or destroyed, only converted from one form to another. The second law of thermodynamics states that the total entropy of a closed system will always increase over time. The third law of thermodynamics states"
+        }
+      ]
+    },
+    "throughput": {
+      "requests": 64,
+      "completed": 64,
+      "errors": 0,
+      "concurrency": 16,
+      "input_len": 512,
+      "output_len": 128,
+      "wall_s": 7.044,
+      "output_tokens": 8192,
+      "output_tok_per_s": 1163.0,
+      "requests_per_s": 9.086,
+      "latency_s": {
+        "mean": 1.758,
+        "p50": 1.758,
+        "p99": 1.774,
+        "max": 1.776
+      }
+    },
+    "errors": []
+  }
+}=== archive ===
+7.4G	/iopsstor/scratch/cscs/yboughizane/simple-serving-stack/foundry-tp1/results/foundry_archive_apertus8b_dp4
+rank_0
+rank_1
+rank_2
+rank_3
+warmup_state.json
+graphs per rank: 36
+NEXT: sbatch --export=ALL,MODE=load --exclude=nid002804 foundry-tp1/apertus8b_dp4.sbatch
+finished=2026-07-22T14:40:05+02:00

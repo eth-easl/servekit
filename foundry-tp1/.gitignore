@@ -1,0 +1,7 @@
+# upstream clone, fetched by build_image.sh
+foundry/
+__pycache__/
+# built image (~20G)
+*.sqsh
+# graph archive (~4G) and run outputs
+results/foundry_archive_*/
