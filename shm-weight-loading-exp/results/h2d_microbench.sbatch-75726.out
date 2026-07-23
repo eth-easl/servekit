@@ -1,0 +1,168 @@
+job=75726 node=nid002281 tensors=16
+started=2026-07-23T03:49:11+02:00
+=== /dev/shm capacity ===
+Filesystem      Size  Used Avail Use% Mounted on
+tmpfs           353G   40M  353G   1% /dev/shm
+=== tmpfs mount options (is it huge=?) ===
+tmpfs /dev/shm tmpfs rw,nodev,relatime,size=369160136k,mode=755,inode64 0 0
+tmpfs /dev/shm tmpfs rw,nosuid,nodev,noexec,relatime,size=369160136k,mode=755,inode64 0 0
+
+############ 1 process (clean ceiling) ############
+[solo] gpu=0 threads=64 file=/dev/shm/h2dbench.bin 7.5 GB (16 x 470 MB tensors, slice=117 MB)
+[solo]   contig   pageable    7.93 GB/s   (0.24s)
+[solo]   contig   pinned     12.02 GB/s   (0.16s)
+[solo]   contig   pinned2x   11.30 GB/s   (0.17s)
+[solo]   contig   gather     21.57 GB/s   (0.09s)
+[solo]   contig   dma_only   26.73 GB/s   (0.07s)
+[solo]   contig   batch       9.16 GB/s   (0.21s)
+[solo]   contig   batch_mt    8.19 GB/s   (0.23s)
+[solo]   strided  pageable    6.28 GB/s   (0.30s)
+[solo]   strided  pinned     12.33 GB/s   (0.15s)
+[solo]   strided  pinned2x   10.43 GB/s   (0.18s)
+[solo]   strided  gather     19.46 GB/s   (0.10s)
+[solo]   strided  dma_only   26.66 GB/s   (0.07s)
+[solo]   strided  batch       8.76 GB/s   (0.21s)
+[solo]   strided  batch_mt    8.09 GB/s   (0.23s)
+[solo]   cudaHostRegister   4.50 GB/s  -> 141 GB would take   31.3s
+[solo] SUMMARY strided/pageable (today) = 6.28 GB/s; best = 26.73 GB/s; speedup = 4.3x
+
+############ 4 processes, DEFAULT threads (oversubscribed) ############
+[d0] gpu=0 threads=64 file=/dev/shm/h2dbench.bin 7.5 GB (16 x 470 MB tensors, slice=117 MB)
+[d3] gpu=3 threads=64 file=/dev/shm/h2dbench.bin 7.5 GB (16 x 470 MB tensors, slice=117 MB)
+[d1] gpu=1 threads=64 file=/dev/shm/h2dbench.bin 7.5 GB (16 x 470 MB tensors, slice=117 MB)
+[d2] gpu=2 threads=64 file=/dev/shm/h2dbench.bin 7.5 GB (16 x 470 MB tensors, slice=117 MB)
+[d0]   contig   pageable    5.48 GB/s   (0.34s)
+[d3]   contig   pageable    5.43 GB/s   (0.35s)
+[d2]   contig   pageable    5.73 GB/s   (0.33s)
+[d1]   contig   pageable    5.38 GB/s   (0.35s)
+[d0]   contig   pinned      3.36 GB/s   (0.56s)
+[d1]   contig   pinned      2.39 GB/s   (0.79s)
+[d3]   contig   pinned      2.14 GB/s   (0.88s)
+[d2]   contig   pinned      1.99 GB/s   (0.94s)
+[d0]   contig   pinned2x    3.32 GB/s   (0.57s)
+[d1]   contig   pinned2x    2.33 GB/s   (0.81s)
+[d3]   contig   pinned2x    2.58 GB/s   (0.73s)
+[d2]   contig   pinned2x    2.66 GB/s   (0.71s)
+[d0]   contig   gather      2.45 GB/s   (0.77s)
+[d0]   contig   dma_only   20.62 GB/s   (0.09s)
+[d1]   contig   gather      2.67 GB/s   (0.70s)
+[d3]   contig   gather      2.65 GB/s   (0.71s)
+[d2]   contig   gather      2.68 GB/s   (0.70s)
+[d2]   contig   dma_only   20.41 GB/s   (0.09s)
+[d1]   contig   dma_only   14.01 GB/s   (0.13s)
+[d3]   contig   dma_only   14.14 GB/s   (0.13s)
+[d0]   contig   batch       6.04 GB/s   (0.31s)
+[d0]   contig   batch_mt    7.02 GB/s   (0.27s)
+[d2]   contig   batch       2.09 GB/s   (0.90s)
+[d3]   contig   batch       2.02 GB/s   (0.93s)
+[d1]   contig   batch       2.01 GB/s   (0.93s)
+[d2]   contig   batch_mt    5.91 GB/s   (0.32s)
+[d1]   contig   batch_mt    3.32 GB/s   (0.57s)
+[d3]   contig   batch_mt    3.10 GB/s   (0.61s)
+[d0]   strided  pageable    1.95 GB/s   (0.97s)
+[d2]   strided  pageable    2.30 GB/s   (0.82s)
+[d0]   strided  pinned      2.83 GB/s   (0.66s)
+[d3]   strided  pageable    2.02 GB/s   (0.93s)
+[d1]   strided  pageable    1.92 GB/s   (0.98s)
+[d2]   strided  pinned      3.11 GB/s   (0.60s)
+[d0]   strided  pinned2x    3.05 GB/s   (0.62s)
+[d3]   strided  pinned      2.83 GB/s   (0.66s)
+[d1]   strided  pinned      3.17 GB/s   (0.59s)
+[d2]   strided  pinned2x    2.99 GB/s   (0.63s)
+[d0]   strided  gather      3.16 GB/s   (0.59s)
+[d0]   strided  dma_only   21.93 GB/s   (0.09s)
+[d3]   strided  pinned2x    2.76 GB/s   (0.68s)
+[d1]   strided  pinned2x    3.05 GB/s   (0.62s)
+[d2]   strided  gather      3.25 GB/s   (0.58s)
+[d2]   strided  dma_only   21.97 GB/s   (0.09s)
+[d0]   strided  batch       2.69 GB/s   (0.70s)
+[d3]   strided  gather      2.88 GB/s   (0.65s)
+[d1]   strided  gather      2.89 GB/s   (0.65s)
+[d3]   strided  dma_only   10.20 GB/s   (0.18s)
+[d1]   strided  dma_only   19.68 GB/s   (0.10s)
+[d2]   strided  batch       4.17 GB/s   (0.45s)
+[d0]   strided  batch_mt    5.09 GB/s   (0.37s)
+[d3]   strided  batch       3.36 GB/s   (0.56s)
+[d1]   strided  batch       3.30 GB/s   (0.57s)
+[d2]   strided  batch_mt    3.99 GB/s   (0.47s)
+[d0]   cudaHostRegister   2.89 GB/s  -> 141 GB would take   48.8s
+[d0] SUMMARY strided/pageable (today) = 1.95 GB/s; best = 21.93 GB/s; speedup = 11.3x
+[d3]   strided  batch_mt    6.68 GB/s   (0.28s)
+[d1]   strided  batch_mt    4.70 GB/s   (0.40s)
+[d2]   cudaHostRegister   3.83 GB/s  -> 141 GB would take   36.9s
+[d2] SUMMARY strided/pageable (today) = 2.30 GB/s; best = 21.97 GB/s; speedup = 9.5x
+[d3]   cudaHostRegister   2.59 GB/s  -> 141 GB would take   54.4s
+[d3] SUMMARY strided/pageable (today) = 2.02 GB/s; best = 14.14 GB/s; speedup = 7.0x
+[d1]   cudaHostRegister   3.02 GB/s  -> 141 GB would take   46.7s
+[d1] SUMMARY strided/pageable (today) = 1.92 GB/s; best = 19.68 GB/s; speedup = 10.3x
+
+############ 4 processes, 16 threads each (64 cores / 4 procs) ############
+[t0] gpu=0 threads=16 file=/dev/shm/h2dbench.bin 7.5 GB (16 x 470 MB tensors, slice=117 MB)
+[t3] gpu=3 threads=16 file=/dev/shm/h2dbench.bin 7.5 GB (16 x 470 MB tensors, slice=117 MB)
+[t1] gpu=1 threads=16 file=/dev/shm/h2dbench.bin 7.5 GB (16 x 470 MB tensors, slice=117 MB)
+[t2] gpu=2 threads=16 file=/dev/shm/h2dbench.bin 7.5 GB (16 x 470 MB tensors, slice=117 MB)
+[t0]   contig   pageable    6.09 GB/s   (0.31s)
+[t3]   contig   pageable    6.68 GB/s   (0.28s)
+[t1]   contig   pageable    6.47 GB/s   (0.29s)
+[t2]   contig   pageable    5.95 GB/s   (0.32s)
+[t0]   contig   pinned     15.22 GB/s   (0.12s)
+[t3]   contig   pinned      7.03 GB/s   (0.27s)
+[t1]   contig   pinned      5.93 GB/s   (0.32s)
+[t2]   contig   pinned      6.40 GB/s   (0.29s)
+[t0]   contig   pinned2x   12.36 GB/s   (0.15s)
+[t3]   contig   pinned2x    7.42 GB/s   (0.25s)
+[t0]   contig   gather      5.08 GB/s   (0.37s)
+[t2]   contig   pinned2x    5.25 GB/s   (0.36s)
+[t1]   contig   pinned2x    4.77 GB/s   (0.39s)
+[t3]   contig   gather     11.19 GB/s   (0.17s)
+[t0]   contig   dma_only   15.28 GB/s   (0.12s)
+[t3]   contig   dma_only   21.04 GB/s   (0.09s)
+[t2]   contig   gather      9.45 GB/s   (0.20s)
+[t1]   contig   gather      9.72 GB/s   (0.19s)
+[t2]   contig   dma_only   23.84 GB/s   (0.08s)
+[t1]   contig   dma_only   24.43 GB/s   (0.08s)
+[t3]   contig   batch       4.85 GB/s   (0.39s)
+[t0]   contig   batch       4.69 GB/s   (0.40s)
+[t1]   contig   batch       8.66 GB/s   (0.22s)
+[t3]   contig   batch_mt    3.53 GB/s   (0.53s)
+[t0]   contig   batch_mt    3.48 GB/s   (0.54s)
+[t2]   contig   batch       2.81 GB/s   (0.67s)
+[t1]   contig   batch_mt    4.89 GB/s   (0.38s)
+[t2]   contig   batch_mt    5.89 GB/s   (0.32s)
+[t3]   strided  pageable    2.01 GB/s   (0.93s)
+[t0]   strided  pageable    2.02 GB/s   (0.93s)
+[t1]   strided  pageable    1.99 GB/s   (0.94s)
+[t2]   strided  pageable    2.90 GB/s   (0.65s)
+[t3]   strided  pinned      7.02 GB/s   (0.27s)
+[t0]   strided  pinned      6.86 GB/s   (0.27s)
+[t1]   strided  pinned      6.77 GB/s   (0.28s)
+[t2]   strided  pinned     10.15 GB/s   (0.19s)
+[t3]   strided  pinned2x    7.31 GB/s   (0.26s)
+[t0]   strided  pinned2x    7.98 GB/s   (0.24s)
+[t2]   strided  pinned2x    6.65 GB/s   (0.28s)
+[t1]   strided  pinned2x    6.43 GB/s   (0.29s)
+[t3]   strided  gather      7.88 GB/s   (0.24s)
+[t0]   strided  gather     13.67 GB/s   (0.14s)
+[t3]   strided  dma_only   21.76 GB/s   (0.09s)
+[t0]   strided  dma_only   24.00 GB/s   (0.08s)
+[t2]   strided  gather     12.64 GB/s   (0.15s)
+[t2]   strided  dma_only   22.96 GB/s   (0.08s)
+[t1]   strided  gather     10.46 GB/s   (0.18s)
+[t1]   strided  dma_only   26.60 GB/s   (0.07s)
+[t3]   strided  batch       4.98 GB/s   (0.38s)
+[t0]   strided  batch       4.12 GB/s   (0.46s)
+[t3]   strided  batch_mt    6.10 GB/s   (0.31s)
+[t2]   strided  batch       2.88 GB/s   (0.65s)
+[t1]   strided  batch       3.51 GB/s   (0.53s)
+[t0]   strided  batch_mt    7.31 GB/s   (0.26s)
+[t2]   strided  batch_mt    7.11 GB/s   (0.26s)
+[t1]   strided  batch_mt    8.63 GB/s   (0.22s)
+[t3]   cudaHostRegister   3.50 GB/s  -> 141 GB would take   40.2s
+[t3] SUMMARY strided/pageable (today) = 2.01 GB/s; best = 21.76 GB/s; speedup = 10.8x
+[t0]   cudaHostRegister   4.34 GB/s  -> 141 GB would take   32.5s
+[t0] SUMMARY strided/pageable (today) = 2.02 GB/s; best = 24.00 GB/s; speedup = 11.9x
+[t2]   cudaHostRegister   4.33 GB/s  -> 141 GB would take   32.6s
+[t2] SUMMARY strided/pageable (today) = 2.90 GB/s; best = 23.84 GB/s; speedup = 8.2x
+[t1]   cudaHostRegister   4.43 GB/s  -> 141 GB would take   31.9s
+[t1] SUMMARY strided/pageable (today) = 1.99 GB/s; best = 26.60 GB/s; speedup = 13.4x
+finished=2026-07-23T03:50:10+02:00

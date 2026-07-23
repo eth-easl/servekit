@@ -1,0 +1,2 @@
+staging(sliced): /capstor/store/cscs/swissai/infra01/hf_models/models/meta-llama/Llama-3.1-70B-Instruct -> /dev/shm/llama70b (files=40, slices/file=64, bs=16M, direct read, buffered write)
+staged_files=40 staged_bytes=141116758507 slices=64 read_mode=direct readers=1744 stage_wall_s=12.17 stage_GBps=11.60
