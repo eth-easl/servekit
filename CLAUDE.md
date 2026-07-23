@@ -29,3 +29,11 @@ for models deployed on the SwissAI serving platform, running on CSCS
    wait). **Follow-up needed:** this doesn't yet account for JIT/lazy-init
    effects that only trigger on the first real inference call (as opposed
    to warmup) — revisit once that's measured.
+
+## Deferred ideas (not investigated yet)
+
+- **Process/import startup** (`process_startup` + `tp_worker_spawn`, ~21% of
+  post-load-fix cold start, ~38-40s): profile TP worker startup with py-spy
+  to confirm/quantify the redundant-import hypothesis — each TP rank
+  re-importing the full torch/transformers stack via `multiprocessing.spawn`
+  rather than fork — before deciding on a fix.
