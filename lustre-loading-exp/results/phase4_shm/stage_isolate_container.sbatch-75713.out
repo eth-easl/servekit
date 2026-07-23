@@ -1,0 +1,47 @@
+job=75713 node=nid002280 slices=64
+started=2026-07-22T22:18:59+02:00
+node CPUs: 128 (batch step, unbound under --exclusive)
+
+=== LEG: batch_bare (launch=batch container=no cpus=0) ===
+    cpuset: 0-127
+    nproc:  128
+    shm:    tmpfs           353G   40M  353G   1% /dev/shm
+    mount:  tmpfs /dev/shm tmpfs rw,nodev,relatime,size=369160116k,mode=755,inode64 0 0
+  staging(sliced): /capstor/store/cscs/swissai/infra01/hf_models/models/meta-llama/Llama-3.1-70B-Instruct -> /dev/shm/llama70b (files=40, slices/file=64, bs=16M, direct read, buffered write)
+  staged_files=40 staged_bytes=141116758507 slices=64 read_mode=direct readers=1744 stage_wall_s=6.87 stage_GBps=20.54
+
+=== LEG: srun_bare_64 (launch=srun container=no cpus=64) ===
+    cpuset: 0-127
+    nproc:  64
+    shm:    tmpfs           353G   40M  353G   1% /dev/shm
+    mount:  tmpfs /dev/shm tmpfs rw,nodev,relatime,size=369160116k,mode=755,inode64 0 0
+  staging(sliced): /capstor/store/cscs/swissai/infra01/hf_models/models/meta-llama/Llama-3.1-70B-Instruct -> /dev/shm/llama70b (files=40, slices/file=64, bs=16M, direct read, buffered write)
+  staged_files=40 staged_bytes=141116758507 slices=64 read_mode=direct readers=1744 stage_wall_s=11.69 stage_GBps=12.07
+
+=== LEG: srun_ctr_64 (launch=srun container=yes cpus=64) ===
+    cpuset: 0-127
+    nproc:  64
+    shm:    tmpfs           353G   40M  353G   1% /dev/shm
+    mount:  tmpfs /dev/shm tmpfs rw,nodev,relatime,size=369160116k,mode=755,inode64 0 0
+  tmpfs /dev/shm tmpfs rw,nosuid,nodev,noexec,relatime,size=369160116k,mode=755,inode64 0 0
+  staging(sliced): /capstor/store/cscs/swissai/infra01/hf_models/models/meta-llama/Llama-3.1-70B-Instruct -> /dev/shm/llama70b (files=40, slices/file=64, bs=16M, direct read, buffered write)
+  staged_files=40 staged_bytes=141116758507 slices=64 read_mode=direct readers=1744 stage_wall_s=12.18 stage_GBps=11.59
+
+=== LEG: srun_ctr_128 (launch=srun container=yes cpus=128) ===
+  srun: Job step's --cpus-per-task value exceeds that of job (128 > 64). Job step may never run.
+    cpuset: 0-127
+    nproc:  128
+    shm:    tmpfs           353G   40M  353G   1% /dev/shm
+    mount:  tmpfs /dev/shm tmpfs rw,nodev,relatime,size=369160116k,mode=755,inode64 0 0
+  tmpfs /dev/shm tmpfs rw,nosuid,nodev,noexec,relatime,size=369160116k,mode=755,inode64 0 0
+  staging(sliced): /capstor/store/cscs/swissai/infra01/hf_models/models/meta-llama/Llama-3.1-70B-Instruct -> /dev/shm/llama70b (files=40, slices/file=64, bs=16M, direct read, buffered write)
+  staged_files=40 staged_bytes=141116758507 slices=64 read_mode=direct readers=1744 stage_wall_s=7.69 stage_GBps=18.35
+
+=== result (GB/s) ===
+  batch_bare     20.54
+  srun_bare_64   12.07
+  srun_ctr_64    11.59
+  srun_ctr_128   18.35
+
+  reference: 19.36-20.19 (batch step, no srun) vs 11.66-11.80 (srun -c 64 + container)
+finished=2026-07-22T22:21:11+02:00
