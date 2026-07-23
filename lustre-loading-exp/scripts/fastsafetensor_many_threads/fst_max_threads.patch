@@ -1,0 +1,53 @@
+--- a/python/sglang/srt/model_loader/weight_utils.py
++++ b/python/sglang/srt/model_loader/weight_utils.py
+@@ -750,9 +750,28 @@
+
+     device = torch.device(f"cuda:{rank}")
+
++    # Files in flight during one fastsafetensors batch. Upstream hard-codes one
++    # file per rank, so a TP=4 launch reads only 4 shards concurrently -- well
++    # below the reader fan-out a parallel filesystem needs to reach peak
++    # aggregate bandwidth. This makes the fan-out tunable. The default of 1 is
++    # byte-for-byte upstream behavior.
++    files_per_rank = int(os.getenv("SGLANG_FST_FILES_PER_RANK", "1"))
++    chunk = pg.size() * files_per_rank
++
++    # Thread pool size for each SafeTensorsFileLoader's own pread + H2D copy
++    # pipeline (fastsafetensors' `max_threads` kwarg). Upstream never passes
++    # this through, so every loader is stuck at the library default of 16
++    # threads over a 16 MB-per-thread pinned bounce buffer (256 MB total,
++    # since fastsafetensors sizes the cudaHostAlloc as bbuf_size_kb *
++    # max_threads -- see fastsafetensors/cpp/ext.cpp,
++    # nogds_file_reader::submit_read). The default of 16 here is byte-for-byte
++    # upstream behavior; raising it scales the pinned buffer accordingly (no
++    # separate knob needed).
++    max_threads = int(os.getenv("SGLANG_FST_MAX_THREADS", "16"))
++
+     weight_files_sub_lists = [
+-        hf_weights_files[i : i + pg.size()]
+-        for i in range(0, len(hf_weights_files), pg.size())
++        hf_weights_files[i : i + chunk]
++        for i in range(0, len(hf_weights_files), chunk)
+     ]
+
+     _BAR_FORMAT = (
+@@ -765,8 +784,17 @@
+         disable=False,
+         bar_format=_BAR_FORMAT,
+     ):
+-        loader = SafeTensorsFileLoader(pg, device)
+-        rank_file_map = {i: [f] for i, f in enumerate(f_list)}
++        loader = SafeTensorsFileLoader(pg, device, max_threads=max_threads)
++        # Round-robin this chunk across the ranks. At files_per_rank=1 this
++        # reduces exactly to upstream's `{i: [f] for i, f in enumerate(f_list)}`:
++        # every slice holds a single file, and on a short final chunk the
++        # trailing ranks get an empty slice and are dropped -- precisely what
++        # enumerate() does by running out of files.
++        rank_file_map = {}
++        for rank_idx in range(pg.size()):
++            rank_files = f_list[rank_idx :: pg.size()]
++            if rank_files:
++                rank_file_map[rank_idx] = rank_files
+         loader.add_filenames(rank_file_map)
+         try:
+             fb = loader.copy_files_to_device()
