@@ -8,7 +8,7 @@
 # O_DIRECT (no readahead) each reader keeps exactly one 16 MiB RPC in flight, so
 # a single high-latency OST caps the whole stage: OST 8 currently answers in
 # ~480 ms/RPC => ~25 MB/s => ~200 s for its one 5 GB shard, and `wall` is a max
-# over the pool. See lustre-contention-exp/DD_VS_FASTSAFETENSORS.md.
+# over the pool. See experiments/lustre-contention-exp/DD_VS_FASTSAFETENSORS.md.
 #
 # Here each file is cut into SLICES contiguous ranges read concurrently
 # (`dd skip=/seek=/count=`), so every OST sees SLICES requests in flight. Raw

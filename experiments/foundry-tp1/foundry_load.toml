@@ -1,0 +1,8 @@
+# Foundry LOAD config. Identical to foundry_save.toml except `mode`.
+# base_addr / region_size / scratch_space_size MUST match the SAVE run --
+# foundry restores weights and KV pool at byte-identical VMM offsets.
+mode = "load"
+base_addr = 0x600000000000
+region_size = "256GB"
+workspace_root = "/iopsstor/scratch/cscs/yboughizane/simple-serving-stack/experiments/foundry-tp1/results/foundry_archive_apertus8b_dp4"
+scratch_space_size = "1024MB"

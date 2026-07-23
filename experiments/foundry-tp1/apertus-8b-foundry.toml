@@ -1,0 +1,29 @@
+# EDF for the foundry experiment. Same as profile/apertus-8b-bristen/apertus-8b-sglang.toml
+# except the image: the locally-built squashfs (lmsysorg/sglang:v0.5.10 + foundry
+# + the 47-line sglang patch). Build it with experiments/foundry-tp1/build_image.sh.
+image = "/iopsstor/scratch/cscs/yboughizane/simple-serving-stack/experiments/foundry-tp1/apertus-8b-foundry.sqsh"
+
+mounts = [
+  "/capstor:/capstor",
+  "/iopsstor:/iopsstor",
+]
+
+workdir = "/iopsstor/scratch/cscs/yboughizane/simple-serving-stack/experiments/foundry-tp1"
+
+[env]
+# Container-local HOME: caches (HF/Triton/pip/XDG) fall back under here and
+# live in the container's ephemeral overlay, so every srun is a genuine cold
+# start with no shared-storage cache to wipe between runs.
+HOME = "/root"
+NCCL_DEBUG = "WARN"
+# Isolate from any user venvs on /users that could shadow the image's packages.
+PYTHONPATH = ""
+PYTHONNOUSERSITE = "1"
+HF_HUB_OFFLINE = "1"
+TRANSFORMERS_OFFLINE = "1"
+TOKENIZERS_PARALLELISM = "false"
+
+[annotations]
+com.pyxis.entrypoint_log = "true"
+com.hooks.aws_ofi_nccl.enabled = "true"
+com.hooks.aws_ofi_nccl.variant = "cuda12"

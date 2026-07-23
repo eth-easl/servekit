@@ -17,7 +17,7 @@ param materialization" — but that was inferred from timing arithmetic, never
 measured directly. This plan's only goal is to **measure** where the 18-19s
 actually goes, using the same "instrument before treating" discipline that
 found `SGLANG_FST_FILES_PER_RANK` for the loading bottleneck and is currently
-being applied to graph capture in `graph-compile-cache-exp/`. No fix is
+being applied to graph capture in `experiments/graph-compile-cache-exp/`. No fix is
 committed here — the deliverable is a breakdown, plus a recommendation on
 whether a follow-up (e.g. hugepage-backed tmpfs, or removing an unnecessary
 cross-rank broadcast) is worth pursuing.
@@ -25,7 +25,7 @@ cross-rank broadcast) is worth pursuing.
 ## Working location
 
 New sibling directory: `shm-weight-loading-exp/` at the repo root (same
-convention as `lustre-loading-exp/`, `graph-compile-cache-exp/`), with
+convention as `lustre-loading-exp/`, `experiments/graph-compile-cache-exp/`), with
 `PLAN.md`, `NOTES.md`, `scripts/`, `results/`.
 
 ## Phase 1 — instrument the weight_loading window with py-spy
