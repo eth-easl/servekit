@@ -40,6 +40,14 @@ Both numbers are page-cache-controlled, so the comparison is honest.
 | **restore from 26 GB snapshot (cache cold)** | **18.2 s** |
 | checkpoint (one-time) | 21.4 s → 26 GB snapshot |
 
+**No correctness or performance change vs. a cold launch.** The restored server's
+correctness-probe outputs are **byte-identical** to the cold-launch baseline's, across
+all 6 probe prompts, and post-restore throughput is within noise: **278.3 tok/s
+restored vs. 278.2 tok/s cold-launch** (64 requests, concurrency 16, 0 errors either
+way). Checkpoint/restore only changes time-to-serving — see
+[results/gate3b_server_checkpoint_restore/results.md](results/gate3b_server_checkpoint_restore/results.md#correctness--throughput-vs-cold-launch)
+for the side-by-side.
+
 Making a full SGLang server checkpointable unprivileged took five source-level fixes
 (GPU VMAs on every tree pid, uvloop→epoll shim, `USE_LIBUV=0`, `--network-lock skip`,
 `--tcp-close`) — all in `checkpoint_server.sh`. **Full write-up + the exact criu errors:

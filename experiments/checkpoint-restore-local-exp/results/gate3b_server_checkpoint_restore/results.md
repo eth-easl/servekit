@@ -40,6 +40,27 @@ dominates — exactly the trade the page-cache-cold method was built to measure 
 everything a cold launch pays for — Python import + TP spawn (~14 s), weight load
 (~6 s), and CUDA-graph capture + kernel compile (~35 s).
 
+## Correctness & throughput vs. cold launch
+
+Checkpoint/restore only has to change *when* the server is ready, not *what* it serves.
+Both are checked directly against the [baseline](../baseline/results.md), which runs the
+identical `servekit bench` workload (6 correctness prompts, then 64 requests / 16
+concurrency / 512-in / 128-out for throughput):
+
+| | cold launch (baseline) | restored server | delta |
+|---|---|---|---|
+| correctness (6 probe prompts) | see `../baseline/*-profile.json` | see `restore-*-bench.json` | **byte-identical output on all 6 prompts** |
+| throughput | 278.2 tok/s | 278.3 tok/s | within noise (+0.04%) |
+| errors | 0 / 64 | 0 / 64 | none |
+| latency (mean / p50 / p99) | 6.90 / 7.36 / 7.37 s | 6.90 / 7.36 / 7.37 s | none |
+
+E.g. the "The capital of France is" probe generates the exact same continuation
+(`" Paris, which is also the country's largest city. not only is Paris the capital,
+..."`) token-for-token in both the cold-launch and the restored server — expected,
+since sampling is greedy (temperature 0) and the restored process is *the same warmed
+process*, not a re-initialized one. **Verdict: checkpoint/restore is a pure
+time-to-serving optimization — no measurable correctness or throughput change.**
+
 ## What it took to make a full SGLang server checkpointable (unprivileged, bare host)
 
 Each blocker below was discovered by hitting criu's verbatim error, then fixing the
