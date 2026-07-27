@@ -1,0 +1,142 @@
+job=76112 node=nid002292 src=/capstor/store/cscs/swissai/infra01/hf_models/models/meta-llama/Llama-3.1-70B-Instruct slices=64
+started=2026-07-24T11:08:41+02:00
+staging(sliced): /capstor/store/cscs/swissai/infra01/hf_models/models/meta-llama/Llama-3.1-70B-Instruct -> /dev/shm/llama70b (files=40, slices/file=64, bs=16M, direct read, buffered write)
+staged_files=40 staged_bytes=141116758507 slices=64 read_mode=direct readers=1744 stage_wall_s=12.18 stage_GBps=11.59
+[SERVEKIT] profiling cold start of: python -m sglang.launch_server --model-path /dev/shm/llama70b --host 0.0.0.0 --port 8080 --served-model-name meta-llama/Llama-3.1-70B-Instruct --tensor-parallel-size 4 --trust-remote-code --context-length 32768 --mem-fraction-static 0.85 --max-running-requests 256 --enable-metrics
+/sgl-workspace/sglang/python/sglang/launch_server.py:51: UserWarning: 'python -m sglang.launch_server' is still supported, but 'sglang serve' is the recommended entrypoint.
+  Example: sglang serve --model-path <model> [options]
+  warnings.warn(
+/sgl-workspace/sglang/python/sglang/srt/entrypoints/http_server.py:172: FastAPIDeprecationWarning: ORJSONResponse is deprecated, FastAPI now serializes data directly to JSON bytes via Pydantic when a return type or response model is set, which is faster and doesn't need a custom response class. Read more in the FastAPI docs: https://fastapi.tiangolo.com/advanced/custom-response/#orjson-or-response-model and https://fastapi.tiangolo.com/tutorial/response-model/
+  from sglang.srt.utils.json_response import (
+[2026-07-24 11:09:38] server_args=ServerArgs(model_path='/dev/shm/llama70b', tokenizer_path='/dev/shm/llama70b', tokenizer_mode='auto', tokenizer_worker_num=1, skip_tokenizer_init=False, load_format='auto', model_loader_extra_config='{}', trust_remote_code=True, context_length=32768, is_embedding=False, enable_multimodal=None, revision=None, model_impl='auto', host='0.0.0.0', port=8080, fastapi_root_path='', grpc_mode=False, skip_server_warmup=False, warmups=None, nccl_port=None, checkpoint_engine_wait_weights_before_ready=False, ssl_keyfile=None, ssl_certfile=None, ssl_ca_certs=None, ssl_keyfile_password=None, enable_ssl_refresh=False, dtype='auto', quantization=None, quantization_param_path=None, kv_cache_dtype='auto', enable_fp32_lm_head=False, modelopt_quant=None, modelopt_checkpoint_restore_path=None, modelopt_checkpoint_save_path=None, modelopt_export_path=None, quantize_and_serve=False, rl_quant_profile=None, mem_fraction_static=0.85, max_running_requests=256, max_queued_requests=None, max_total_tokens=None, chunked_prefill_size=8192, enable_dynamic_chunking=False, max_prefill_tokens=16384, prefill_max_requests=None, schedule_policy='fcfs', enable_priority_scheduling=False, disable_priority_preemption=False, default_priority_value=None, abort_on_priority_when_disabled=False, schedule_low_priority_values_first=False, priority_scheduling_preemption_threshold=10, schedule_conservativeness=1.0, page_size=1, swa_full_tokens_ratio=0.8, disable_hybrid_swa_memory=False, radix_eviction_policy='lru', enable_prefill_delayer=False, prefill_delayer_max_delay_passes=30, prefill_delayer_token_usage_low_watermark=None, prefill_delayer_forward_passes_buckets=None, prefill_delayer_wait_seconds_buckets=None, device='cuda', tp_size=4, pp_size=1, pp_max_micro_batch_size=None, pp_async_batch_depth=0, stream_interval=1, stream_response_default_include_usage=False, incremental_streaming_output=False, enable_streaming_session=False, random_seed=338987680, constrained_json_whitespace_pattern=None, constrained_json_disable_any_whitespace=False, watchdog_timeout=300, soft_watchdog_timeout=None, dist_timeout=None, download_dir=None, model_checksum=None, base_gpu_id=0, gpu_id_step=1, sleep_on_idle=False, use_ray=False, custom_sigquit_handler=None, log_level='info', log_level_http=None, log_requests=False, log_requests_level=2, log_requests_format='text', log_requests_target=None, uvicorn_access_log_exclude_prefixes=[], crash_dump_folder=None, show_time_cost=False, enable_metrics=True, enable_mfu_metrics=False, enable_metrics_for_all_schedulers=False, tokenizer_metrics_custom_labels_header='x-custom-labels', tokenizer_metrics_allowed_custom_labels=None, extra_metric_labels=None, bucket_time_to_first_token=None, bucket_inter_token_latency=None, bucket_e2e_request_latency=None, collect_tokens_histogram=False, prompt_tokens_buckets=None, generation_tokens_buckets=None, gc_warning_threshold_secs=0.0, decode_log_interval=40, enable_request_time_stats_logging=False, kv_events_config=None, enable_trace=False, otlp_traces_endpoint='localhost:4317', export_metrics_to_file=False, export_metrics_to_file_dir=None, api_key=None, admin_api_key=None, served_model_name='meta-llama/Llama-3.1-70B-Instruct', weight_version='default', chat_template=None, hf_chat_template_name=None, completion_template=None, file_storage_path='sglang_storage', enable_cache_report=False, reasoning_parser=None, tool_call_parser=None, tool_server=None, sampling_defaults='model', dp_size=1, load_balance_method='round_robin', attn_cp_size=1, moe_dp_size=1, dist_init_addr=None, nnodes=1, node_rank=0, json_model_override_args='{}', preferred_sampling_params=None, enable_lora=None, enable_lora_overlap_loading=None, max_lora_rank=None, lora_target_modules=None, lora_paths=None, max_loaded_loras=None, max_loras_per_batch=8, lora_eviction_policy='lru', lora_backend='csgmv', max_lora_chunk_size=16, experts_shared_outer_loras=None, attention_backend='flashinfer', decode_attention_backend=None, prefill_attention_backend=None, sampling_backend='flashinfer', grammar_backend='xgrammar', mm_attention_backend=None, fp8_gemm_runner_backend='auto', fp4_gemm_runner_backend='auto', nsa_prefill_backend=None, nsa_decode_backend=None, disable_flashinfer_autotune=False, mamba_backend='triton', speculative_algorithm=None, speculative_draft_model_path=None, speculative_draft_model_revision=None, speculative_draft_load_format=None, speculative_num_steps=None, speculative_eagle_topk=None, speculative_num_draft_tokens=None, speculative_accept_threshold_single=1.0, speculative_accept_threshold_acc=1.0, speculative_token_map=None, speculative_attention_mode='prefill', speculative_draft_attention_backend=None, speculative_moe_runner_backend='auto', speculative_moe_a2a_backend=None, speculative_draft_model_quantization=None, speculative_ngram_min_bfs_breadth=1, speculative_ngram_max_bfs_breadth=10, speculative_ngram_match_type='BFS', speculative_ngram_max_trie_depth=18, speculative_ngram_capacity=10000000, enable_multi_layer_eagle=False, ep_size=1, moe_a2a_backend='none', moe_runner_backend='auto', flashinfer_mxfp4_moe_precision='default', enable_flashinfer_allreduce_fusion=False, enforce_disable_flashinfer_allreduce_fusion=False, enable_aiter_allreduce_fusion=False, deepep_mode='auto', ep_num_redundant_experts=0, ep_dispatch_algorithm=None, init_expert_location='trivial', enable_eplb=False, eplb_algorithm='auto', eplb_rebalance_num_iterations=1000, eplb_rebalance_layers_per_chunk=None, eplb_min_rebalancing_utilization_threshold=1.0, expert_distribution_recorder_mode=None, expert_distribution_recorder_buffer_size=1000, enable_expert_distribution_metrics=False, deepep_config=None, moe_dense_tp_size=None, elastic_ep_backend=None, enable_elastic_expert_backup=False, mooncake_ib_device=None, max_mamba_cache_size=None, mamba_ssm_dtype=None, mamba_full_memory_ratio=0.9, mamba_scheduler_strategy='no_buffer', mamba_track_interval=256, linear_attn_backend='triton', linear_attn_decode_backend=None, linear_attn_prefill_backend=None, enable_hierarchical_cache=False, hicache_ratio=2.0, hicache_size=0, hicache_write_policy='write_through', hicache_io_backend='kernel', hicache_mem_layout='layer_first', hicache_storage_backend=None, hicache_storage_prefetch_policy='best_effort', hicache_storage_backend_extra_config=None, enable_hisparse=False, hisparse_config=None, enable_lmcache=False, kt_weight_path=None, kt_method='AMXINT4', kt_cpuinfer=None, kt_threadpool_count=2, kt_num_gpu_experts=None, kt_max_deferred_experts_per_token=None, dllm_algorithm=None, dllm_algorithm_config=None, enable_double_sparsity=False, ds_channel_config_path=None, ds_heavy_channel_num=32, ds_heavy_token_num=256, ds_heavy_channel_type='qk', ds_sparse_decode_threshold=4096, cpu_offload_gb=0, offload_group_size=-1, offload_num_in_group=1, offload_prefetch_step=1, offload_mode='cpu', multi_item_scoring_delimiter=None, disable_radix_cache=False, cuda_graph_max_bs=512, cuda_graph_bs=[1, 2, 4, 8, 12, 16, 24, 32, 40, 48, 56, 64, 72, 80, 88, 96, 104, 112, 120, 128, 136, 144, 152, 160, 168, 176, 184, 192, 200, 208, 216, 224, 232, 240, 248, 256, 272, 288, 304, 320, 336, 352, 368, 384, 400, 416, 432, 448, 464, 480, 496, 512], disable_cuda_graph=False, disable_cuda_graph_padding=False, enable_profile_cuda_graph=False, enable_cudagraph_gc=False, enable_layerwise_nvtx_marker=False, enable_nccl_nvls=False, enable_symm_mem=False, disable_flashinfer_cutlass_moe_fp4_allgather=False, enable_tokenizer_batch_encode=False, disable_tokenizer_batch_decode=False, disable_outlines_disk_cache=False, disable_custom_all_reduce=False, enable_mscclpp=False, enable_torch_symm_mem=False, pre_warm_nccl=False, disable_overlap_schedule=False, enable_mixed_chunk=False, enable_dp_attention=False, enable_dp_lm_head=False, enable_two_batch_overlap=False, enable_single_batch_overlap=False, tbo_token_distribution_threshold=0.48, enable_torch_compile=False, disable_piecewise_cuda_graph=False, enforce_piecewise_cuda_graph=False, enable_torch_compile_debug_mode=False, torch_compile_max_bs=32, piecewise_cuda_graph_max_tokens=8192, piecewise_cuda_graph_tokens=[4, 8, 12, 16, 20, 24, 28, 32, 48, 64, 80, 96, 112, 128, 144, 160, 176, 192, 208, 224, 240, 256, 288, 320, 352, 384, 416, 448, 480, 512, 576, 640, 704, 768, 832, 896, 960, 1024, 1280, 1536, 1792, 2048, 2304, 2560, 2816, 3072, 3328, 3584, 3840, 4096, 4608, 5120, 5632, 6144, 6656, 7168, 7680, 8192], piecewise_cuda_graph_compiler='eager', torchao_config='', enable_nan_detection=False, enable_p2p_check=False, triton_attention_reduce_in_fp32=False, triton_attention_num_kv_splits=8, triton_attention_split_tile_size=None, num_continuous_decode_steps=1, delete_ckpt_after_loading=False, enable_memory_saver=False, enable_weights_cpu_backup=False, enable_draft_weights_cpu_backup=False, allow_auto_truncate=False, enable_custom_logit_processor=False, flashinfer_mla_disable_ragged=False, disable_shared_experts_fusion=False, disable_chunked_prefix_cache=False, disable_fast_image_processor=False, keep_mm_feature_on_device=False, enable_return_hidden_states=False, enable_return_routed_experts=False, scheduler_recv_interval=1, numa_node=None, enable_deterministic_inference=False, rl_on_policy_target=None, enable_attn_tp_input_scattered=False, gc_threshold=None, enable_nsa_prefill_context_parallel=False, nsa_prefill_cp_mode='round-robin-split', enable_fused_qk_norm_rope=False, enable_precise_embedding_interpolation=False, enable_fused_moe_sum_all_reduce=False, enable_prefill_context_parallel=False, prefill_cp_mode='in-seq-split', enable_dynamic_batch_tokenizer=False, dynamic_batch_tokenizer_batch_size=32, dynamic_batch_tokenizer_batch_timeout=0.002, debug_tensor_dump_output_folder=None, debug_tensor_dump_layers=None, debug_tensor_dump_input_file=None, debug_tensor_dump_inject=False, disaggregation_mode='null', disaggregation_transfer_backend='mooncake', disaggregation_bootstrap_port=8998, disaggregation_ib_device=None, disaggregation_decode_enable_offload_kvcache=False, num_reserved_decode_tokens=512, disaggregation_decode_polling_interval=1, encoder_only=False, language_only=False, encoder_transfer_backend='zmq_to_scheduler', encoder_urls=[], enable_adaptive_dispatch_to_encoder=False, custom_weight_loader=[], weight_loader_disable_mmap=False, remote_instance_weight_loader_seed_instance_ip=None, remote_instance_weight_loader_seed_instance_service_port=None, remote_instance_weight_loader_send_weights_group_ports=None, remote_instance_weight_loader_backend='nccl', remote_instance_weight_loader_start_seed_via_transfer_engine=False, engine_info_bootstrap_port=6789, modelexpress_config=None, enable_pdmux=False, pdmux_config_path=None, sm_group_num=8, enable_broadcast_mm_inputs_process=False, enable_prefix_mm_cache=False, mm_enable_dp_encoder=False, mm_process_config={}, limit_mm_data_per_request=None, enable_mm_global_cache=False, decrypted_config_file=None, decrypted_draft_config_file=None, forward_hooks=None)
+[2026-07-24 11:09:38] NUMA affinity is already constrained for process, skipping NUMA node configuration for GPU. Remove your constraints to allow automatic configuration.
+[2026-07-24 11:09:38] NUMA affinity is already constrained for process, skipping NUMA node configuration for GPU. Remove your constraints to allow automatic configuration.
+[2026-07-24 11:09:38] NUMA affinity is already constrained for process, skipping NUMA node configuration for GPU. Remove your constraints to allow automatic configuration.
+[2026-07-24 11:09:38] NUMA affinity is already constrained for process, skipping NUMA node configuration for GPU. Remove your constraints to allow automatic configuration.
+[2026-07-24 11:09:40] Using default HuggingFace chat template with detected content format: string
+[2026-07-24 11:09:49 TP1] NUMA affinity is already constrained for process, skipping NUMA node configuration for GPU. Remove your constraints to allow automatic configuration.
+[2026-07-24 11:09:49 TP2] NUMA affinity is already constrained for process, skipping NUMA node configuration for GPU. Remove your constraints to allow automatic configuration.
+[2026-07-24 11:09:49 TP0] NUMA affinity is already constrained for process, skipping NUMA node configuration for GPU. Remove your constraints to allow automatic configuration.
+[2026-07-24 11:09:49 TP3] NUMA affinity is already constrained for process, skipping NUMA node configuration for GPU. Remove your constraints to allow automatic configuration.
+[2026-07-24 11:09:50 TP1] Init torch distributed begin.
+[2026-07-24 11:09:50 TP2] Init torch distributed begin.
+[2026-07-24 11:09:50 TP0] Init torch distributed begin.
+[2026-07-24 11:09:50 TP3] Init torch distributed begin.
+[Gloo] Rank 1 is connected to 3 peer ranks. Expected number of connected peer ranks is : 3
+[Gloo] Rank 3 is connected to 3 peer ranks. Expected number of connected peer ranks is : 3
+[Gloo] Rank 0 is connected to 3 peer ranks. Expected number of connected peer ranks is : 3
+[Gloo] Rank 2 is connected to 3 peer ranks. Expected number of connected peer ranks is : 3
+[Gloo] Rank 0 is connected to 3 peer ranks. Expected number of connected peer ranks is : 3
+[Gloo] Rank 3 is connected to 3 peer ranks. Expected number of connected peer ranks is : 3
+[Gloo] Rank 1 is connected to 3 peer ranks. Expected number of connected peer ranks is : 3
+[Gloo] Rank 2 is connected to 3 peer ranks. Expected number of connected peer ranks is : 3
+[2026-07-24 11:09:51 TP0] sglang is using nccl==2.28.3
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+NCCL version 2.28.3+cuda12.9
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[2026-07-24 11:09:53 TP0] Init torch distributed ends. elapsed=2.62 s, mem usage=1.01 GB
+[2026-07-24 11:09:53 TP3] Init torch distributed ends. elapsed=2.60 s, mem usage=1.08 GB
+[2026-07-24 11:09:53 TP2] Init torch distributed ends. elapsed=2.63 s, mem usage=1.08 GB
+[2026-07-24 11:09:53 TP1] Init torch distributed ends. elapsed=2.63 s, mem usage=1.01 GB
+[2026-07-24 11:09:55 TP0] Load weight begin. avail mem=77.80 GB
+[2026-07-24 11:09:55 TP1] Load weight begin. avail mem=77.80 GB
+[2026-07-24 11:09:55 TP3] Load weight begin. avail mem=77.73 GB
+[2026-07-24 11:09:55 TP2] Load weight begin. avail mem=77.73 GB
+
+Multi-thread loading shards:   0% Completed | 0/30 [00:00<?, ?it/s]
+Multi-thread loading shards:   3% Completed | 1/30 [00:00<00:03,  8.95it/s]
+Multi-thread loading shards:   7% Completed | 2/30 [00:00<00:08,  3.27it/s]
+Multi-thread loading shards:  10% Completed | 3/30 [00:01<00:12,  2.15it/s]
+Multi-thread loading shards:  13% Completed | 4/30 [00:01<00:14,  1.85it/s]
+Multi-thread loading shards:  17% Completed | 5/30 [00:02<00:14,  1.73it/s]
+Multi-thread loading shards:  20% Completed | 6/30 [00:03<00:14,  1.67it/s]
+Multi-thread loading shards:  23% Completed | 7/30 [00:03<00:13,  1.67it/s]
+Multi-thread loading shards:  27% Completed | 8/30 [00:04<00:13,  1.63it/s]
+Multi-thread loading shards:  30% Completed | 9/30 [00:05<00:12,  1.62it/s]
+Multi-thread loading shards:  33% Completed | 10/30 [00:05<00:12,  1.59it/s]
+Multi-thread loading shards:  37% Completed | 11/30 [00:06<00:11,  1.61it/s]
+Multi-thread loading shards:  40% Completed | 12/30 [00:06<00:11,  1.60it/s]
+Multi-thread loading shards:  43% Completed | 13/30 [00:07<00:10,  1.57it/s]
+Multi-thread loading shards:  47% Completed | 14/30 [00:08<00:10,  1.55it/s]
+Multi-thread loading shards:  50% Completed | 15/30 [00:08<00:09,  1.54it/s]
+Multi-thread loading shards:  53% Completed | 16/30 [00:09<00:08,  1.57it/s]
+Multi-thread loading shards:  57% Completed | 17/30 [00:10<00:08,  1.59it/s]
+Multi-thread loading shards:  60% Completed | 18/30 [00:10<00:07,  1.56it/s]
+Multi-thread loading shards:  63% Completed | 19/30 [00:11<00:07,  1.56it/s]
+Multi-thread loading shards:  67% Completed | 20/30 [00:12<00:06,  1.55it/s]
+Multi-thread loading shards:  70% Completed | 21/30 [00:12<00:05,  1.56it/s]
+Multi-thread loading shards:  73% Completed | 22/30 [00:13<00:05,  1.57it/s]
+Multi-thread loading shards:  77% Completed | 23/30 [00:14<00:04,  1.55it/s]
+Multi-thread loading shards:  80% Completed | 24/30 [00:14<00:03,  1.56it/s]
+Multi-thread loading shards:  83% Completed | 25/30 [00:15<00:03,  1.55it/s]
+Multi-thread loading shards:  87% Completed | 26/30 [00:15<00:02,  1.59it/s]
+Multi-thread loading shards:  90% Completed | 27/30 [00:16<00:01,  1.58it/s]
+Multi-thread loading shards:  93% Completed | 28/30 [00:17<00:01,  1.55it/s]
+Multi-thread loading shards:  97% Completed | 29/30 [00:17<00:00,  1.55it/s]
+Multi-thread loading shards: 100% Completed | 30/30 [00:18<00:00,  1.61it/s]
+Multi-thread loading shards: 100% Completed | 30/30 [00:18<00:00,  1.63it/s]
+[2026-07-24 11:10:15 TP3] Load weight end. elapsed=19.78 s, type=LlamaForCausalLM, avail mem=44.80 GB, mem usage=32.92 GB.
+[2026-07-24 11:10:15 TP2] Load weight end. elapsed=19.84 s, type=LlamaForCausalLM, avail mem=44.80 GB, mem usage=32.92 GB.
+[2026-07-24 11:10:15 TP1] Load weight end. elapsed=19.84 s, type=LlamaForCausalLM, avail mem=44.87 GB, mem usage=32.92 GB.
+[2026-07-24 11:10:15 TP0] Load weight end. elapsed=19.84 s, type=LlamaForCausalLM, avail mem=44.87 GB, mem usage=32.92 GB.
+[2026-07-24 11:10:15 TP0] Using KV cache dtype: torch.bfloat16
+[2026-07-24 11:10:15 TP0] KV Cache is allocated. #tokens: 434439, K size: 16.57 GB, V size: 16.57 GB
+[2026-07-24 11:10:15 TP3] KV Cache is allocated. #tokens: 434439, K size: 16.57 GB, V size: 16.57 GB
+[2026-07-24 11:10:15 TP1] KV Cache is allocated. #tokens: 434439, K size: 16.57 GB, V size: 16.57 GB
+[2026-07-24 11:10:15 TP2] KV Cache is allocated. #tokens: 434439, K size: 16.57 GB, V size: 16.57 GB
+[2026-07-24 11:10:15 TP0] Memory pool end. avail mem=11.40 GB
+[2026-07-24 11:10:15 TP3] Memory pool end. avail mem=11.33 GB
+[2026-07-24 11:10:15 TP1] Memory pool end. avail mem=11.40 GB
+The target application terminated. One or more process it created re-parented.
+Waiting for termination of re-parented processes.
+Use the `--wait` option to modify this behavior.
+Collecting data...
+Generating '/tmp/nsys-yboughizane/nsys-report-321a.qdstrm'
+[1/1] [0%                          ] nsys-76112-nid002292.nsys-rep[1/1] [0%                          ] nsys-76112-nid002292.nsys-rep[1/1] [7%                          ] nsys-76112-nid002292.nsys-rep[1/1] [===23%                      ] nsys-76112-nid002292.nsys-rep[1/1] [====26%                     ] nsys-76112-nid002292.nsys-rep[1/1] [=====29%                    ] nsys-76112-nid002292.nsys-rep[1/1] [=====30%                    ] nsys-76112-nid002292.nsys-rep[1/1] [=====31%                    ] nsys-76112-nid002292.nsys-rep[1/1] [=====32%                    ] nsys-76112-nid002292.nsys-rep[1/1] [======33%                   ] nsys-76112-nid002292.nsys-rep[1/1] [======34%                   ] nsys-76112-nid002292.nsys-rep[1/1] [======35%                   ] nsys-76112-nid002292.nsys-rep[1/1] [===========51%              ] nsys-76112-nid002292.nsys-rep[1/1] [=============59%            ] nsys-76112-nid002292.nsys-rep[1/1] [========================100%] nsys-76112-nid002292.nsys-rep[1/1] [========================100%] nsys-76112-nid002292.nsys-rep
+Generated:
+	/tmp/nsys-76112-nid002292.nsys-rep
+nsys/servekit returned nonzero: 143
+-rw-rw-r-- 1 yboughizane infra02 1245715 Jul 24 11:10 /tmp/nsys-76112-nid002292.nsys-rep
+report copied to /iopsstor/scratch/cscs/yboughizane/simple-serving-stack/shm-weight-loading-exp/results/nsys-76112-nid002292.nsys-rep
+Generating SQLite file /tmp/nsys-76112-nid002292.sqlite from /tmp/nsys-76112-nid002292.nsys-rep
+Processing [/tmp/nsys-76112-nid002292.sqlite] with [/opt/nvidia/nsight-systems-cli/2026.2.1/target-linux-x64/reports/cuda_gpu_mem_time_sum.py]... 
+
+ ** CUDA GPU MemOps Summary (by Time) (cuda_gpu_mem_time_sum):
+
+ Time (%)  Total Time (ns)  Count   Avg (ns)    Med (ns)   Min (ns)   Max (ns)    StdDev (ns)            Operation           
+ --------  ---------------  -----  -----------  ---------  --------  -----------  -----------  ------------------------------
+    100.0   23,689,763,119  3,956  5,988,312.2  512,783.5     1,120  113,673,796  9,723,126.3  [CUDA memcpy Host-to-Device]  
+      0.0        3,183,741    788      4,040.3    5,248.0     1,120      137,312      9,718.9  [CUDA memset]                 
+      0.0           47,072     20      2,353.6    2,224.0     1,760        3,328        488.3  [CUDA memcpy Device-to-Host]  
+      0.0           20,096      8      2,512.0    2,464.0     2,048        3,040        473.4  [CUDA memcpy Device-to-Device]
+
+Processing [/tmp/nsys-76112-nid002292.sqlite] with [/opt/nvidia/nsight-systems-cli/2026.2.1/target-linux-x64/reports/cuda_gpu_mem_size_sum.py]... 
+
+ ** CUDA GPU MemOps Summary (by Size) (cuda_gpu_mem_size_sum):
+
+ Total (MB)   Count  Avg (MB)  Med (MB)  Min (MB)  Max (MB)  StdDev (MB)            Operation           
+ -----------  -----  --------  --------  --------  --------  -----------  ------------------------------
+ 141,115.526  3,956    35.671     4.194     0.000   525.337       53.088  [CUDA memcpy Host-to-Device]  
+   3,540.410    788     4.493     6.291     0.000   268.435       19.124  [CUDA memset]                 
+       0.012     20     0.001     0.001     0.000     0.001        0.001  [CUDA memcpy Device-to-Host]  
+       0.008      8     0.001     0.001     0.001     0.001        0.000  [CUDA memcpy Device-to-Device]
+
+
+=== result ===
+  nsys report: /iopsstor/scratch/cscs/yboughizane/simple-serving-stack/shm-weight-loading-exp/results/nsys-76112-nid002292.nsys-rep
+  no servekit profile JSON
+finished=2026-07-24T11:10:22+02:00

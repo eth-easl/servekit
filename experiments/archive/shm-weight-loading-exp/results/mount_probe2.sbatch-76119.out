@@ -1,0 +1,41 @@
++ for d in /dev/hugepages /var/lib/hugetlbfs/global/pagesize-2097152 /var/lib/hugetlbfs/global/pagesize-1073741824
++ echo '=== /dev/hugepages ==='
+=== /dev/hugepages ===
++ ls -ld /dev/hugepages
+drwxr-xr-x 2 nobody nogroup 0 Jul 22 10:35 /dev/hugepages
++ su -s /bin/bash -c 'touch /dev/hugepages/wtest_$$ && echo WRITABLE_AS_ROOT' root
+Password: su: Authentication failure
++ true
++ touch /dev/hugepages/wtest_54156
+touch: cannot touch '/dev/hugepages/wtest_54156': Permission denied
+NOT_WRITABLE
++ echo NOT_WRITABLE
++ rm -f /dev/hugepages/wtest_54156
++ for d in /dev/hugepages /var/lib/hugetlbfs/global/pagesize-2097152 /var/lib/hugetlbfs/global/pagesize-1073741824
++ echo '=== /var/lib/hugetlbfs/global/pagesize-2097152 ==='
+=== /var/lib/hugetlbfs/global/pagesize-2097152 ===
++ ls -ld /var/lib/hugetlbfs/global/pagesize-2097152
+drwxrwxrwt 2 nobody nogroup 0 Jul 22 10:35 /var/lib/hugetlbfs/global/pagesize-2097152
++ su -s /bin/bash -c 'touch /var/lib/hugetlbfs/global/pagesize-2097152/wtest_$$ && echo WRITABLE_AS_ROOT' root
+Password: su: Authentication failure
++ true
++ touch /var/lib/hugetlbfs/global/pagesize-2097152/wtest_54156
+WRITABLE
++ echo WRITABLE
++ rm -f /var/lib/hugetlbfs/global/pagesize-2097152/wtest_54156
+=== /var/lib/hugetlbfs/global/pagesize-1073741824 ===
++ for d in /dev/hugepages /var/lib/hugetlbfs/global/pagesize-2097152 /var/lib/hugetlbfs/global/pagesize-1073741824
++ echo '=== /var/lib/hugetlbfs/global/pagesize-1073741824 ==='
++ ls -ld /var/lib/hugetlbfs/global/pagesize-1073741824
+drwxrwxrwt 2 nobody nogroup 0 Jul 22 10:35 /var/lib/hugetlbfs/global/pagesize-1073741824
++ su -s /bin/bash -c 'touch /var/lib/hugetlbfs/global/pagesize-1073741824/wtest_$$ && echo WRITABLE_AS_ROOT' root
+Password: su: Authentication failure
++ true
++ touch /var/lib/hugetlbfs/global/pagesize-1073741824/wtest_54156
+WRITABLE
++ echo WRITABLE
++ rm -f /var/lib/hugetlbfs/global/pagesize-1073741824/wtest_54156
++ df -h /dev/hugepages /var/lib/hugetlbfs/global/pagesize-2097152
+Filesystem      Size  Used Avail Use% Mounted on
+hugetlbfs          0     0     0    - /dev/hugepages
+none               0     0     0    - /var/lib/hugetlbfs/global/pagesize-2097152

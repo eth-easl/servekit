@@ -1,0 +1,76 @@
+job=76117 node=nid002281 gb=8
+started=2026-07-24T11:56:58+02:00
+=== hugetlbfs pool ===
+AnonHugePages:   2621440 kB
+ShmemHugePages:        0 kB
+FileHugePages:         0 kB
+HugePages_Total:       0
+HugePages_Free:        0
+HugePages_Rsvd:        0
+HugePages_Surp:        0
+Hugepagesize:       2048 kB
+257505
+
+=== 0a: hugetlbfs usability (requesting 8.00 GB) ===
+-- route 1: mmap(MAP_SHARED|MAP_ANONYMOUS|MAP_HUGETLB) --
+   touched (memset) 8.00 GB in 0.74s
+   /proc/self/smaps KernelPageSize: 2048 kB
+   /proc/meminfo HugePages_Surp: 0 -> 3815
+RESULT 0a: route=mmap_anon_hugetlb allocated=8.00 GB really_huge=True
+
+=== 0b: cudaHostRegister throughput on hugepage-backed memory ===
+   cudaHostRegister: 35.71 GB/s -> 141 GB would take 3.9s (baseline on 4 KB tmpfs: 2.59-4.56 GB/s, 31-54s)
+RESULT 0b: FAIL (need >=40 GB/s, got 35.71)
+
+=== GATE: FAIL (0a=pass, 0b=fail) ===
+Per STEP4_PLAN.md: stop here, fall back to fixing h2d_pinned_staging.patch's blocking copy instead.
+
+=== free: nsys cuda_api_sum on existing job-76112 trace ===
+Generating SQLite file /iopsstor/scratch/cscs/yboughizane/simple-serving-stack/shm-weight-loading-exp/results/nsys-76112-nid002292.sqlite from /iopsstor/scratch/cscs/yboughizane/simple-serving-stack/shm-weight-loading-exp/results/nsys-76112-nid002292.nsys-rep
+Processing [/iopsstor/scratch/cscs/yboughizane/simple-serving-stack/shm-weight-loading-exp/results/nsys-76112-nid002292.sqlite] with [/opt/nvidia/nsight-systems-cli/2026.2.1/target-linux-x64/reports/cuda_api_sum.py]... 
+
+ ** CUDA API Summary (cuda_api_sum):
+
+ Time (%)  Total Time (ns)  Num Calls   Avg (ns)     Med (ns)    Min (ns)    Max (ns)    StdDev (ns)                  Name                
+ --------  ---------------  ---------  -----------  -----------  ---------  -----------  ------------  -----------------------------------
+     78.3   24,054,267,412      3,980  6,043,785.8    636,511.0      2,364  113,873,206   9,759,898.1  cudaMemcpyAsync                    
+     15.5    4,751,961,163      1,596  2,977,419.3     13,125.0      5,100  338,943,162  21,594,876.8  cudaLaunchKernel                   
+      3.2      994,389,978      2,796    355,647.3    274,090.0      2,866   10,062,998     603,208.0  cudaMalloc                         
+      0.7      218,499,293         41  5,329,251.0     30,659.0     16,031   71,042,849  18,429,393.2  cudaMemGetInfo                     
+      0.5      148,074,821        416    355,949.1    267,927.5     97,810    4,645,933     414,216.8  cudaIpcOpenMemHandle               
+      0.4      125,559,056         40  3,138,976.4  4,830,926.0      3,848    7,438,043   2,727,651.6  cudaHostAlloc                      
+      0.4      123,509,790      3,460     35,696.5     42,607.5      2,835      899,099      31,552.7  cudaStreamSynchronize              
+      0.4      122,290,727         28  4,367,526.0  1,592,429.0    848,832   20,790,832   4,982,691.5  cudaGetDeviceProperties            
+      0.3       99,470,213         56  1,776,253.8  1,788,097.5    737,556    3,699,353     828,651.1  cuLibraryLoadData                  
+      0.1       24,936,437          8  3,117,054.6  2,907,802.5     21,051    6,905,142   3,315,681.7  cuLaunchKernelEx                   
+      0.0       11,763,396         16    735,212.3    183,505.0     78,512    2,592,844   1,011,765.3  cudaFree                           
+      0.0       11,653,163        512     22,760.1      2,535.0      2,024      668,853      83,857.5  cudaStreamCreateWithPriority       
+      0.0        7,912,530          4  1,978,132.5  2,244,124.0  1,178,028    2,246,254     533,403.9  cuKernelGetFunction                
+      0.0        6,813,532        788      8,646.6     11,873.0      1,923       70,536       6,810.2  cudaMemsetAsync                    
+      0.0        4,456,138          4  1,114,034.5    856,882.5    502,632    2,239,741     771,798.6  cuMemRelease                       
+      0.0        4,245,894      2,920      1,454.1        280.0        220      620,079      24,373.5  cudaThreadExchangeStreamCaptureMode
+      0.0        3,297,003      9,542        345.5        315.5        110        7,925         227.6  cuGetProcAddress_v2                
+      0.0        3,061,577      1,996      1,533.9      1,633.0        451        8,456         519.9  cudaStreamIsCapturing              
+      0.0        3,016,793          4    754,198.3    570,914.0    506,559    1,368,406     410,625.6  cuMemCreate                        
+      0.0        2,962,421        396      7,480.9      7,114.0      6,342       10,380         793.7  cudaStreamDestroy                  
+      0.0        2,654,057        408      6,505.0      5,365.0      2,905       34,256       3,686.7  cudaStreamCreateWithFlags          
+      0.0        1,358,161         60     22,636.0      5,230.0        371      260,654      56,940.2  cuLibraryGetKernel                 
+      0.0          405,484          4    101,371.0    107,567.5     76,599      113,750      16,947.3  cuModuleLoadData                   
+      0.0          371,237          4     92,809.3     94,958.5     61,639      119,681      30,833.9  cudaMemPoolCreate                  
+      0.0          164,034        156      1,051.5        571.0        480        6,162       1,031.3  cudaStreamWaitEvent                
+      0.0          146,025         96      1,521.1        556.0        361       16,652       2,507.6  cudaEventCreateWithFlags           
+      0.0          143,216          4     35,804.0     32,227.0     30,228       48,534       8,545.9  cudaDeviceSynchronize              
+      0.0          139,719          4     34,929.8     36,069.5     24,878       42,702       7,556.2  cuLaunchKernel                     
+      0.0           97,968         20      4,898.4      4,278.0      2,555        8,105       1,860.4  cudaEventRecord                    
+      0.0           92,627        192        482.4        431.0        250        2,074         274.5  cudaGetDriverEntryPoint            
+      0.0           89,413          4     22,353.3     22,348.0     21,873       22,844         401.2  cudaMemcpy                         
+      0.0           73,354         30      2,445.1      2,480.0      1,082        4,098         796.0  cuInit                             
+      0.0           38,132         22      1,733.3        320.5        160        7,684       2,517.0  cuModuleGetLoadingMode             
+      0.0           34,477          4      8,619.3      8,997.5      7,124        9,358       1,016.8  cudaEventRecordWithFlags           
+      0.0            8,617          4      2,154.3      2,079.0      1,974        2,485         227.8  cudaEventDestroy                   
+      0.0            7,344          4      1,836.0      1,873.5      1,653        1,944         128.7  cudaStreamGetCaptureInfo_v2        
+      0.0            5,351          4      1,337.8      1,172.5        872        2,134         586.2  cudaMemPoolSetAttribute            
+      0.0            4,069          4      1,017.3        922.0        782        1,443         304.9  cudaGetFuncBySymbol                
+      0.0            3,507          4        876.8        876.5        642        1,112         206.8  cuMemGetAllocationGranularity      
+
+finished=2026-07-24T11:57:20+02:00

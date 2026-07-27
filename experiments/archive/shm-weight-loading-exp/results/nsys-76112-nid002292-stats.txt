@@ -1,0 +1,23 @@
+Generating SQLite file /tmp/nsys-76112-nid002292.sqlite from /tmp/nsys-76112-nid002292.nsys-rep
+Processing [/tmp/nsys-76112-nid002292.sqlite] with [/opt/nvidia/nsight-systems-cli/2026.2.1/target-linux-x64/reports/cuda_gpu_mem_time_sum.py]... 
+
+ ** CUDA GPU MemOps Summary (by Time) (cuda_gpu_mem_time_sum):
+
+ Time (%)  Total Time (ns)  Count   Avg (ns)    Med (ns)   Min (ns)   Max (ns)    StdDev (ns)            Operation           
+ --------  ---------------  -----  -----------  ---------  --------  -----------  -----------  ------------------------------
+    100.0   23,689,763,119  3,956  5,988,312.2  512,783.5     1,120  113,673,796  9,723,126.3  [CUDA memcpy Host-to-Device]  
+      0.0        3,183,741    788      4,040.3    5,248.0     1,120      137,312      9,718.9  [CUDA memset]                 
+      0.0           47,072     20      2,353.6    2,224.0     1,760        3,328        488.3  [CUDA memcpy Device-to-Host]  
+      0.0           20,096      8      2,512.0    2,464.0     2,048        3,040        473.4  [CUDA memcpy Device-to-Device]
+
+Processing [/tmp/nsys-76112-nid002292.sqlite] with [/opt/nvidia/nsight-systems-cli/2026.2.1/target-linux-x64/reports/cuda_gpu_mem_size_sum.py]... 
+
+ ** CUDA GPU MemOps Summary (by Size) (cuda_gpu_mem_size_sum):
+
+ Total (MB)   Count  Avg (MB)  Med (MB)  Min (MB)  Max (MB)  StdDev (MB)            Operation           
+ -----------  -----  --------  --------  --------  --------  -----------  ------------------------------
+ 141,115.526  3,956    35.671     4.194     0.000   525.337       53.088  [CUDA memcpy Host-to-Device]  
+   3,540.410    788     4.493     6.291     0.000   268.435       19.124  [CUDA memset]                 
+       0.012     20     0.001     0.001     0.000     0.001        0.001  [CUDA memcpy Device-to-Host]  
+       0.008      8     0.001     0.001     0.001     0.001        0.000  [CUDA memcpy Device-to-Device]
+

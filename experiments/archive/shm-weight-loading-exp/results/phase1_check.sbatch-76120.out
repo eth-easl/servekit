@@ -1,0 +1,11 @@
+=== known-risk alignment check on config.json ===
+Traceback (most recent call last):
+  File "/iopsstor/scratch/cscs/yboughizane/simple-serving-stack/shm-weight-loading-exp/scripts/stage_to_hugetlbfs.py", line 152, in <module>
+    main()
+  File "/iopsstor/scratch/cscs/yboughizane/simple-serving-stack/shm-weight-loading-exp/scripts/stage_to_hugetlbfs.py", line 121, in main
+    ok = check_alignment(a.check_alignment, a.huge_mount)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/iopsstor/scratch/cscs/yboughizane/simple-serving-stack/shm-weight-loading-exp/scripts/stage_to_hugetlbfs.py", line 46, in check_alignment
+    os.ftruncate(fd, size)
+OSError: [Errno 22] Invalid argument
+srun: error: nid002281: task 0: Exited with exit code 1

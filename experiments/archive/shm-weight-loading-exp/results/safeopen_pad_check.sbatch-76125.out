@@ -1,0 +1,3 @@
+shard=/capstor/store/cscs/swissai/infra01/hf_models/models/meta-llama/Llama-3.1-70B-Instruct/model-00030-of-00030.safetensors size=2101346432
+real_size=2101346432 padded_size=2103443456 extra_bytes=2097024
+safe_open FAILED: SafetensorError: Error while deserializing header: incomplete metadata, file not fully covered

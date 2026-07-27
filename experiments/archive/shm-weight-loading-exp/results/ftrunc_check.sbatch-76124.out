@@ -1,0 +1,5 @@
+requested=       800 FAILED: [Errno 22] Invalid argument
+requested=      4096 FAILED: [Errno 22] Invalid argument
+requested=   2097152 got=   2097152 OK
+requested=   2097153 FAILED: [Errno 22] Invalid argument
+requested=   5242880 FAILED: [Errno 22] Invalid argument

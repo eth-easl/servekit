@@ -1,0 +1,29 @@
+job=76379 node=nid002280 started=2026-07-26T12:37:58+02:00
+=== C2: does registration scale with page COUNT? (8 GiB/rank, 4 ranks) ===
+    35.3 GB is 9.2M x 4 KB pages, 18k x 2 MB, or ~35 x 1 GB.
+hugepage/4k readonly=0         reg GB/s 13.28 13.28 12.98 13.30   s  0.65  0.65  0.66  0.65   page=4 kB   (8.6 GB/rank)
+hugepage/2m readonly=0         reg GB/s 16.21 15.91 16.20 16.22   s  0.53  0.54  0.53  0.53   page=2048 kB   (8.6 GB/rank)
+hugepage/1g readonly=0         FAILED: alloc failed: [Errno 12] Cannot allocate memory
+
+=== A3: is cudaHostRegisterReadOnly cheaper? (same buffers) ===
+hugepage/4k readonly=1         FAILED: cudaHostRegister rc=801 flags=8
+hugepage/2m readonly=1         FAILED: cudaHostRegister rc=801 flags=8
+hugepage/1g readonly=1         FAILED: alloc failed: [Errno 12] Cannot allocate memory
+
+=== hugetlb pool state ===
+AnonHugePages:   2582528 kB
+ShmemHugePages:        0 kB
+FileHugePages:         0 kB
+HugePages_Total:       0
+HugePages_Free:        0
+HugePages_Rsvd:        0
+HugePages_Surp:        0
+Hugepagesize:       2048 kB
+Hugetlb:               0 kB
+
+=== A3 on the real /dev/shm shards ===
+shards/4k readonly=0           reg GB/s  3.57  3.53  3.29  3.56   s  9.89 10.01 10.73  9.91   page=-   (35.3 GB/rank)
+shards/4k readonly=1           FAILED: cudaHostRegister rc=801 flags=8
+
+=== baseline: 3.6 GB/s registering 4 KB tmpfs pages => 9.7 s/rank (job 76370) ===
+finished=2026-07-26T12:39:41+02:00

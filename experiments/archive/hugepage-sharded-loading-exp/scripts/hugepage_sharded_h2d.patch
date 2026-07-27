@@ -1,0 +1,135 @@
+diff --git a/python/sglang/srt/model_loader/loader.py b/python/sglang/srt/model_loader/loader.py
+index 0000000..0000000 100644
+--- a/python/sglang/srt/model_loader/loader.py
++++ b/python/sglang/srt/model_loader/loader.py
+@@ -1425,10 +1425,62 @@
+                     f"pre-sharded checkpoints are currently supported!"
+                 )
+             state_dict = self._filter_subtensors(model.state_dict())
+-            for path in filepaths:
+-                with safe_open(path, framework="pt") as f:
+-                    for key in f.keys():  # noqa: SIM118
+-                        tensor = f.get_tensor(key)
++
++            # Optional: read shards from a hugepage-backed buffer staged by an
++            # external hugepage_stage_daemon.py process, instead of safe_open
++            # on disk. See hugepage-sharded-loading-exp/PLAN.md + NOTES.md.
++            # Every tensor in a sharded_state checkpoint is already contiguous
++            # (the TP narrow was done once, offline, at save time), so a
++            # direct cudaMemcpyAsync off the registered buffer replaces both
++            # safe_open's mmap'd-pageable read AND any bounce-buffer copy --
++            # no pinned staging buffer is needed here, unlike the default
++            # (unsharded) loader's strided case.
++            hugepage_sock = os.environ.get("SGLANG_HUGEPAGE_SHARDED_SOCK")
++            hugepage_result = None
++            if hugepage_sock:
++                import hugepage_client
++
++                tag = f"TP{rank}"
++                rank_pattern = self.pattern.format(rank=rank, part="*")
++                hugepage_result = hugepage_client.get_rank_files_meta(
++                    hugepage_sock, rank_pattern, tag=tag
++                )
++                if hugepage_result is not None:
++                    _, ordered = hugepage_result
++                    staged_names = {f["filename"] for f in ordered}
++                    disk_names = {os.path.basename(p) for p in filepaths}
++                    if staged_names != disk_names:
++                        logger.warning(
++                            "hugepage staging covers %s but disk has %s -- "
++                            "falling back to safe_open for this rank",
++                            sorted(staged_names),
++                            sorted(disk_names),
++                        )
++                        hugepage_result = None
++
++            if hugepage_result is not None:
++                import hugepage_safetensors
++
++                buf, ordered = hugepage_result
++                # Registration is synchronous, on THIS (main) thread -- not a
++                # background thread. cudaMemcpyAsync itself doesn't block the
++                # CPU, so "register next chunk right after issuing this
++                # file's copies" still overlaps that chunk's registration
++                # with the GPU draining the copies just issued, without ever
++                # calling cudaHostRegister and cudaMemcpyAsync from different
++                # threads at the same time (see NOTES.md on why that's
++                # avoided). Chunk boundaries are aligned to tensor
++                # boundaries (never mid-tensor) -- see PipelinedRegistrar's
++                # docstring for why that's required, not optional.
++                registrar = hugepage_client.PipelinedRegistrar(
++                    buf, ordered, tag=tag, device_id=torch.cuda.current_device()
++                )
++                stream_ptr = torch.cuda.current_stream().cuda_stream
++
++                for i, f in enumerate(ordered):
++                    for key, tensor in hugepage_safetensors.iter_tensors(
++                        buf, f["header"], f["data_start"]
++                    ):
+                         # If loading with LoRA enabled, additional padding may
+                         # be added to certain parameters. We only load into a
+                         # narrowed view of the parameter data.
+@@ -1445,8 +1497,62 @@
+                                 key,
+                                 param_shape,
+                             )
+-                        param_data.copy_(tensor)
++                        if not tensor.is_contiguous():
++                            # Defensive fallback only -- every tensor in a
++                            # sharded_state checkpoint is contiguous by
++                            # construction; never expected to trigger.
++                            tensor = tensor.contiguous()
++                        registrar.wait_for(
++                            i, hugepage_client.tensor_end_offset_in_file(f, key)
++                        )
++                        nbytes = tensor.numel() * tensor.element_size()
++                        hugepage_client.cuda_memcpy_h2d_async(
++                            param_data.data_ptr(),
++                            tensor.data_ptr(),
++                            nbytes,
++                            stream_ptr,
++                        )
+                         state_dict.pop(key)
++                    # Lookahead registration now happens continuously inside
++                    # every wait_for() call above (a small constant-size
++                    # window, topped up per-tensor, not just at file
++                    # boundaries) -- see PipelinedRegistrar.wait_for's
++                    # docstring and NOTES.md for why file-boundary-only
++                    # lookahead (one chunk, then a whole file) both lost to
++                    # this continuous version.
++                    # Must still drain THIS file's copies before unpinning
++                    # ITS memory -- cudaMemcpyAsync is async, so unregistering
++                    # host memory a DMA is still reading would corrupt the
++                    # transfer (or crash). This sync is unavoidable, but it
++                    # no longer blocks the NEXT chunk's registration, which
++                    # already happened above. cudaStreamSynchronize on just
++                    # OUR copy stream instead of torch.cuda.synchronize()
++                    # (whole device) -- narrower scope, same guarantee.
++                    hugepage_client.cuda_stream_synchronize(stream_ptr)
++                    registrar.unregister_file(i)
++            else:
++                for path in filepaths:
++                    with safe_open(path, framework="pt") as f:
++                        for key in f.keys():  # noqa: SIM118
++                            tensor = f.get_tensor(key)
++                            # If loading with LoRA enabled, additional padding may
++                            # be added to certain parameters. We only load into a
++                            # narrowed view of the parameter data.
++                            param_data = state_dict[key].data
++                            param_shape = state_dict[key].shape
++                            for dim, size in enumerate(tensor.shape):
++                                if size < param_shape[dim]:
++                                    param_data = param_data.narrow(dim, 0, size)
++                            if tensor.shape != param_shape:
++                                logger.warning(
++                                    "loading tensor of shape %s into "
++                                    "parameter '%s' of shape %s",
++                                    tensor.shape,
++                                    key,
++                                    param_shape,
++                                )
++                            param_data.copy_(tensor)
++                            state_dict.pop(key)
+             if state_dict:
+                 raise ValueError(f"Missing keys {tuple(state_dict)} in loaded state!")
+ 

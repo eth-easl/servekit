@@ -1,0 +1,29 @@
++ python3 -c '
+import ctypes.util
+print("find_library(cudart):", ctypes.util.find_library("cudart"))
+import torch
+print("torch file:", torch.__file__)
+print("torch version:", torch.__version__)
+import glob, os
+tdir = os.path.dirname(torch.__file__)
+print("bundled libcudart in torch:", glob.glob(os.path.join(tdir, "lib", "libcudart*")))
+print("cuda version torch built with:", torch.version.cuda)
+torch.cuda.init()
+print("torch.cuda.current_device:", torch.cuda.current_device())
+'
+find_library(cudart): libcudart.so.12
+torch file: /usr/local/lib/python3.12/dist-packages/torch/__init__.py
+torch version: 2.9.1+cu129
+bundled libcudart in torch: []
+cuda version torch built with: 12.9
+torch.cuda.current_device: 0
++ ldconfig -p
++ grep cudart
+	libcudart.so.12 (libc6,x86-64) => /usr/local/cuda/targets/x86_64-linux/lib/libcudart.so.12
+	libcudart.so (libc6,x86-64) => /usr/local/cuda/targets/x86_64-linux/lib/libcudart.so
++ find / -xdev -name 'libcudart.so*'
++ head -20
+/usr/local/lib/python3.12/dist-packages/nvidia/cuda_runtime/lib/libcudart.so.12
+/usr/local/cuda-12.9/targets/x86_64-linux/lib/libcudart.so
+/usr/local/cuda-12.9/targets/x86_64-linux/lib/libcudart.so.12.9.79
+/usr/local/cuda-12.9/targets/x86_64-linux/lib/libcudart.so.12

@@ -1,0 +1,25 @@
+{
+  "command": "python -m sglang.launch_server --model-path /iopsstor/scratch/cscs/yboughizane/sharded-ckpt/llama70b-tp4 --host 0.0.0.0 --port 8080 --served-model-name meta-llama/Llama-3.1-70B-Instruct --tensor-parallel-size 4 --trust-remote-code --context-length 32768 --mem-fraction-static 0.85 --max-running-requests 256 --load-format sharded_state --enable-metrics",
+  "started_at": 1784902274.9119532,
+  "ready_at": null,
+  "success": false,
+  "total_duration_s": 0.0,
+  "phases": [
+    {
+      "name": "process_startup",
+      "duration_s": 17.26,
+      "source": "wall_clock"
+    },
+    {
+      "name": "tp_worker_spawn",
+      "duration_s": 20.02,
+      "source": "wall_clock"
+    },
+    {
+      "name": "torch_distributed_init",
+      "duration_s": 3.51,
+      "source": "engine_reported"
+    }
+  ],
+  "benchmark": null
+}

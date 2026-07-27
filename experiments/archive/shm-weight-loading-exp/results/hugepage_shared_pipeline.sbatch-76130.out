@@ -1,0 +1,15 @@
+job=76130 node=nid002297 files=model-00029-of-00030.safetensors model-00030-of-00030.safetensors
+started=2026-07-24T12:32:23+02:00
+staging ['model-00029-of-00030.safetensors', 'model-00030-of-00030.safetensors'] from /capstor/store/cscs/swissai/infra01/hf_models/models/meta-llama/Llama-3.1-70B-Instruct ...
+staged 7.07 GB in 1.18s
+worker pid=17727: checked=26 tensors -> OK
+  gpu: register=16.85 GB/s over 4.966 GB, H2D copy=0.13 GB/s
+worker pid=17725: checked=26 tensors -> OK
+  gpu: register=17.77 GB/s over 4.966 GB, H2D copy=0.01 GB/s
+worker pid=17726: checked=26 tensors -> OK
+  gpu: register=16.11 GB/s over 4.966 GB, H2D copy=0.15 GB/s
+worker pid=17724: checked=26 tensors -> OK
+  gpu: register=9.46 GB/s over 4.966 GB, H2D copy=0.11 GB/s
+
+RESULT: PASS
+finished=2026-07-24T12:33:16+02:00

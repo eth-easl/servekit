@@ -1,0 +1,157 @@
+job=76361 node=nid002289 started=2026-07-26T11:25:19+02:00
+=== node topology ===
+Model name:                              AMD EPYC 7713 64-Core Processor
+Thread(s) per core:                      2
+Core(s) per socket:                      64
+Socket(s):                               1
+NUMA node(s):                            4
+NUMA node0 CPU(s):                       0-15,64-79
+NUMA node1 CPU(s):                       16-31,80-95
+NUMA node2 CPU(s):                       32-47,96-111
+NUMA node3 CPU(s):                       48-63,112-127
+
+available: 4 nodes (0-3)
+node 0 cpus: 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 64 65 66 67 68 69 70 71 72 73 74 75 76 77 78 79
+node 0 size: 128572 MB
+node 0 free: 119564 MB
+node 1 cpus: 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 80 81 82 83 84 85 86 87 88 89 90 91 92 93 94 95
+node 1 size: 129014 MB
+node 1 free: 125089 MB
+node 2 cpus: 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 96 97 98 99 100 101 102 103 104 105 106 107 108 109 110 111
+node 2 size: 129014 MB
+node 2 free: 121417 MB
+node 3 cpus: 48 49 50 51 52 53 54 55 56 57 58 59 60 61 62 63 112 113 114 115 116 117 118 119 120 121 122 123 124 125 126 127
+node 3 size: 128414 MB
+node 3 free: 124990 MB
+node distances:
+node   0   1   2   3 
+  0:  10  12  12  12 
+  1:  12  10  12  12 
+  2:  12  12  10  12 
+  3:  12  12  12  10 
+
+	[4mGPU0	GPU1	GPU2	GPU3	CPU Affinity	NUMA Affinity	GPU NUMA ID[0m
+GPU0	 X 	NV4	NV4	NV4	48-63,112-127	3		N/A
+GPU1	NV4	 X 	NV4	NV4	32-47,96-111	2		N/A
+GPU2	NV4	NV4	 X 	NV4	16-31,80-95	1		N/A
+GPU3	NV4	NV4	NV4	 X 	0-15,64-79	0		N/A
+
+Legend:
+
+  X    = Self
+  SYS  = Connection traversing PCIe as well as the SMP interconnect between NUMA nodes (e.g., QPI/UPI)
+  NODE = Connection traversing PCIe as well as the interconnect between PCIe Host Bridges within a NUMA node
+  PHB  = Connection traversing PCIe as well as a PCIe Host Bridge (typically the CPU)
+
+GPU 0000:03:00.0 numa_node=3
+GPU 0000:41:00.0 numa_node=2
+GPU 0000:82:00.0 numa_node=1
+GPU 0000:c1:00.0 numa_node=0
+
+Filesystem      Size  Used Avail Use% Mounted on
+tmpfs           353G   40M  353G   1% /dev/shm
+
+=== sweep (4 concurrent ranks, 8 GiB each) ===
+/iopsstor/scratch/cscs/yboughizane/simple-serving-stack/shm-weight-loading-exp2/scripts/shm_h2d_bench.py:170: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /pytorch/torch/csrc/utils/tensor_numpy.cpp:206.)
+  src = torch.from_numpy(np.asarray(src_np))
+/iopsstor/scratch/cscs/yboughizane/simple-serving-stack/shm-weight-loading-exp2/scripts/shm_h2d_bench.py:170: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /pytorch/torch/csrc/utils/tensor_numpy.cpp:206.)
+  src = torch.from_numpy(np.asarray(src_np))
+/iopsstor/scratch/cscs/yboughizane/simple-serving-stack/shm-weight-loading-exp2/scripts/shm_h2d_bench.py:170: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /pytorch/torch/csrc/utils/tensor_numpy.cpp:206.)
+  src = torch.from_numpy(np.asarray(src_np))
+/iopsstor/scratch/cscs/yboughizane/simple-serving-stack/shm-weight-loading-exp2/scripts/shm_h2d_bench.py:170: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /pytorch/torch/csrc/utils/tensor_numpy.cpp:206.)
+  src = torch.from_numpy(np.asarray(src_np))
+pageable thr=16 numa=0 chunk=512M depth=2            per-rank  5.34  7.39  5.43  4.94  agg  23.10  slowest  4.94 GB/s  ->  7.14s  correct=True
+/iopsstor/scratch/cscs/yboughizane/simple-serving-stack/shm-weight-loading-exp2/scripts/shm_h2d_bench.py:170: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /pytorch/torch/csrc/utils/tensor_numpy.cpp:206.)
+  src = torch.from_numpy(np.asarray(src_np))
+/iopsstor/scratch/cscs/yboughizane/simple-serving-stack/shm-weight-loading-exp2/scripts/shm_h2d_bench.py:170: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /pytorch/torch/csrc/utils/tensor_numpy.cpp:206.)
+  src = torch.from_numpy(np.asarray(src_np))
+/iopsstor/scratch/cscs/yboughizane/simple-serving-stack/shm-weight-loading-exp2/scripts/shm_h2d_bench.py:170: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /pytorch/torch/csrc/utils/tensor_numpy.cpp:206.)
+  src = torch.from_numpy(np.asarray(src_np))
+/iopsstor/scratch/cscs/yboughizane/simple-serving-stack/shm-weight-loading-exp2/scripts/shm_h2d_bench.py:170: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /pytorch/torch/csrc/utils/tensor_numpy.cpp:206.)
+  src = torch.from_numpy(np.asarray(src_np))
+dma_only thr=16 numa=0 chunk=512M depth=2            per-rank 24.22 24.45 23.78 24.33  agg  96.78  slowest 23.78 GB/s  ->  1.48s  correct=True
+/iopsstor/scratch/cscs/yboughizane/simple-serving-stack/shm-weight-loading-exp2/scripts/shm_h2d_bench.py:170: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /pytorch/torch/csrc/utils/tensor_numpy.cpp:206.)
+  src = torch.from_numpy(np.asarray(src_np))
+/iopsstor/scratch/cscs/yboughizane/simple-serving-stack/shm-weight-loading-exp2/scripts/shm_h2d_bench.py:170: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /pytorch/torch/csrc/utils/tensor_numpy.cpp:206.)
+  src = torch.from_numpy(np.asarray(src_np))
+/iopsstor/scratch/cscs/yboughizane/simple-serving-stack/shm-weight-loading-exp2/scripts/shm_h2d_bench.py:170: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /pytorch/torch/csrc/utils/tensor_numpy.cpp:206.)
+  src = torch.from_numpy(np.asarray(src_np))
+/iopsstor/scratch/cscs/yboughizane/simple-serving-stack/shm-weight-loading-exp2/scripts/shm_h2d_bench.py:170: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /pytorch/torch/csrc/utils/tensor_numpy.cpp:206.)
+  src = torch.from_numpy(np.asarray(src_np))
+pinned thr=8 numa=0 chunk=512M depth=2               per-rank  3.94  3.67  3.68  4.86  agg  16.15  slowest  3.67 GB/s  ->  9.61s  correct=True
+/iopsstor/scratch/cscs/yboughizane/simple-serving-stack/shm-weight-loading-exp2/scripts/shm_h2d_bench.py:170: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /pytorch/torch/csrc/utils/tensor_numpy.cpp:206.)
+  src = torch.from_numpy(np.asarray(src_np))
+/iopsstor/scratch/cscs/yboughizane/simple-serving-stack/shm-weight-loading-exp2/scripts/shm_h2d_bench.py:170: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /pytorch/torch/csrc/utils/tensor_numpy.cpp:206.)
+  src = torch.from_numpy(np.asarray(src_np))
+/iopsstor/scratch/cscs/yboughizane/simple-serving-stack/shm-weight-loading-exp2/scripts/shm_h2d_bench.py:170: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /pytorch/torch/csrc/utils/tensor_numpy.cpp:206.)
+  src = torch.from_numpy(np.asarray(src_np))
+/iopsstor/scratch/cscs/yboughizane/simple-serving-stack/shm-weight-loading-exp2/scripts/shm_h2d_bench.py:170: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /pytorch/torch/csrc/utils/tensor_numpy.cpp:206.)
+  src = torch.from_numpy(np.asarray(src_np))
+pinned thr=16 numa=0 chunk=512M depth=2              per-rank  2.89  2.92  3.68  2.88  agg  12.37  slowest  2.88 GB/s  -> 12.26s  correct=True
+/iopsstor/scratch/cscs/yboughizane/simple-serving-stack/shm-weight-loading-exp2/scripts/shm_h2d_bench.py:170: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /pytorch/torch/csrc/utils/tensor_numpy.cpp:206.)
+  src = torch.from_numpy(np.asarray(src_np))
+/iopsstor/scratch/cscs/yboughizane/simple-serving-stack/shm-weight-loading-exp2/scripts/shm_h2d_bench.py:170: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /pytorch/torch/csrc/utils/tensor_numpy.cpp:206.)
+  src = torch.from_numpy(np.asarray(src_np))
+/iopsstor/scratch/cscs/yboughizane/simple-serving-stack/shm-weight-loading-exp2/scripts/shm_h2d_bench.py:170: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /pytorch/torch/csrc/utils/tensor_numpy.cpp:206.)
+  src = torch.from_numpy(np.asarray(src_np))
+/iopsstor/scratch/cscs/yboughizane/simple-serving-stack/shm-weight-loading-exp2/scripts/shm_h2d_bench.py:170: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /pytorch/torch/csrc/utils/tensor_numpy.cpp:206.)
+  src = torch.from_numpy(np.asarray(src_np))
+pinned thr=32 numa=0 chunk=512M depth=2              per-rank  3.55  3.76  3.91  3.54  agg  14.76  slowest  3.54 GB/s  ->  9.96s  correct=True
+/iopsstor/scratch/cscs/yboughizane/simple-serving-stack/shm-weight-loading-exp2/scripts/shm_h2d_bench.py:170: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /pytorch/torch/csrc/utils/tensor_numpy.cpp:206.)
+  src = torch.from_numpy(np.asarray(src_np))
+/iopsstor/scratch/cscs/yboughizane/simple-serving-stack/shm-weight-loading-exp2/scripts/shm_h2d_bench.py:170: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /pytorch/torch/csrc/utils/tensor_numpy.cpp:206.)
+  src = torch.from_numpy(np.asarray(src_np))
+/iopsstor/scratch/cscs/yboughizane/simple-serving-stack/shm-weight-loading-exp2/scripts/shm_h2d_bench.py:170: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /pytorch/torch/csrc/utils/tensor_numpy.cpp:206.)
+  src = torch.from_numpy(np.asarray(src_np))
+/iopsstor/scratch/cscs/yboughizane/simple-serving-stack/shm-weight-loading-exp2/scripts/shm_h2d_bench.py:170: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /pytorch/torch/csrc/utils/tensor_numpy.cpp:206.)
+  src = torch.from_numpy(np.asarray(src_np))
+pinned thr=16 numa=0 chunk=256M depth=2              per-rank  3.71  4.04  4.40  3.63  agg  15.79  slowest  3.63 GB/s  ->  9.72s  correct=True
+/iopsstor/scratch/cscs/yboughizane/simple-serving-stack/shm-weight-loading-exp2/scripts/shm_h2d_bench.py:170: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /pytorch/torch/csrc/utils/tensor_numpy.cpp:206.)
+  src = torch.from_numpy(np.asarray(src_np))
+/iopsstor/scratch/cscs/yboughizane/simple-serving-stack/shm-weight-loading-exp2/scripts/shm_h2d_bench.py:170: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /pytorch/torch/csrc/utils/tensor_numpy.cpp:206.)
+  src = torch.from_numpy(np.asarray(src_np))
+/iopsstor/scratch/cscs/yboughizane/simple-serving-stack/shm-weight-loading-exp2/scripts/shm_h2d_bench.py:170: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /pytorch/torch/csrc/utils/tensor_numpy.cpp:206.)
+  src = torch.from_numpy(np.asarray(src_np))
+/iopsstor/scratch/cscs/yboughizane/simple-serving-stack/shm-weight-loading-exp2/scripts/shm_h2d_bench.py:170: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /pytorch/torch/csrc/utils/tensor_numpy.cpp:206.)
+  src = torch.from_numpy(np.asarray(src_np))
+pinned thr=16 numa=0 chunk=1024M depth=2             per-rank  2.87  2.95  3.21  2.91  agg  11.94  slowest  2.87 GB/s  -> 12.29s  correct=True
+/iopsstor/scratch/cscs/yboughizane/simple-serving-stack/shm-weight-loading-exp2/scripts/shm_h2d_bench.py:170: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /pytorch/torch/csrc/utils/tensor_numpy.cpp:206.)
+  src = torch.from_numpy(np.asarray(src_np))
+/iopsstor/scratch/cscs/yboughizane/simple-serving-stack/shm-weight-loading-exp2/scripts/shm_h2d_bench.py:170: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /pytorch/torch/csrc/utils/tensor_numpy.cpp:206.)
+  src = torch.from_numpy(np.asarray(src_np))
+/iopsstor/scratch/cscs/yboughizane/simple-serving-stack/shm-weight-loading-exp2/scripts/shm_h2d_bench.py:170: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /pytorch/torch/csrc/utils/tensor_numpy.cpp:206.)
+  src = torch.from_numpy(np.asarray(src_np))
+/iopsstor/scratch/cscs/yboughizane/simple-serving-stack/shm-weight-loading-exp2/scripts/shm_h2d_bench.py:170: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /pytorch/torch/csrc/utils/tensor_numpy.cpp:206.)
+  src = torch.from_numpy(np.asarray(src_np))
+pinned thr=16 numa=0 chunk=512M depth=3              per-rank  2.88  3.02  3.06  2.88  agg  11.84  slowest  2.88 GB/s  -> 12.25s  correct=True
+/iopsstor/scratch/cscs/yboughizane/simple-serving-stack/shm-weight-loading-exp2/scripts/shm_h2d_bench.py:170: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /pytorch/torch/csrc/utils/tensor_numpy.cpp:206.)
+  src = torch.from_numpy(np.asarray(src_np))
+/iopsstor/scratch/cscs/yboughizane/simple-serving-stack/shm-weight-loading-exp2/scripts/shm_h2d_bench.py:170: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /pytorch/torch/csrc/utils/tensor_numpy.cpp:206.)
+  src = torch.from_numpy(np.asarray(src_np))
+/iopsstor/scratch/cscs/yboughizane/simple-serving-stack/shm-weight-loading-exp2/scripts/shm_h2d_bench.py:170: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /pytorch/torch/csrc/utils/tensor_numpy.cpp:206.)
+  src = torch.from_numpy(np.asarray(src_np))
+/iopsstor/scratch/cscs/yboughizane/simple-serving-stack/shm-weight-loading-exp2/scripts/shm_h2d_bench.py:170: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /pytorch/torch/csrc/utils/tensor_numpy.cpp:206.)
+  src = torch.from_numpy(np.asarray(src_np))
+pinned thr=16 numa=1 chunk=512M depth=2              per-rank  9.94  9.98 10.02 10.01  agg  39.95  slowest  9.94 GB/s  ->  3.55s  correct=True
+/iopsstor/scratch/cscs/yboughizane/simple-serving-stack/shm-weight-loading-exp2/scripts/shm_h2d_bench.py:170: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /pytorch/torch/csrc/utils/tensor_numpy.cpp:206.)
+  src = torch.from_numpy(np.asarray(src_np))
+/iopsstor/scratch/cscs/yboughizane/simple-serving-stack/shm-weight-loading-exp2/scripts/shm_h2d_bench.py:170: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /pytorch/torch/csrc/utils/tensor_numpy.cpp:206.)
+  src = torch.from_numpy(np.asarray(src_np))
+/iopsstor/scratch/cscs/yboughizane/simple-serving-stack/shm-weight-loading-exp2/scripts/shm_h2d_bench.py:170: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /pytorch/torch/csrc/utils/tensor_numpy.cpp:206.)
+  src = torch.from_numpy(np.asarray(src_np))
+/iopsstor/scratch/cscs/yboughizane/simple-serving-stack/shm-weight-loading-exp2/scripts/shm_h2d_bench.py:170: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /pytorch/torch/csrc/utils/tensor_numpy.cpp:206.)
+  src = torch.from_numpy(np.asarray(src_np))
+pageable thr=16 numa=1 chunk=512M depth=2            per-rank  8.12  8.08  8.12  8.08  agg  32.40  slowest  8.08 GB/s  ->  4.37s  correct=True
+/iopsstor/scratch/cscs/yboughizane/simple-serving-stack/shm-weight-loading-exp2/scripts/shm_h2d_bench.py:170: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /pytorch/torch/csrc/utils/tensor_numpy.cpp:206.)
+  src = torch.from_numpy(np.asarray(src_np))
+/iopsstor/scratch/cscs/yboughizane/simple-serving-stack/shm-weight-loading-exp2/scripts/shm_h2d_bench.py:170: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /pytorch/torch/csrc/utils/tensor_numpy.cpp:206.)
+  src = torch.from_numpy(np.asarray(src_np))
+/iopsstor/scratch/cscs/yboughizane/simple-serving-stack/shm-weight-loading-exp2/scripts/shm_h2d_bench.py:170: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /pytorch/torch/csrc/utils/tensor_numpy.cpp:206.)
+  src = torch.from_numpy(np.asarray(src_np))
+/iopsstor/scratch/cscs/yboughizane/simple-serving-stack/shm-weight-loading-exp2/scripts/shm_h2d_bench.py:170: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /pytorch/torch/csrc/utils/tensor_numpy.cpp:206.)
+  src = torch.from_numpy(np.asarray(src_np))
+dma_only thr=16 numa=1 chunk=512M depth=2            per-rank 26.74 26.74 26.73 26.74  agg 106.94  slowest 26.73 GB/s  ->  1.32s  correct=True
+
+=== target: 7.06 GB/s per rank (35.3 GB / 5 s); today's stock path = 3.2 GB/s ===
+jsonl=/iopsstor/scratch/cscs/yboughizane/simple-serving-stack/shm-weight-loading-exp2/results/h2dbench-76361-nid002289.jsonl
+finished=2026-07-26T11:27:22+02:00

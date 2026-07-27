@@ -1,0 +1,1 @@
+no /dev/shm stage for hugepage arm -- daemon stages directly from Lustre
