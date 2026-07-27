@@ -25,6 +25,14 @@ for models deployed on the SwissAI serving platform, running on CSCS
    emits a per-phase duration table + JSON report the moment the server
    reports ready — without killing the still-running server process.
 
+   A second subcommand, `servekit bench --url ...`, loads a live server
+   (correctness + throughput) and is independent of `profile`: it needs only
+   a URL, no launch command and no log to parse. Run alongside `profile`
+   (`--into <report.json>`) it merges into the same JSON; run alone it
+   benchmarks a server servekit never launched — which is what makes a
+   CRIU-restored server measurable, since a restored process emits no
+   startup log at all.
+
    Scope is "process launch -> first request served" (not SLURM queue
    wait). **Follow-up needed:** this doesn't yet account for JIT/lazy-init
    effects that only trigger on the first real inference call (as opposed
