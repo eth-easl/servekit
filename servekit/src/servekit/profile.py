@@ -3,15 +3,13 @@ from __future__ import annotations
 
 import json
 import re
+import signal
 import subprocess
 import sys
-import threading
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Callable, Iterable, List, Optional
-
-from .bench import BenchConfig, run_benchmark
 
 # (phase name, regex whose sole capture group is the engine-reported elapsed seconds)
 SGLANG_PHASE_PATTERNS = [
@@ -73,7 +71,7 @@ class ProfileReport:
     ready_at: Optional[float]
     success: bool
     phases: List[Phase] = field(default_factory=list)
-    benchmark: Optional[dict] = None  # post-ready bench results, if --bench was used
+    benchmark: Optional[dict] = None  # filled in later by `servekit bench --into <report>`
 
     @property
     def total_duration_s(self) -> float:
@@ -211,98 +209,37 @@ def run_profile(
     a caller can emit the report without waiting for the server to exit. If
     ready is never seen within `ready_timeout`, the process is terminated and
     the run is marked failed.
+
+    We keep draining the server's stdout for its whole life rather than
+    detaching once measured. Two reasons: we own the read end of the pipe, so
+    exiting would SIGPIPE the server on its next log line; and a pipe nobody
+    reads eventually fills, blocking the server on write -- which would stall
+    it precisely under the load of a concurrent `servekit bench`.
+
+    SIGTERM/SIGINT are forwarded to the child so that a caller which
+    backgrounded us (`servekit profile ... & ...; kill $!`) tears the server
+    down instead of orphaning it.
     """
     spawn_time = time.time()
     proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
-    report = _process_stream(proc.stdout, spawn_time, ready_timeout, on_ready=on_ready)
-    if not report.success:
+
+    def _forward(signum, _frame):  # noqa: ANN001 - signal handler signature
+        print(f"\n[SERVEKIT] got signal {signum}, terminating the server", flush=True)
         proc.terminate()
-    proc.wait()
-    report.command = " ".join(command)
-    return report
 
-
-def run_profile_with_bench(
-    command: List[str],
-    base_url: str,
-    bench_config: BenchConfig,
-    ready_timeout: float = 1800.0,
-    keep_alive: bool = False,
-    on_bench_done: Optional[Callable[[ProfileReport], None]] = None,
-) -> ProfileReport:
-    """Profile cold start, then benchmark the live server before tearing it down.
-
-    The server's stdout is drained in a background thread the whole time. This
-    matters: under benchmark load the engine logs heavily, and if we stopped
-    reading stdout the OS pipe buffer would fill and the server would block on
-    write -> deadlock. So the drain thread keeps measuring/echoing while the
-    main thread hits the server with requests. Once the benchmark finishes,
-    the server is terminated and the combined report is returned.
-
-    With `keep_alive`, the server is never terminated: `on_bench_done` fires as
-    soon as the benchmark finishes (so a caller can write the report while the
-    server is still up) and we then block until the server exits on its own.
-    We stay alive rather than detaching because we own the server's stdout pipe
-    -- exiting would close the read end and SIGPIPE the server on its next log
-    line, and the drain thread is what keeps the pipe from filling anyway.
-    """
-    spawn_time = time.time()
-    proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
-
-    ready_event = threading.Event()
-    holder: dict = {}
-
-    def _on_ready(report: ProfileReport) -> None:
-        # Keep it: under keep_alive the drain thread does not return until the
-        # server exits, so this is the only complete report available in time.
-        holder["ready_report"] = report
-        ready_event.set()
-
-    def _drain() -> None:
-        holder["report"] = _process_stream(
-            proc.stdout, spawn_time, ready_timeout, on_ready=_on_ready
-        )
-
-    drain = threading.Thread(target=_drain, daemon=True)
-    drain.start()
-
-    # Wait until the server is ready, or the drain thread ends first (failure/timeout).
-    while not ready_event.is_set() and drain.is_alive():
-        drain.join(timeout=0.5)
-
-    bench_result = None
-    if ready_event.is_set():
-        print("\n[SERVEKIT] server ready -> running post-ready benchmark", flush=True)
-        bench_result = run_benchmark(base_url, bench_config).to_dict()
-
-    # Ready + benched: hand the report over now, then get out of the way. On a
-    # failed run there is no ready_report and nothing to keep alive, so we fall
-    # through and tear down as usual.
-    if keep_alive and holder.get("ready_report") is not None:
-        report = holder["ready_report"]
-        report.command = " ".join(command)
-        report.benchmark = bench_result
-        if on_bench_done is not None:
-            on_bench_done(report)
-        print("[SERVEKIT] --keep-alive: server left running, draining until it exits", flush=True)
-        proc.wait()
-        drain.join(timeout=10)
-        return report
-
-    # Measurement done: stop the server and let the drain thread finish.
-    proc.terminate()
+    previous = {}
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        previous[sig] = signal.signal(sig, _forward)
     try:
-        proc.wait(timeout=30)
-    except subprocess.TimeoutExpired:
-        proc.kill()
+        # Terminating the child closes the pipe, which ends this loop.
+        report = _process_stream(proc.stdout, spawn_time, ready_timeout, on_ready=on_ready)
+        if not report.success:
+            proc.terminate()
         proc.wait()
-    drain.join(timeout=10)
-
-    report = holder.get("report") or ProfileReport(
-        command="", started_at=spawn_time, ready_at=None, success=False
-    )
+    finally:
+        for sig, handler in previous.items():
+            signal.signal(sig, handler)
     report.command = " ".join(command)
-    report.benchmark = bench_result
     return report
 
 
