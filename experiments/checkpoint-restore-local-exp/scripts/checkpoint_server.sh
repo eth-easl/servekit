@@ -8,7 +8,7 @@
 #   scripts/checkpoint_server.sh 3b          # checkpoint, then restore_server.sh --cold
 #
 # What it took to make a full SGLang server checkpointable, unprivileged, on the bare host
-# (each discovered the hard way; see results/SUMMARY.md):
+# (each discovered the hard way; see results/gate3b_server_checkpoint_restore/results.md):
 #   1. cuda-checkpoint EVERY process holding /dev/nvidia VMAs (launcher + scheduler +
 #      detokenizer), not just the nvidia-smi compute-app -- else criu hits an
 #      unevicted device VMA.
@@ -33,8 +33,8 @@ MODEL_DIR="${MODEL_DIR:-$HOME/models/Apertus-8B-Instruct-2509}"
 SERVED_NAME="swiss-ai/Apertus-8B-Instruct-2509"
 PORT="${PORT:-8080}"
 CONTEXT_LEN="${CONTEXT_LEN:-8192}"; MEM_FRACTION="${MEM_FRACTION:-0.85}"; MAX_RUNNING="${MAX_RUNNING:-8}"
-IMG="$HERE/results/gate3b-run/img"
-SERVER_LOG="$HERE/results/ckpt_server.log"
+IMG="$HERE/results/gate3b_server_checkpoint_restore/gate3b-run/img"
+SERVER_LOG="$HERE/results/gate3b_server_checkpoint_restore/ckpt_server.log"
 
 # criu flags that make the full SGLang tree dumpable unprivileged (see header)
 CRIU_DUMP_ARGS="--shell-job --tcp-close --network-lock skip --file-locks --link-remap --ext-unix-sk"
@@ -103,7 +103,7 @@ do_checkpoint(){   # $1 = launcher/root pid
 
 # ------------------------------------------------------------ gate 3a (unchanged logic)
 gate_3a(){
-  local WORK="$HERE/results/gate3a-run" LOG IMG3; LOG="$WORK/py_counter.log"; IMG3="$WORK/img"
+  local WORK="$HERE/results/gate3a_pytorch_cuda_roundtrip/gate3a-run" LOG IMG3; LOG="$WORK/py_counter.log"; IMG3="$WORK/img"
   rm -rf "$WORK"; mkdir -p "$IMG3"
   echo "==== Gate 3a :: Python+torch.cuda checkpoint/restore ===="
   "$PYBIN" "$HERE/src/python_cuda_counter.py" "$LOG" 1000 & local PID=$!

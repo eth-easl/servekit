@@ -18,7 +18,7 @@
 # Usage: scripts/gate_criu_cpu.sh [workdir]
 set -u
 CRIU="$(command -v criu || echo /usr/sbin/criu)"
-WORK="${1:-$(pwd)/results/criu-cpu-run}"
+WORK="${1:-$(pwd)/results/gate1_criu_cpu/criu-cpu-run}"
 TICKFILE="$WORK/tick.txt"
 IMG="$WORK/img"
 rm -rf "$WORK"; mkdir -p "$IMG"

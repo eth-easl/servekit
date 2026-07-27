@@ -43,7 +43,19 @@ Both numbers are page-cache-controlled, so the comparison is honest.
 Making a full SGLang server checkpointable unprivileged took five source-level fixes
 (GPU VMAs on every tree pid, uvloop→epoll shim, `USE_LIBUV=0`, `--network-lock skip`,
 `--tcp-close`) — all in `checkpoint_server.sh`. **Full write-up + the exact criu errors:
-[results/SUMMARY.md](results/SUMMARY.md)** · design + methodology: [PLAN.md](PLAN.md)
+[results/gate3b_server_checkpoint_restore/results.md](results/gate3b_server_checkpoint_restore/results.md)**
+· design + methodology: [PLAN.md](PLAN.md)
+
+## Sub-experiments
+
+| dir | question | verdict | detail |
+|---|---|---|---|
+| `gate0_probe` | Does this box carry the file capability Bristen lacked? | Yes — `criu` has `cap_checkpoint_restore=ep` as a file cap, host `Seccomp:0` | [results/gate0_probe/results.md](results/gate0_probe/results.md) |
+| `gate1_criu_cpu` | Can CRIU dump/restore *any* process here at all? | ✅ PASS — this is the gate that failed on Bristen | [results/gate1_criu_cpu/results.md](results/gate1_criu_cpu/results.md) |
+| `gate2_criu_gpu` | Does cuda-checkpoint + CRIU survive a real kill, on a CUDA process? | ✅ PASS — device memory survives kill + restore-from-disk | [results/gate2_criu_gpu/results.md](results/gate2_criu_gpu/results.md) |
+| `gate3a_pytorch_cuda_roundtrip` | De-risk: does the C-counter result hold for a Python+torch.cuda process? | ✅ PASS (649 MB snapshot) | [results/gate3a_pytorch_cuda_roundtrip/results.md](results/gate3a_pytorch_cuda_roundtrip/results.md) |
+| `baseline` | What does a true-cold Apertus-8B launch cost, phase by phase? | 59.3 s, both page-cache and JIT-cache confounds controlled | [results/baseline/results.md](results/baseline/results.md) |
+| `gate3b_server_checkpoint_restore` | Does restoring a warmed full SGLang server beat that cold launch? | ✅ PASS — **18.2 s restore vs 59.3 s cold (3.3x)** | [results/gate3b_server_checkpoint_restore/results.md](results/gate3b_server_checkpoint_restore/results.md) |
 
 ## Environment (2026-07-23)
 
@@ -65,7 +77,7 @@ scripts/baseline.sh --cold
 # the payoff: launch -> warm -> checkpoint -> cold restore (~18 s), end to end
 scripts/checkpoint_server.sh 3b
 #   or split it:
-scripts/checkpoint_server.sh checkpoint   # -> 26 GB snapshot in results/gate3b-run/img
+scripts/checkpoint_server.sh checkpoint   # -> 26 GB snapshot in results/gate3b_server_checkpoint_restore/gate3b-run/img
 scripts/restore_server.sh --cold          # restore it, timed, cache-cold
 ```
 
@@ -92,7 +104,7 @@ scripts/gate_criu_cpu.sh && scripts/gate_criu_gpu.sh
 | `scripts/gate_criu_{cpu,gpu}.sh` | Gates 1–2 — the CRIU/cuda-checkpoint foundation |
 | `src/counter.cu`, `src/python_cuda_counter.py` | device-memory counters (Gate 2 / 3a) |
 | `bin/cuda-checkpoint` | prebuilt NVIDIA tool *(gitignored; fetch above)* |
-| `results/` | gate logs, profiles + `SUMMARY.md` |
+| `results/<gate>/` | one dir per sub-experiment, each with its own `results.md` (see Sub-experiments above) |
 
 ## Key difference from Bristen, in one line
 
@@ -101,3 +113,26 @@ initial userns), so it is criu — not your `CapEff=0` shell — that satisfies 
 check. Invoke `criu … --unprivileged` (required for a non-root caller); do **not** wrap
 it in `unshare -Urpf` (that only grants namespace-root, which the init-userns check
 rejects — the Bristen dead end).
+
+## This matches what the field is doing
+
+Independently rediscovered the same path as: Fergus Finn's *Cloudburst* (70x for SGLang,
+same io_uring/uvloop snag), **NVIDIA Dynamo Snapshot** (CRIU + cuda-checkpoint for
+vLLM/SGLang/TRT-LLM on K8s, quiesce/resume hooks), and vLLM RFC #34303. Our
+unprivileged bare-host recipe is the no-root equivalent of their approaches.
+
+## Caveats / next
+
+- **TP1 only.** TP4 (cluster) adds NCCL + a 4-rank process group; NCCL state
+  checkpointing is untested here (single GPU) and is the main open risk for the cluster.
+- **Snapshots are single-use** (see
+  [results/gate3b_server_checkpoint_restore/results.md](results/gate3b_server_checkpoint_restore/results.md)) —
+  a real deployment would need the `/dev/shm` link-remap set preserved alongside the
+  image, or a dump that does not leave unlinked files behind, before one image could
+  serve many cold nodes. That is the gap between this experiment and the actual use
+  case.
+- The **26 GB snapshot read** is the restore floor. Faster storage / O_DIRECT / parallel
+  reads (as NVIDIA Dynamo does) would cut the 14 s criu-restore further.
+- The uvloop shim forces plain asyncio (slightly slower loop than uvloop) — fine for
+  cold-start/restore measurement; a production path would want the same on both sides.
+- `--tcp-close` drops the torch TCPStore connection; safe at TP1 serving, revisit for TP>1.

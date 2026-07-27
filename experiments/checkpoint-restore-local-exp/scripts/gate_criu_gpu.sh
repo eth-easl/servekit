@@ -24,7 +24,7 @@ COUNTER="$HERE/src/counter"
 TICK_MS=1000
 FREEZE_WINDOW=8          # seconds to hold checkpointed; ~8 ticks should be skipped
 
-WORK="${1:-$HERE/results/criu-gpu-run}"
+WORK="${1:-$HERE/results/gate2_criu_gpu/criu-gpu-run}"
 LOG="$WORK/counter.log"
 IMG="$WORK/img"
 rm -rf "$WORK"; mkdir -p "$IMG"

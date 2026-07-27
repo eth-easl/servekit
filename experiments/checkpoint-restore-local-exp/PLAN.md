@@ -168,7 +168,9 @@ with the phase breakdown from `servekit profile` where applicable.
 **3.3x**. Making the full server checkpointable unprivileged took five source-level
 fixes (GPU VMAs on every tree pid; uvloop→epoll shim via `.pth`; `USE_LIBUV=0`;
 `--network-lock skip`; `--tcp-close`) — all encoded in `checkpoint_server.sh`; the exact
-criu errors and fixes are in [results/SUMMARY.md](results/SUMMARY.md). The snapshot-size
+criu errors and fixes are in
+[results/gate3b_server_checkpoint_restore/results.md](results/gate3b_server_checkpoint_restore/results.md).
+The snapshot-size
 scaling held: 291 MB (C counter) → 649 MB (CPython+torch) → 26 GB (8B server), and that
 26 GB read (~14 s) is the restore floor — exactly why page-cache control matters.
 

@@ -47,7 +47,8 @@ COLD=0
 ls "$MODEL_DIR"/*.safetensors >/dev/null 2>&1 || { echo "weights missing in $MODEL_DIR -- run setup_env.sh download"; exit 2; }
 
 TS="$(date -u +%Y%m%dT%H%M%SZ)"
-OUT="$HERE/results/baseline-${TS}-profile.json"
+mkdir -p "$HERE/results/baseline"
+OUT="$HERE/results/baseline/baseline-${TS}-profile.json"
 
 echo "==== baseline :: Apertus-8B TP1 profile + bench ===="
 echo "model:   $MODEL_DIR"
@@ -61,7 +62,7 @@ if [ "$COLD" = 1 ]; then
   echo; echo "-- [cold 2/2] wiping compile caches (flashinfer/triton/inductor/sglang) --"
   # Redirect every JIT cache to a fresh throwaway dir so kernels compile from scratch,
   # mirroring the cluster's ephemeral HOME. Does NOT touch the user's real ~/.cache.
-  COLD_CACHE="$HERE/results/.cold-compile-cache"
+  COLD_CACHE="$HERE/results/baseline/.cold-compile-cache"
   rm -rf "$COLD_CACHE"; mkdir -p "$COLD_CACHE"
   export FLASHINFER_WORKSPACE_BASE="$COLD_CACHE"       # -> $COLD_CACHE/.cache/flashinfer
   export SGLANG_CACHE_DIR="$COLD_CACHE/sglang"

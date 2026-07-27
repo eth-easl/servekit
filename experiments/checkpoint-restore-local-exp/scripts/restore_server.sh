@@ -14,14 +14,15 @@
 # deletes them when it exits, so the next restore dies with
 #   Can't link dev/shm/link_remap.NNN -> dev/shm/sem.XXXXXX: No such file or directory
 # Re-run `checkpoint_server.sh checkpoint` for each restore you want to measure (~22 s).
-# Likewise, anything that appends to results/ckpt_server.log (the checkpointed server's
-# fd 1) breaks the image -- criu refuses a file whose size changed since the dump.
+# Likewise, anything that appends to results/gate3b_server_checkpoint_restore/ckpt_server.log
+# (the checkpointed server's fd 1) breaks the image -- criu refuses a file whose size
+# changed since the dump.
 #
 # Usage:
 #   scripts/restore_server.sh [--cold] [snapshot_dir]
 #     --cold   evict the snapshot from page cache first (honest cold-node timing);
 #              omit to measure a warm (cache-hot) restore.
-# Default snapshot_dir: results/gate3b-run/img
+# Default snapshot_dir: results/gate3b_server_checkpoint_restore/gate3b-run/img
 set -u
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
 VENV="${CKPT_VENV:-$HOME/ckpt-venv}"
@@ -33,7 +34,7 @@ PORT="${PORT:-8080}"
 BASELINE_COLD_S="${BASELINE_COLD_S:-59.3}"   # cold-launch reference (baseline.sh --cold)
 
 COLD=0; [ "${1:-}" = "--cold" ] && { COLD=1; shift; }
-IMG="${1:-$HERE/results/gate3b-run/img}"
+IMG="${1:-$HERE/results/gate3b_server_checkpoint_restore/gate3b-run/img}"
 META="$IMG/ckpt_meta.txt"
 
 [ -d "$IMG" ]   || { echo "no snapshot dir: $IMG (run checkpoint_server.sh first)"; exit 2; }
@@ -73,7 +74,7 @@ echo "   cuda-checkpoint restore: $((t2-t1)) ms | gpu: $($CCKPT --get-state --pi
 # a request" to "serves at full rate with coherent output" -- directly comparable to the
 # baseline report. No launch log exists here, which is exactly why bench is standalone.
 echo "-- verify: servekit bench on the restored server --"
-BENCH_OUT="$HERE/results/restore-$(date -u +%Y%m%dT%H%M%SZ)-bench.json"
+BENCH_OUT="$HERE/results/gate3b_server_checkpoint_restore/restore-$(date -u +%Y%m%dT%H%M%SZ)-bench.json"
 tb0=$(now_ms)
 "$SERVEKIT" bench --url "http://127.0.0.1:$PORT" --out "$BENCH_OUT" \
   --wait-ready 120 --requests 64 --concurrency 16 --input-len 512 --output-len 128
