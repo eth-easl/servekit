@@ -33,6 +33,9 @@
 #
 # Usage: stage_to_shm_sliced.sh <src_model_dir> <dest_dir> [slices] [bs] [read_mode]
 #   read_mode: direct (default, O_DIRECT) | buffered (page cache + readahead)
+#   FILE_PATTERN=<glob>  stage only matching files (default '*', i.e. all of them).
+#     Phase 7 uses '*.safetensors' so it can copy the small config/tokenizer files
+#     synchronously first and leave only the big ones in the overlapped window.
 set -euo pipefail
 
 SRC="${1:?src model dir}"; DEST="${2:?dest dir, e.g. /dev/shm/llama70b}"
@@ -52,8 +55,10 @@ esac
 [[ -d "$SRC" ]] || { echo "src not a dir: $SRC" >&2; exit 1; }
 mkdir -p "$DEST"
 
-mapfile -t FILES < <(find "$SRC" -maxdepth 1 -type f -printf '%f\n' | sort)
-src_bytes="$(find "$SRC" -maxdepth 1 -type f -printf '%s\n' | awk '{s+=$1} END{print s}')"
+FILE_PATTERN="${FILE_PATTERN:-*}"
+mapfile -t FILES < <(find "$SRC" -maxdepth 1 -type f -name "$FILE_PATTERN" -printf '%f\n' | sort)
+(( ${#FILES[@]} > 0 )) || { echo "no files matching '$FILE_PATTERN' in $SRC" >&2; exit 1; }
+src_bytes="$(find "$SRC" -maxdepth 1 -type f -name "$FILE_PATTERN" -printf '%s\n' | awk '{s+=$1} END{print s}')"
 avail_bytes="$(df --output=avail -B1 "$(dirname "$DEST")" | tail -1 | tr -d ' ')"
 headroom=$((10*1024**3))
 if (( avail_bytes < src_bytes + headroom )); then
@@ -100,9 +105,9 @@ end="$(date +%s.%N)"
 # Size parity, so a partial stage cannot look "done". This is necessary but NOT
 # sufficient with concurrent writers -- truncate already fixed the size, so only
 # a checksum proves the CONTENT. The caller must run that gate.
-dst_bytes="$(find "$DEST" -maxdepth 1 -type f -printf '%s\n' | awk '{s+=$1} END{print s}')"
+dst_bytes="$(find "$DEST" -maxdepth 1 -type f -name "$FILE_PATTERN" -printf '%s\n' | awk '{s+=$1} END{print s}')"
 [[ "$src_bytes" == "$dst_bytes" ]] || { echo "SIZE MISMATCH src=$src_bytes dst=$dst_bytes" >&2; exit 2; }
 
 wall="$(awk -v s="$start" -v e="$end" 'BEGIN{printf "%.2f", e-s}')"
 gbps="$(awk -v b="$dst_bytes" -v w="$wall" 'BEGIN{printf "%.2f", b/w/1e9}')"
-echo "staged_files=$(find "$DEST" -maxdepth 1 -type f | wc -l) staged_bytes=$dst_bytes slices=$SLICES read_mode=$READ_MODE readers=$NTASK stage_wall_s=$wall stage_GBps=$gbps"
+echo "staged_files=$(find "$DEST" -maxdepth 1 -type f -name "$FILE_PATTERN" | wc -l) staged_bytes=$dst_bytes slices=$SLICES read_mode=$READ_MODE readers=$NTASK stage_wall_s=$wall stage_GBps=$gbps"

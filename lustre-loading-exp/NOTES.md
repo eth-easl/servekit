@@ -605,5 +605,99 @@ and varied only the container — it would have returned "bare ≈ container ≈
 GB/s", declared the container innocent, and read as a dead end while the real
 variable was never moved. Vary the thing you have not yet excluded.
 
-## Phase 6 (next) — graph capture  ⏳
+## Phase 6 — pre-sharded checkpoint + /dev/shm staging  ✅ — win if overlapped
 
+Ported the `shm-weight-loading-exp` pre-sharding treatment into this repo as
+`scripts/phase6_preshard_shm/`: a one-time job (`save_sharded_ckpt.sbatch`)
+does the TP de-stride ONCE offline via `--load-format sharded_state`, writing
+one file per TP rank (already contiguous, final layout, no cross-rank
+exchange) to `/capstor/store/cscs/swissai/infra01/cold-start-experiments/
+llama70b-tp4-sharded` (131 GB, regenerated job 76434). The e2e run
+(`phase6_preshard_shm.sbatch`, job 76435) stages those shards into `/dev/shm`
+with the Phase 4b sliced stager, then serves off tmpfs with
+`--load-format sharded_state`.
+
+Result (nid002281, 64 CPUs — Phase 4b's 128-CPU stage fix not applied here):
+
+| stage | weight_loading | stage + weight_loading | total cold start |
+|---|---|---|---|
+| 11.89 s | 9.64 s | **21.53 s** | 180.70 s |
+
+Reference: Phase 1.3 mmap baseline (straight off capstor, no shm) —
+`weight_loading` alone = 20.51 s.
+
+**VERDICT: pre-sharding cuts `weight_loading` cleanly (20.51 s → 9.64 s,
+matching the ~10.6 s seen in `shm-weight-loading-exp`); the stage cost
+(11.89 s) only cancels that gain if counted serially, as this run does.**
+The stage script in `phase6_preshard_shm.sbatch` runs the `/dev/shm` copy
+*before* launching `sglang.launch_server`, so today's 21.53 s is stage-then-
+load, back to back. But nothing ties the shm stage to GPU/torch state — it is
+a plain host-side file copy — so it does not have to sit in front of
+`weight_loading`. It could instead run concurrently with `process_startup`
+(23.32 s) + `tp_worker_spawn` (15.87 s) + `torch_distributed_init` (3.09 s),
+none of which touch `/dev/shm/llama70b`, kicking off the stage as soon as the
+job lands on the node rather than after the engine process is already up.
+Under that overlap the stage's 11.89 s is mostly hidden inside the ~42 s of
+init that already happens first, and the effective win converges toward the
+full `weight_loading` delta (~11 s). Not yet implemented/measured here — this
+run only established the two numbers, not the overlap. Whatever CPU-count fix
+from Phase 4b would also still apply to the stage leg. Separately,
+`cuda_graph_capture` (28.35 s) + `piecewise_cuda_graph_capture` (79.95 s)
+already dwarf `weight_loading` under any arm, so graph capture remains the
+bigger lever for total cold-start reduction. Ran correctly: 64/64 requests,
+0 errors, 401 tok/s.
+
+
+## Phase 7 — overlapping the stage with startup hides it entirely  ✅
+
+Phase 6's open question, answered: the `/dev/shm` stage does not have to sit in
+front of `weight_loading`. `scripts/phase7_overlap_stage/phase7_overlap_stage.sbatch`
+(job 76436, nid002281, 64 CPUs — same node and CPU count as the phase 6 control,
+job 76435) copies the 10 small config/tokenizer files synchronously, then
+backgrounds the 28-shard sliced stage and launches `sglang.launch_server`
+**immediately**, with no barrier and no engine patch.
+
+| | phase 6 (serial, 76435) | phase 7 (overlapped, 76436) |
+|---|---|---|
+| stage | 11.89 s (before launch) | 14.24 s (concurrent) |
+| weight_loading | 9.64 s | 9.81 s |
+| servekit total | 180.70 s | 183.31 s |
+| **TOTAL COLD START** | **192.59 s** | **183.43 s** |
+
+> **KEY FINDING: the stage disappears from the critical path. −9.16 s.**
+> It finished **14.24 s** into the run; the loader did not open a weight file
+> until **48.74 s** — **34.5 s of slack**. The stage is not merely hidden, it is
+> hidden with room to spare: it could get 3.4× slower (Lustre contention swings
+> of 2–6× are already documented here) and still beat the loader on this node.
+
+Correctness held: 64/64 requests, 0 errors, 401.4 tok/s — identical to phase 6.
+
+**The interference is real but small, and lands where Phase 4b predicted.**
+Per-phase delta vs 76435: `process_startup` **+4.25 s** (23.32 → 27.57),
+`tp_worker_spawn` +0.47, everything else within ±1.5 s noise. The sliced stager
+is CPU-bound (Phase 4b), so 1704 concurrent `dd`s competing with Python imports
+for 64 CPUs tax the import window — and the stage itself pays too, 11.89 → 14.24 s
+(10.59 GB/s vs 11.87). Both costs are dwarfed by removing 11.89 s of serial work:
+**+2.61 s of startup, −11.89 s of stage.**
+
+**Validity, since this arm has no synchronization by design.** The gate is
+post-hoc: the stage's end epoch must precede the absolute time `weight_loading`
+began (`profile.started_at` + durations of the phases ahead of it), computed and
+printed by the job itself. A negative slack means SGLang opened a partially
+staged file and the run is discarded, not interpreted. This run passed by
+34.50 s. What this measures is the **ceiling** — it is not a shippable design.
+For that, PLAN.md's follow-up still stands: stage into `.tmp`, atomic `rename()`,
+and a loader-side wait, so a slow stage degrades to serial instead of corrupting.
+
+The 34.5 s of slack is what makes that follow-up cheap: a barrier that never
+fires costs nothing, and the design only has to handle the tail.
+
+*(Enabler: `stage_to_shm_sliced.sh` gained an optional `FILE_PATTERN` env,
+default `*` — phases 4/6 behave exactly as before. Phase 7 passes
+`'*.safetensors'` so the small files can be pre-copied out of the raced window.)*
+
+**Where this leaves the cold start.** Stage is now free, `weight_loading` is
+9.81 s against the phase 1.3 mmap baseline's 20.51 s, and the remaining 183 s is
+dominated by `piecewise_cuda_graph_capture` (78.42 s) + `cuda_graph_capture`
+(28.41 s) = **58% of total**, with `process_startup` + `tp_worker_spawn`
+(43.91 s) next. Weight loading is no longer the lever.

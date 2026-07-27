@@ -130,6 +130,36 @@ on each:
   **overlap opportunity**: staging can run concurrently with import/CUDA-init;
   record both serial and (if scripted) overlapped timings.
 
+## Phase 7 — Hide the stage: overlap staging with SGLang startup
+
+Phase 6 left `stage 11.89 s + weight_loading 9.64 s` back-to-back because the
+stage ran to completion before `launch_server` was even exec'd. The stage is a
+host-side file copy with no dependency on GPU/torch state, and ~42 s of
+`process_startup` + `tp_worker_spawn` + `torch_distributed_init` runs before the
+loader opens a weight file — so it should fit entirely inside that window.
+
+`scripts/phase7_overlap_stage/phase7_overlap_stage.sbatch`, one arm, 64 CPUs
+(matching phase 6, so overlap is the only variable vs job 76435):
+
+- Non-safetensors files (config/tokenizer, read within the first seconds of
+  startup) copied **synchronously** first. `stage_to_shm_sliced.sh` grew a
+  `FILE_PATTERN` env (default `*`, no behaviour change) so only the 28
+  `*.safetensors` (131 GB) go into the background stage.
+- Stage backgrounded, `launch_server` started immediately — **no barrier, no
+  engine patch**. This measures the ceiling, not a shippable design.
+- **Post-hoc validity gate** instead of synchronization: the stage's end epoch
+  must precede the absolute time `weight_loading` began (`profile.started_at` +
+  durations of preceding phases). Negative slack ⇒ the run read partially
+  staged bytes and is discarded, not interpreted.
+- Headline metric is `ready_at − stage_start`, compared against phase 6's
+  192.59 s. Serving correctness (64/64, 0 errors) remains the gate.
+- Expect the stage itself to take **longer** than 11.89 s: Phase 4b showed it is
+  CPU-bound, and it now contends with `process_startup`/`tp_worker_spawn` for the
+  same 64 CPUs. That interference is a result, not noise.
+
+Production version (sentinel + atomic rename + a loader-side wait) is the
+follow-up at the end of this file, only worth building if this arm pays.
+
 ## Phase 5 — Comparison + recommendation
 
 Table in `NOTES.md`: baseline vs A vs B, **each split by mmap on/off**, on
