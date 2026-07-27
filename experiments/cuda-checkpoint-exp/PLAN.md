@@ -87,3 +87,24 @@ transition. Every gate has an explicit pass condition and a captured error path,
 3. Compute nodes offline → pre-stage `.sqsh` + binary (Step 1).
 4. CRIU chokes on the CUDA process despite passing Step 2 → captured with criu logs;
    motivates trying the driver-570 transparent/plugin path.
+
+## Interim: local testing while waiting on the CSCS `CAP_CHECKPOINT_RESTORE` grant
+
+Bristen's CRIU path is blocked on a site-policy ask (see `results/SUMMARY.md`) that
+CSCS has to action — not something we can resolve ourselves. Rather than block on
+that, further checkpoint/restore work in this experiment moves to the **local
+machine** in the meantime, using **Apertus-8B** (fits comfortably on one GPU here)
+instead of the larger models used on Bristen/Clariden.
+
+**Local machine spec** (as of 2026-07-23):
+
+- GPU: 1x NVIDIA GeForce RTX 3090, 24 GiB VRAM
+- Driver 610.43.02, CUDA (UMD) 13.3
+- RAM: 125 GiB total (~123 GiB available)
+- Single GPU only → local runs are **TP1**, unlike the TP4 setup on Clariden/Bristen.
+  Any timing/behavior differences between TP1 (here) and TP4 (cluster) should be
+  called out explicitly rather than assumed to generalize.
+
+Once CSCS grants the capability (or an alternative path is found), re-validate
+findings from local testing against the real Bristen/Clariden environment before
+drawing conclusions for the serving platform.
