@@ -1,6 +1,12 @@
-"""Post-cold-start benchmark for a live inference server (stdlib only).
+"""Benchmark for a live inference server (stdlib only).
 
-Two checks, run after the server reports ready:
+Runs against any reachable server -- one launched by ``servekit profile``, or one
+that servekit never launched at all (a CRIU-restored process, a server started by
+hand). Readiness is therefore established over HTTP (see ``wait_for_ready``), not
+by parsing a startup log: a restored process emits no startup log, and "can this
+server actually serve?" is the question a benchmark cares about anyway.
+
+Two checks, run once the server answers:
 
 * correctness - greedy (temperature=0) completions on a fixed prompt set,
   captured verbatim in the report. Different loaders (mmap / no-mmap /
@@ -55,6 +61,7 @@ class BenchConfig:
     correctness: bool = True
     correctness_max_new_tokens: int = 64
     timeout_s: float = 600.0
+    wait_ready_s: float = 0.0     # >0: poll until the server serves (see wait_for_ready)
 
 
 @dataclass
@@ -62,6 +69,7 @@ class BenchReport:
     base_url: str
     correctness: Optional[dict] = None
     throughput: Optional[dict] = None
+    ready_wait_s: Optional[float] = None  # seconds spent waiting for the first 200
     errors: List[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
@@ -75,6 +83,46 @@ def _generate(base_url: str, prompt: str, sampling_params: dict, timeout: float)
     )
     with urllib.request.urlopen(req, timeout=timeout) as r:
         return json.loads(r.read())
+
+
+def wait_for_ready(
+    base_url: str,
+    timeout_s: float,
+    interval_s: float = 1.0,
+    probe_timeout_s: float = 30.0,
+) -> float:
+    """Poll ``POST /generate`` until the server answers; return seconds waited.
+
+    This is servekit's *serving* readiness signal, deliberately distinct from the
+    profiler's log-based one ("fired up and ready to roll", which marks the end of
+    cold start). Here we only care that the server can actually complete a request
+    -- the single question that survives when there is no startup log to read, as
+    after a CRIU restore.
+
+    The probe is a 1-token greedy generation, so it is cheap but still exercises
+    the real inference path. Every failure is retried: a connection refused (not
+    listening yet), a 503 (listening, model not loaded), and a probe timeout are
+    all indistinguishable from "not ready yet" and all resolve the same way.
+    Raises TimeoutError if `timeout_s` elapses first.
+    """
+    t0 = time.time()
+    last_error: Optional[Exception] = None
+    while True:
+        try:
+            _generate(
+                base_url,
+                "ping",
+                {"temperature": 0.0, "max_new_tokens": 1},
+                probe_timeout_s,
+            )
+            return time.time() - t0
+        except Exception as e:  # noqa: BLE001 - any failure means "not ready yet"
+            last_error = e
+        if time.time() - t0 >= timeout_s:
+            raise TimeoutError(
+                f"{base_url} not serving after {timeout_s:g}s (last error: {last_error})"
+            )
+        time.sleep(interval_s)
 
 
 def _completion_tokens(resp: dict, fallback: int) -> int:
@@ -161,6 +209,14 @@ def run_throughput(base_url: str, cfg: BenchConfig) -> dict:
 
 def run_benchmark(base_url: str, cfg: BenchConfig) -> BenchReport:
     report = BenchReport(base_url=base_url)
+    if cfg.wait_ready_s > 0:
+        try:
+            report.ready_wait_s = round(wait_for_ready(base_url, cfg.wait_ready_s), 3)
+        except TimeoutError as e:
+            # Nothing downstream can succeed against a server that never served;
+            # bail out rather than emit a wall of identical connection errors.
+            report.errors.append(str(e))
+            return report
     if cfg.correctness:
         try:
             report.correctness = run_correctness(base_url, cfg)
@@ -174,7 +230,9 @@ def run_benchmark(base_url: str, cfg: BenchConfig) -> BenchReport:
 
 
 def render_bench(report: BenchReport) -> str:
-    lines = ["[SERVEKIT] Post-ready benchmark", "-" * 40]
+    lines = [f"[SERVEKIT] Benchmark of {report.base_url}", "-" * 40]
+    if report.ready_wait_s is not None:
+        lines.append(f"ready_wait: {report.ready_wait_s} s (until the server served a request)")
     if report.correctness:
         res = report.correctness["results"]
         lines.append(f"correctness: {len(res)} greedy prompts captured (compare outputs in report JSON)")

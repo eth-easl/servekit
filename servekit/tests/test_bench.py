@@ -1,32 +1,75 @@
-"""Tests for the post-ready benchmark against an in-process stub /generate server."""
+"""Tests for the benchmark against an in-process stub /generate server."""
 import json
+import socket
 import threading
+import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from servekit.bench import CORRECTNESS_PROMPTS, BenchConfig, run_benchmark
+from servekit.bench import CORRECTNESS_PROMPTS, BenchConfig, run_benchmark, wait_for_ready
 
 
-class _Handler(BaseHTTPRequestHandler):
-    def do_POST(self):
-        n = int(self.headers.get("Content-Length", 0))
-        body = json.loads(self.rfile.read(n))
-        # Deterministic echo so greedy correctness output/hash is stable per prompt.
-        resp = {"text": "OUT:" + body["text"][:12], "meta_info": {"completion_tokens": 7}}
-        data = json.dumps(resp).encode()
-        self.send_response(200)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(data)))
-        self.end_headers()
-        self.wfile.write(data)
+def _make_handler(unready_posts: int):
+    """Stub /generate that 503s for its first `unready_posts` requests.
 
-    def log_message(self, *a):  # silence access logs
-        pass
+    That models a server which is listening but cannot serve yet -- the state
+    `wait_for_ready` exists to poll through. GET returns the request count, so
+    a test can assert when load did (and did not) arrive.
+    """
+    state = {"posts": 0}
+    lock = threading.Lock()
+
+    class _Handler(BaseHTTPRequestHandler):
+        def _reply(self, code, payload):
+            data = json.dumps(payload).encode()
+            self.send_response(code)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+
+        def do_GET(self):
+            with lock:
+                self._reply(200, {"posts": state["posts"]})
+
+        def do_POST(self):
+            n = int(self.headers.get("Content-Length", 0))
+            body = json.loads(self.rfile.read(n))
+            with lock:
+                state["posts"] += 1
+                seen = state["posts"]
+            if seen <= unready_posts:
+                self.send_response(503)
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
+            # Deterministic echo so greedy correctness output/hash is stable per prompt.
+            self._reply(200, {"text": "OUT:" + body["text"][:12], "meta_info": {"completion_tokens": 7}})
+
+        def log_message(self, *a):  # silence access logs
+            pass
+
+    return _Handler
 
 
-def _start_server():
-    srv = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
+def _start_server(unready_posts: int = 0):
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), _make_handler(unready_posts))
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     return srv, f"http://127.0.0.1:{srv.server_address[1]}"
+
+
+def _request_count(url: str) -> int:
+    """How many /generate requests the stub has served so far."""
+    with urllib.request.urlopen(url, timeout=5) as r:
+        return json.loads(r.read())["posts"]
+
+
+def _dead_url():
+    """A URL nothing is listening on (bind to get a free port, then release it)."""
+    s = socket.socket()
+    s.bind(("127.0.0.1", 0))
+    port = s.getsockname()[1]
+    s.close()
+    return f"http://127.0.0.1:{port}"
 
 
 def test_correctness_and_throughput():
@@ -56,7 +99,51 @@ def test_correctness_captures_all_prompts():
         srv.shutdown()
 
 
+def test_wait_for_ready_polls_through_503():
+    srv, url = _start_server(unready_posts=3)
+    try:
+        waited = wait_for_ready(url, timeout_s=10.0, interval_s=0.05)
+        assert waited > 0
+        # The probe consumed the 503s; the server is now usable for real work.
+        assert wait_for_ready(url, timeout_s=10.0, interval_s=0.05) >= 0
+    finally:
+        srv.shutdown()
+
+
+def test_wait_for_ready_times_out():
+    try:
+        wait_for_ready(_dead_url(), timeout_s=0.3, interval_s=0.05)
+    except TimeoutError as e:
+        assert "not serving" in str(e)
+    else:
+        raise AssertionError("expected TimeoutError against a dead port")
+
+
+def test_run_benchmark_waits_then_benchmarks():
+    srv, url = _start_server(unready_posts=2)
+    try:
+        cfg = BenchConfig(requests=4, input_len=8, output_len=5, concurrency=2, wait_ready_s=10.0)
+        rep = run_benchmark(url, cfg)
+        assert not rep.errors, rep.errors
+        assert rep.ready_wait_s is not None and rep.ready_wait_s >= 0
+        assert rep.throughput["completed"] == 4
+    finally:
+        srv.shutdown()
+
+
+def test_run_benchmark_gives_up_when_never_ready():
+    cfg = BenchConfig(requests=4, wait_ready_s=0.3)
+    rep = run_benchmark(_dead_url(), cfg)
+    # No point hammering a server that never served: bail with one clear error.
+    assert len(rep.errors) == 1 and "not serving" in rep.errors[0]
+    assert rep.throughput is None and rep.correctness is None
+
+
 if __name__ == "__main__":
     test_correctness_and_throughput()
     test_correctness_captures_all_prompts()
+    test_wait_for_ready_polls_through_503()
+    test_wait_for_ready_times_out()
+    test_run_benchmark_waits_then_benchmarks()
+    test_run_benchmark_gives_up_when_never_ready()
     print("ok")
