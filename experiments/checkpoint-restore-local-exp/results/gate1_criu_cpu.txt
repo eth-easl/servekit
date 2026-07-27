@@ -1,0 +1,27 @@
+==== Gate 1 :: criu-cpu (plain process dump/restore) ====
+criu: /usr/sbin/criu  (Version: 4.2)  args: --unprivileged
+getcap: /usr/sbin/criu cap_sys_ptrace,cap_checkpoint_restore=ep
+
+counter pid=9743  tick before dump=4
+
+-- criu dump --
+scripts/gate_criu_cpu.sh: line 53:  9743 Killed                  setsid bash "$WORK/counter.sh" < /dev/null > /dev/null 2>&1
+dump rc=0
+(00.053420) Writing stats
+(00.053444) Dumping finished successfully
+process alive after dump? no
+tick frozen at=5
+
+-- wait 3s (would be ~6 ticks if still running) --
+tick file now=5  (== 5 means truly dumped/frozen)
+
+-- criu restore --
+restore rc=0
+(00.025478) Writing stats
+(00.025524) Running post-resume scripts
+first tick after restore=6  (must be 6)
+tick now=11            (just how far it got in the 3s sleep — carries no correctness info)
+tick sequence: contiguous
+
+GATE criu-cpu : PASS  (frozen at 5 while dumped; resumed at exactly 6 = froze+1, sequence contiguous)
+==== end Gate 1 ====

@@ -1,0 +1,36 @@
+==== Gate 3b :: full SGLang launch_server checkpoint/restore ====
+-- launch server --
+  launcher pid=15122 ; waiting for ready...
+  ready. warming with a request:
+    resp: Paris, which is also the country's largest city. not only is Paris the
+  process tree: 15122 15213 15214 15215 
+  gpu-holding pids: 15214 
+  gpu mem before checkpoint: 22154 MiB
+-- cuda-checkpoint the GPU-holding pid(s) --
+  [pid 15214] lock ok
+  [pid 15214] checkpoint ok
+  [pid 15214] state=checkpointed
+  gpu mem after checkpoint: 4 MiB (expect ~0)
+-- criu dump the tree (args: --shell-job --tcp-established --file-locks --link-remap) --
+GATE 3b: FAIL (criu dump rc=1 after 97 ms)
+-- criu errors (verbatim) --
+(00.000049) Warn  (criu/kerndat.c:1200): $XDG_RUNTIME_DIR not set. Cannot find location for kerndat file
+(00.027822) Warn  (criu/kerndat.c:1200): $XDG_RUNTIME_DIR not set. Cannot find location for kerndat file
+(00.028452) Warn  (cuda_plugin.c:585): cuda_plugin: check that cuda-checkpoint is present in $PATH
+(00.042624) 	type squashfs source /dev/loop0 mnt_id 52 s_dev 0x700000 / @ ./snap/core22/2339 flags 0x300005 options errors=continue,threads=single
+(00.042627) 	type squashfs source /dev/loop1 mnt_id 54 s_dev 0x700001 / @ ./snap/core22/2411 flags 0x300005 options errors=continue,threads=single
+(00.042630) 	type squashfs source /dev/loop2 mnt_id 56 s_dev 0x700002 / @ ./snap/core24/1587 flags 0x300005 options errors=continue,threads=single
+(00.042632) 	type squashfs source /dev/loop3 mnt_id 58 s_dev 0x700003 / @ ./snap/core24/1643 flags 0x300005 options errors=continue,threads=single
+(00.042635) 	type squashfs source /dev/loop4 mnt_id 60 s_dev 0x700004 / @ ./snap/go/11200 flags 0x300005 options errors=continue,threads=single
+(00.042650) 	type squashfs source /dev/loop5 mnt_id 62 s_dev 0x700005 / @ ./snap/go/11227 flags 0x300005 options errors=continue,threads=single
+(00.042653) 	type squashfs source /dev/loop6 mnt_id 64 s_dev 0x700006 / @ ./snap/snapd/27406 flags 0x300005 options errors=continue,threads=single
+(00.042659) 	type vfat source /dev/nvme0n1p1 mnt_id 95 s_dev 0x10300001 / @ ./boot/efi flags 0x300000 options fmask=0022,dmask=0022,codepage=437,iocharset=iso8859-1,shortname=mixed,errors=remount-ro
+(00.042693) 	type squashfs source /dev/loop8 mnt_id 566 s_dev 0x700008 / @ ./snap/snapd/27591 flags 0x300005 options errors=continue,threads=single
+(00.091343) Error (criu/proc_parse.c:118): handle_device_vma plugin failed: No such file or directory
+(00.091345) Error (criu/proc_parse.c:663): Can't handle non-regular mapping on 15122's map 75151bc42000
+(00.091353) Error (criu/cr-dump.c:1587): Collect mappings (pid: 15122) failed with -1
+(00.091960) Error (criu/cr-dump.c:2128): Dumping FAILED.
+  (iterate via CRIU_DUMP_ARGS; leaving GPU checkpointed pids: 15214 )
+  [pid 15214] gpu-restore ok
+  [pid 15214] unlock ok
+  [pid 15214] state=running

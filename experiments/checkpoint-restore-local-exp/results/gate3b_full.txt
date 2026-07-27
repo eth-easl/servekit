@@ -1,0 +1,28 @@
+shim active: /home/youssef/ckpt-venv/lib/python3.12/site-packages/zz_uvloop_epoll_shim.pth
+launcher pid=22767
+  GPU-VMA pids: 22767 22850 22851 
+  io_uring fds in tree: 0 
+  gpu before: 22154 MiB
+  cuda-checkpoint (GPU evict): 10485 ms | gpu: 1 MiB
+  criu dump: 10879 ms | snapshot: 26G | total checkpoint: 21364 ms
+  meta: /home/youssef/simple-serving-stack/experiments/checkpoint-restore-local-exp/results/gate3b-run/img/ckpt_meta.txt
+
+==== restore SGLang server from CRIU snapshot ====
+snapshot: /home/youssef/simple-serving-stack/experiments/checkpoint-restore-local-exp/results/gate3b-run/img (26G) | gpu pids: 22767 22850 22851  | mode: COLD
+-- evict snapshot from page cache (honest cold restore) --
+   before: 100.00% resident  (6745181/6745181 pages, 26348 MiB total)  /home/youssef/simple-serving-stack/experiments/checkpoint-restore-local-exp/results/gate3b-run/img
+   after :   0.00% resident  (0/6745181 pages, 26348 MiB total)  /home/youssef/simple-serving-stack/experiments/checkpoint-restore-local-exp/results/gate3b-run/img
+-- criu restore --
+   criu restore: 14174 ms
+-- cuda-checkpoint restore + unlock (GPU reattach) --
+   cuda-checkpoint restore: 3692 ms | gpu: running, 22154 MiB
+-- verify: first /generate on the restored server --
+   first request served in 258 ms: "Paris, which is also the country's largest city. not"
+
+==== RESULT ====
+  restore-to-GPU-ready :  17866 ms  (criu restore + cuda reattach)
+  restore-to-served    :  18210 ms  (incl. first real request)
+  cold-launch baseline :  59300 ms  (baseline.sh --cold)
+  speedup vs cold      : 3.3x
+  GATE: PASS (restored server serves correct inference)
+==== end ====

@@ -1,0 +1,38 @@
+==== checkpoint-restore-local-exp :: environment probe ====
+date(host clock): 2026-07-23T14:46:25Z
+
+== user / caps ==
+uid=1005(youssef) gid=1006(youssef) groups=1006(youssef)
+CapInh:	0000000000000000
+CapPrm:	0000000000000000
+CapEff:	0000000000000000
+CapBnd:	000001ffffffffff
+CapAmb:	0000000000000000
+Seccomp:	0
+Seccomp_filters:	0
+
+== GPU / driver ==
+NVIDIA GeForce RTX 3090, 24576 MiB, 610.43.02
+
+== RAM ==
+               total        used        free      shared  buff/cache   available
+Mem:           125Gi       2.7Gi       121Gi       2.1Mi       2.9Gi       122Gi
+
+== criu ==
+path: /usr/sbin/criu
+Version: 4.2
+file caps: /usr/sbin/criu cap_sys_ptrace,cap_checkpoint_restore=ep
+-- criu check (feature probe; non-fatal) --
+Running as non-root requires '--unprivileged'
+Please consult the documentation for limitations when running as non-root
+
+== kernel knobs ==
+ptrace_scope        = 1
+unprivileged_userns = 1
+kernel              = 7.0.0-28-generic
+
+== interpretation ==
+Bristen blocker was: map_files open() needs CAP_CHECKPOINT_RESTORE in the INITIAL
+userns, unobtainable there. Here criu should carry it as a FILE cap (see above),
+so criu — not the shell — gets the cap effective in the initial userns.
+==== end probe ====
