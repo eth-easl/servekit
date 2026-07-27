@@ -1,58 +1,58 @@
 {
-  "command": "python -m sglang.launch_server --model-path /capstor/store/cscs/swissai/infra01/hf_models/models/meta-llama/Llama-3.1-70B-Instruct --host 0.0.0.0 --port 8080 --served-model-name meta-llama/Llama-3.1-70B-Instruct --tensor-parallel-size 4 --trust-remote-code --context-length 32768 --mem-fraction-static 0.85 --max-running-requests 256 --load-format fastsafetensors --enable-metrics",
-  "started_at": 1784021294.783862,
-  "ready_at": 1784021493.9098945,
+  "command": "python -m sglang.launch_server --model-path /dev/shm/llama70b --host 0.0.0.0 --port 8080 --served-model-name meta-llama/Llama-3.1-70B-Instruct --tensor-parallel-size 4 --trust-remote-code --context-length 32768 --mem-fraction-static 0.85 --max-running-requests 256 --load-format sharded_state --enable-metrics",
+  "started_at": 1785135469.4361694,
+  "ready_at": 1785135650.1358995,
   "success": true,
-  "total_duration_s": 199.13,
+  "total_duration_s": 180.7,
   "phases": [
     {
       "name": "process_startup",
-      "duration_s": 16.81,
+      "duration_s": 23.32,
       "source": "wall_clock"
     },
     {
       "name": "tp_worker_spawn",
-      "duration_s": 15.27,
+      "duration_s": 15.87,
       "source": "wall_clock"
     },
     {
       "name": "torch_distributed_init",
-      "duration_s": 4.07,
+      "duration_s": 3.09,
       "source": "engine_reported"
     },
     {
       "name": "unknown",
-      "duration_s": 1.82,
+      "duration_s": 1.95,
       "source": "wall_clock"
     },
     {
       "name": "weight_loading",
-      "duration_s": 37.3,
+      "duration_s": 9.64,
       "source": "engine_reported"
     },
     {
       "name": "kv_cache_alloc",
-      "duration_s": 1.56,
+      "duration_s": 1.72,
       "source": "wall_clock"
     },
     {
       "name": "cuda_graph_capture",
-      "duration_s": 27.04,
+      "duration_s": 28.35,
       "source": "engine_reported"
     },
     {
       "name": "piecewise_cuda_graph_capture",
-      "duration_s": 78.66,
+      "duration_s": 79.95,
       "source": "engine_reported"
     },
     {
       "name": "http_bind",
-      "duration_s": 1.79,
+      "duration_s": 1.61,
       "source": "wall_clock"
     },
     {
       "name": "warmup_request(JIT)",
-      "duration_s": 14.8,
+      "duration_s": 15.19,
       "source": "wall_clock"
     }
   ],
@@ -94,15 +94,15 @@
       "concurrency": 16,
       "input_len": 512,
       "output_len": 128,
-      "wall_s": 20.364,
+      "wall_s": 20.426,
       "output_tokens": 8192,
-      "output_tok_per_s": 402.3,
-      "requests_per_s": 3.143,
+      "output_tok_per_s": 401.0,
+      "requests_per_s": 3.133,
       "latency_s": {
-        "mean": 5.09,
-        "p50": 5.094,
-        "p99": 5.1,
-        "max": 5.101
+        "mean": 5.105,
+        "p50": 5.105,
+        "p99": 5.119,
+        "max": 5.121
       }
     },
     "errors": []
