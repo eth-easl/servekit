@@ -119,10 +119,12 @@ Blockers, in order:
 **Do this last**, and only if Idea 0 shows the residual after ideas 2 and 3 is
 exec-dominated.
 
-Idea 0 update: the ceiling shrank. Workers' I/O is already largely free — they
-start after the parent pulled the same files through page cache — so fork's
-realistic prize is the ~9s exec floor per worker, overlapped across 4 ranks,
-against the broken-CUDA-context risk. After idea 3, if the residual justifies it.
+Idea 0 update: the target changed, not the size. Workers already import at
+~1.2x the warm floor (4.24 ms/module in the main process vs 1.79 in the
+workers, same run) — they inherit the parent's page cache, so fork buys no I/O.
+What it buys is the workers' ~10s of warm-but-repeated import, which is the
+same order as idea 3's win and becomes the dominant remaining cost once idea 3
+lands. Still gated on the CUDA-pre-fork check.
 
 ## Idea 2 — precompile sglang's bytecode — ❌ CLOSED by Idea 0
 

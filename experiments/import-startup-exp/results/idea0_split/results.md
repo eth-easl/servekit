@@ -46,12 +46,43 @@ is not concentrated in sglang at all:
   anywhere patchable. This is the same QD1-small-read pathology already priced
   in `lustre-loading-exp` at 0.74-0.77 GB/s vs 19-20 GB/s with fan-out, and it
   is addressable with machinery already built here, at zero correctness risk.
-- **Idea 1 (spawn→fork) — still open, but its ceiling just shrank.** Fork would
-  let workers inherit exec (~9 s) *and* I/O — except the workers' I/O is
-  already largely free: they start after the parent has pulled the same files
-  through page cache. So fork's realistic prize is the ~9 s exec floor per
-  worker, overlapped across 4 ranks, against a broken-CUDA-context risk. Do it
-  only after Idea 3, and only if the residual justifies it.
+- **Idea 1 (spawn→fork) — still open, and comparable in size to idea 3.** Fork
+  would let workers inherit exec *and* I/O — but the workers' I/O is already
+  free (see below), so its prize is the workers' ~10 s of warm-but-repeated
+  import. That is the same order as the I/O win, and it becomes the dominant
+  remaining cost once idea 3 lands. Still gated on the CUDA-pre-fork check.
+
+## Which phase does each fix actually touch?
+
+`tp_worker_spawn` is a *gap*, not an import measurement: `servekit/src/servekit/profile.py:42-49`
+defines it as the interval between "Using default HuggingFace chat template"
+and the first `TP<n>]` line — 4x spawn and interpreter re-exec, the worker
+imports, per-rank CUDA context, and NCCL all fall inside it.
+
+Splitting the older apertus-8B `-X importtime` log by process (the header line
+is emitted once per process) shows the workers are **not** paying cold I/O.
+Per-module cost is used because interleaving makes per-process attribution
+unreliable:
+
+| | modules | self time | ms/module |
+|---|---:|---:|---:|
+| main process, real launch | 6311 | 26.78 | **4.24** |
+| all later (worker) processes | 34518 | 61.65 | **1.79** |
+| this experiment, A cold | 4898 | 23.92 | **4.88** |
+| this experiment, B warm | 4898 | 7.50 | **1.53** |
+
+The main process imports at cold rates; the workers, same node same run, import
+at ~1.2x the warm floor. **The ~20 s of cold I/O is paid once, in
+`process_startup`, and never again.**
+
+So on the 70B TP4 baseline (`process_startup` 24.24 s, `tp_worker_spawn`
+17.49 s = 41.7 s):
+
+- idea 3 takes `process_startup` toward the ~9 s exec floor and leaves
+  `tp_worker_spawn` essentially untouched → ~41.7 s becomes ~26.5 s, a **~15 s
+  win in one phase**, not 20 s across both.
+- idea 1 then targets what remains, since after idea 3 `tp_worker_spawn` is the
+  larger of the two.
 
 ## Caveats
 
