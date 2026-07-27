@@ -1,0 +1,40 @@
+job=76482 node=nid002293
+started=2026-07-27T18:20:27+02:00
+NVIDIA A100-SXM4-80GB
+pyc destination: in-tree (/sgl-workspace/sglang/python)
+pyc before anything: 0
+A wall_s=30.058 pyc_after=117
+B wall_s=9.008 pyc_after=117
+C wall_s=9.041 pyc_after=0
+
+=== split (76482-nid002293) ===
+wall (s)                         A         B         C
+------------------------------------------------------
+                             30.06      9.01      9.04
+
+  exec floor      B     =   9.01 s
+  compile         C - B =   0.03 s
+  cold I/O        A - C =  21.02 s
+  status quo      A     =  30.06 s
+
+importtime self (s)              A         B         C
+------------------------------------------------------
+torch                         7.14      1.86      1.68
+transformers                  5.44      1.28      1.29
+numpy                         2.39      0.13      0.13
+sglang                        2.14      0.62      0.85
+sgl_kernel                    1.11      0.86      0.87
+cutlass                       0.91      0.30      0.30
+triton                        0.61      0.08      0.07
+av                            0.58      0.05      0.05
+sympy                         0.57      0.24      0.21
+scipy                         0.56      0.25      0.25
+openai                        0.53      0.32      0.31
+torchvision                   0.29      0.11      0.11
+aiohttp                       0.26      0.08      0.08
+flashinfer                    0.26      0.12      0.11
+torchcodec                    0.24      0.14      0.12
+TOTAL                        26.29      7.55      7.58
+
+(4898 modules)
+finished=2026-07-27T18:21:28+02:00
