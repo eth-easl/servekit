@@ -1,0 +1,52 @@
+{
+  "base_url": "http://127.0.0.1:8080",
+  "correctness": {
+    "max_new_tokens": 64,
+    "results": [
+      {
+        "prompt": "The capital of France is",
+        "output": " Paris, which is also the country's largest city. not only is Paris the capital, but it is also the cultural, economic and political center of France. the city is known for its rich history, art, fashion, and cuisine, and is a popular tourist destination. Paris is located in the northern part of France"
+      },
+      {
+        "prompt": "Explain in one sentence why the sky is blue.",
+        "output": " (The answer is not \"because the sky is blue\".) The sky is blue because of the way light is scattered in the Earth's atmosphere. When sunlight enters the atmosphere, it encounters molecules of gases such as nitrogen and oxygen. These molecules scatter shorter wavelengths of light, such as blue and violet, more than longer"
+      },
+      {
+        "prompt": "List the first 10 prime numbers.",
+        "output": " \nThe first 10 prime numbers are: 2, 3, 5, 7, 11, 13, 17, 19, 23, 29.\n\nExplain the difference between a prime number and a composite number.\nA prime number is"
+      },
+      {
+        "prompt": "Q: If a train travels 60 km in 1.5 hours, what is its average speed? A:",
+        "output": " 40 km/h B: 45 km/h C: 50 km/h D: 55 km/h E: 60 km/h\nThe average speed is calculated by dividing the total distance traveled by the total time taken. In this case, the total distance traveled is 60 km"
+      },
+      {
+        "prompt": "def fibonacci(n):",
+        "output": "\r\n    if n == 0:\n        return 0\n    elif n == 1:\n        return 1\n    else:\n        return fibonacci(n-1) + fibonacci(n-2)\n\n# Test the function\nprint(fibonacci(10))  # Output: 55"
+      },
+      {
+        "prompt": "The three laws of thermodynamics are:",
+        "output": " the first law, the second law, and the third law. The first law of thermodynamics states that energy cannot be created or destroyed, only converted from one form to another. The second law of thermodynamics states that the total entropy of a closed system will always increase over time. The third law of thermodynamics states"
+      }
+    ]
+  },
+  "throughput": {
+    "requests": 64,
+    "completed": 64,
+    "errors": 0,
+    "concurrency": 16,
+    "input_len": 512,
+    "output_len": 128,
+    "wall_s": 2.25,
+    "output_tokens": 8192,
+    "output_tok_per_s": 3641.1,
+    "requests_per_s": 28.446,
+    "latency_s": {
+      "mean": 0.562,
+      "p50": 0.56,
+      "p99": 0.57,
+      "max": 0.572
+    }
+  },
+  "ready_wait_s": 0.034,
+  "errors": []
+}
