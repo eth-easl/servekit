@@ -3,7 +3,15 @@
 Plug-and-play optimization for LLM inference engines (SGLang, vLLM).
 First target: eliminating cold-start latency. Currently implemented: `profile`, `bench`.
 
-## `servekit profile`
+## Setup
+
+```bash
+pip install -e .
+```
+
+## Usage
+
+### `servekit profile`
 
 ```bash
 servekit profile -- python -m sglang.launch_server --model-path <model> ...
@@ -18,7 +26,7 @@ report is written the moment the server reports ready, not when it exits. The
 server process keeps running — servekit only stops measuring. Send it SIGTERM
 to shut the server down.
 
-## `servekit bench`
+### `servekit bench`
 
 ```bash
 servekit bench --url http://127.0.0.1:8080 --out bench.json --wait-ready 300
@@ -38,16 +46,14 @@ never started, such as one resurrected by `criu restore`. `--wait-ready` polls
 `/generate` until the server answers and records how long that took as
 `ready_wait_s`.
 
-## Both together
+### Both together
 
 The two are separate commands run side by side, joined by the report file:
 
 ```bash
 servekit profile --out run.json -- python -m sglang.launch_server ... &
-PROF=$!
-trap 'kill $PROF 2>/dev/null' EXIT
+
 servekit bench --url http://127.0.0.1:8080 --into run.json --wait-ready 1800 --requests 64
-kill $PROF; wait $PROF
 ```
 
 `run.json` ends up with both halves — the phase table under `phases` and the
