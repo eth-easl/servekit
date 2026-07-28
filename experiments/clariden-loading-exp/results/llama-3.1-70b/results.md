@@ -198,6 +198,23 @@ optimising on this path; it is 3% of the remaining cold start.
   estimate suggests. Ample for 141 GB, but worth knowing before targeting a
   larger model.
 
+## Addendum — bench moved to `/v1/completions` (2026-07-28)
+
+`servekit bench` now speaks the OpenAI protocol instead of SGLang's native
+`POST /generate`, so one code path can measure vLLM too. The default config was
+re-run to check that the numbers above stay comparable:
+
+| | job 2916286 (`/generate`) | job 2917854 (`/v1/completions`) |
+|---|---|---|
+| throughput | 822.9 tok/s | 811.5 tok/s (−1.4%) |
+| total | 586.33 s | 624.58 s |
+| weight_loading | 466.81 s | 510.27 s |
+
+Throughput is unchanged within noise, so the tok/s numbers in this file remain
+valid. The 7–9% higher cold start is the Lustre spread this experiment already
+documents (bristen: 430–939 s over 4 runs), not an effect of the change — bench
+only starts after the profile has closed.
+
 ## Raw artifacts
 
 `clariden-preflight-2916234.out`, `clariden-baseline-mmap-2916286.out`,
