@@ -64,7 +64,7 @@ Side by side with bristen (x86, A100, TP=4, Llama-3.1-70B):
   enough to fake a config effect at n=1. The 70B result survives this (its two
   nodes matched to 1.1% on non-loading time) but the Apertus numbers had to be
   read via the load/non-load decomposition to see through it. Details in
-  `results/apertus-8b/results.md`.
+  `results/sglang/apertus-8b/results.md`.
 - **No throughput benefit.** An earlier reading of the Apertus data suggested
   staging raised serving throughput ~1.6x. It does not: a default run reached
   2825.7 tok/s against the preshard runs' 2708.5 / 2816.8. That was node
@@ -96,5 +96,5 @@ and take the max, with regression tests in `servekit/tests/test_profile.py`.
 Profile JSONs in `results/` predate the fix; each `results.md` tabulates the
 corrected values.
 
-Per-model detail: `results/llama-3.1-70b/results.md`,
-`results/apertus-8b/results.md`. Design and rationale: `PLAN.md`.
+Per-model detail: `results/sglang/llama-3.1-70b/results.md`,
+`results/sglang/apertus-8b/results.md`. Design and rationale: `PLAN.md`.

@@ -17,13 +17,13 @@
 #SBATCH --cpus-per-task=32
 #SBATCH --gpus-per-node=4
 #SBATCH --time=00:15:00
-#SBATCH --output=results/%x-%j.out
+#SBATCH --output=results/sglang/%x-%j.out
 
 set -euo pipefail
 
 SHARDED_SRC="${SHARDED_SRC:-/capstor/store/cscs/swissai/infra01/cold-start-experiments/llama70b-tp4-sharded}"
 MODEL="${MODEL:-/capstor/store/cscs/swissai/infra01/hf_models/models/meta-llama/Llama-3.1-70B-Instruct}"
-EDF="${SLURM_SUBMIT_DIR}/sglang-clariden.toml"
+EDF="${SLURM_SUBMIT_DIR}/scripts/sglang/sglang-clariden.toml"
 
 echo "job=${SLURM_JOB_ID} node=$(hostname)"
 

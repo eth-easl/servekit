@@ -1,5 +1,12 @@
-# Model presets. Sourced by every sbatch in this dir -- the single place where
-# a model's paths live, so the three scripts never disagree about them.
+# Model presets. Sourced by every sbatch under scripts/ -- the single place
+# where a model's paths live, so the scripts never disagree about them.
+#
+# Shared by BOTH engines: the sglang and vllm runs must differ only in the
+# engine, so the model paths, TP size, context length and memory fraction are
+# read from here by both and are not per-engine knobs. SHARDED_SRC is likewise
+# shared: the vllm preshard run reuses the checkpoint SGLang wrote (both engines
+# implement the same `sharded_state` format; scripts/vllm/preflight.sbatch gates
+# that the filename pattern still matches).
 #
 # Select with MODEL_PRESET; `submit.sh` sets it for you. Everything below the
 # case block is held CONSTANT across models on purpose: TP size, context length
@@ -34,7 +41,7 @@ TP_SIZE=4
 MEM_FRACTION_STATIC=0.85
 MAX_MODEL_LEN=32768
 MAX_RUNNING_REQUESTS=256
-SGLANG_PORT=8080
+SERVER_PORT=8080
 # Generous: the bristen mmap default reached 1123 s and the clariden capstor
 # path is unmeasured. Still well inside the 1 h job limit.
 READY_TIMEOUT=3000

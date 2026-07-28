@@ -1,19 +1,27 @@
 #!/bin/bash
-# submit.sh <llama70b|apertus8b> <save|default|preshard> [extra sbatch args...]
+# submit.sh <sglang|vllm> <llama70b|apertus8b> <preflight|save|default|preshard> [sbatch args...]
 #
-# Exists only so the model preset, the job name and the results sub-directory
-# cannot drift apart -- #SBATCH --output is static text and cannot read a
-# runtime variable, so something has to pass them together. That something is
-# this file rather than a 3-line sbatch invocation repeated by hand.
+# Exists only so the engine, the model preset, the job name and the results
+# sub-directory cannot drift apart -- #SBATCH --output is static text and cannot
+# read a runtime variable, so something has to pass them together. That
+# something is this file rather than a 4-line sbatch invocation repeated by hand.
 #
-#   ./submit.sh apertus8b save                        # one-off: build the shards
-#   ./submit.sh apertus8b default                     # note the node id
-#   ./submit.sh apertus8b preshard --exclude=<node>   # must be a different node
+#   ./submit.sh vllm llama70b preflight                       # cheap gate, debug partition
+#   ./submit.sh sglang apertus8b save                         # one-off: build the shards
+#   ./submit.sh vllm llama70b default                         # note the node id
+#   ./submit.sh vllm llama70b preshard --exclude=<node>       # must be a different node
 set -euo pipefail
 
-preset="${1:?usage: submit.sh <llama70b|apertus8b> <save|default|preshard> [sbatch args]}"
-what="${2:?usage: submit.sh <llama70b|apertus8b> <save|default|preshard> [sbatch args]}"
-shift 2
+usage='usage: submit.sh <sglang|vllm> <llama70b|apertus8b> <preflight|save|default|preshard> [sbatch args]'
+engine="${1:?$usage}"
+preset="${2:?$usage}"
+what="${3:?$usage}"
+shift 3
+
+case "$engine" in
+  sglang|vllm) ;;
+  *) echo "unknown engine: $engine (want sglang or vllm)" >&2; exit 1 ;;
+esac
 
 case "$preset" in
   llama70b)  sub=llama-3.1-70b ;;
@@ -22,15 +30,22 @@ case "$preset" in
 esac
 
 case "$what" in
-  save)     script=save_sharded_ckpt.sbatch ;;
-  default)  script=baseline_mmap.sbatch ;;
-  preshard) script=preshard_shm_overlap.sbatch ;;
-  *) echo "unknown config: $what (want save|default|preshard)" >&2; exit 1 ;;
+  preflight) script=preflight.sbatch ;;
+  save)      script=save_sharded_ckpt.sbatch ;;
+  default)   script=baseline_mmap.sbatch ;;
+  preshard)  script=preshard_shm_overlap.sbatch ;;
+  *) echo "unknown config: $what (want preflight|save|default|preshard)" >&2; exit 1 ;;
 esac
 
-mkdir -p "results/${sub}"
+# vllm has no save job on purpose: it reuses the checkpoint SGLang wrote.
+if [ ! -f "scripts/${engine}/${script}" ]; then
+  echo "no '${what}' script for ${engine} (scripts/${engine}/${script} does not exist)" >&2
+  exit 1
+fi
+
+mkdir -p "results/${engine}/${sub}"
 exec sbatch \
   --export=ALL,MODEL_PRESET="$preset" \
-  --job-name="${preset}-${what}" \
-  --output="results/${sub}/%x-%j.out" \
-  "$@" "$script"
+  --job-name="${engine}-${preset}-${what}" \
+  --output="results/${engine}/${sub}/%x-%j.out" \
+  "$@" "scripts/${engine}/${script}"

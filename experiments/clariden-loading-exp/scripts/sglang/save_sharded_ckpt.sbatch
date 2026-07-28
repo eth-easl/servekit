@@ -28,19 +28,19 @@
 #SBATCH --gpus-per-node=4
 #SBATCH --exclusive
 #SBATCH --time=01:00:00
-#SBATCH --output=results/%x-%j.out
+#SBATCH --output=results/sglang/%x-%j.out
 
 set -euo pipefail
 
-source "${SLURM_SUBMIT_DIR}/models.sh"
+source "${SLURM_SUBMIT_DIR}/scripts/shared/models.sh"
 
 # Default loader, not fastsafetensors: this is a one-off offline job where load
 # speed is irrelevant, and it avoids depending on an aarch64 wheel that the
 # image does not ship.
 LOAD_FORMAT="${LOAD_FORMAT:-auto}"
 
-EDF="${SLURM_SUBMIT_DIR}/sglang-clariden.toml"
-SAVE_PY="${SLURM_SUBMIT_DIR}/save_sharded_state_fixed.py"
+EDF="${SLURM_SUBMIT_DIR}/scripts/sglang/sglang-clariden.toml"
+SAVE_PY="${SLURM_SUBMIT_DIR}/scripts/shared/save_sharded_state_fixed.py"
 
 NODE="$(hostname)"
 echo "job=${SLURM_JOB_ID} node=${NODE} cpus=${SLURM_CPUS_PER_TASK}"

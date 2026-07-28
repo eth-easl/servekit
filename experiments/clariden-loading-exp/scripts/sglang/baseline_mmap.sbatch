@@ -25,15 +25,15 @@
 #SBATCH --gpus-per-node=4
 #SBATCH --exclusive
 #SBATCH --time=01:00:00
-#SBATCH --output=results/%x-%j.out
+#SBATCH --output=results/sglang/%x-%j.out
 
 set -euo pipefail
 
-source "${SLURM_SUBMIT_DIR}/models.sh"
+source "${SLURM_SUBMIT_DIR}/scripts/shared/models.sh"
 
-EDF="${SLURM_SUBMIT_DIR}/sglang-clariden.toml"
+EDF="${SLURM_SUBMIT_DIR}/scripts/sglang/sglang-clariden.toml"
 SERVEKIT_DIR="${SLURM_SUBMIT_DIR}/../../servekit"
-RESULTS_DIR="${SLURM_SUBMIT_DIR}/results/${RESULTS_SUBDIR}"
+RESULTS_DIR="${SLURM_SUBMIT_DIR}/results/sglang/${RESULTS_SUBDIR}"
 
 NODE="$(hostname)"
 PROFILE_OUT="${RESULTS_DIR}/default-${SLURM_JOB_ID}-${NODE}-profile.json"
@@ -62,7 +62,7 @@ servekit profile --out "${PROFILE_OUT}" --timeout "${READY_TIMEOUT}" \
   python -m sglang.launch_server \
     --model-path "${MODEL}" \
     --host 0.0.0.0 \
-    --port "${SGLANG_PORT}" \
+    --port "${SERVER_PORT}" \
     --served-model-name "${SERVED_MODEL_NAME}" \
     --tensor-parallel-size "${TP_SIZE}" \
     --trust-remote-code \
@@ -78,7 +78,7 @@ for i in \$(seq 1 ${BENCH_REPEATS}); do
   if [ "\$i" = "1" ]; then dest=(--into "${PROFILE_OUT}"); \
   else dest=(--out "${PROFILE_OUT%-profile.json}-bench\${i}.json"); fi
   echo "--- bench repeat \$i/${BENCH_REPEATS} ---"
-  servekit bench --url "http://127.0.0.1:${SGLANG_PORT}" "\${dest[@]}" \
+  servekit bench --url "http://127.0.0.1:${SERVER_PORT}" "\${dest[@]}" \
     --wait-ready "${READY_TIMEOUT}" \
     --requests 64 --concurrency 16 --input-len 512 --output-len 128 || true
 done
