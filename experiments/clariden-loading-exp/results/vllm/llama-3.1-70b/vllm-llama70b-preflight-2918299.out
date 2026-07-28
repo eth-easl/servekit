@@ -1,0 +1,208 @@
+job=2918299 node=nid006837
+preset=llama70b model=/capstor/store/cscs/swissai/infra01/hf_models/models/meta-llama/Llama-3.1-70B-Instruct
+--- node ---
+arch=aarch64  nproc=32
+Filesystem      Size  Used Avail Use% Mounted on
+tmpfs           334G   43M  334G   1% /dev/shm
+available: 36 nodes (0-35)
+node 0 cpus: 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 57 58 59 60 61 62 63 64 65 66 67 68 69 70 71
+node 0 size: 121956 MB
+node 0 free: 104448 MB
+node 1 cpus: 72 73 74 75 76 77 78 79 80 81 82 83 84 85 86 87 88 89 90 91 92 93 94 95 96 97 98 99 100 101 102 103 104 105 106 107 108 109 110 111 112 113 114 115 116 117 118 119 120 121 122 123 124 125 126 127 128 129 130 131 132 133 134 135 136 137 138 139 140 141 142 143
+node 1 size: 122596 MB
+node 1 free: 111393 MB
+node 2 cpus: 144 145 146 147 148 149 150 151 152 153 154 155 156 157 158 159 160 161 162 163 164 165 166 167 168 169 170 171 172 173 174 175 176 177 178 179 180 181 182 183 184 185 186 187 188 189 190 191 192 193 194 195 196 197 198 199 200 201 202 203 204 205 206 207 208 209 210 211 212 213 214 215
+node 2 size: 122632 MB
+node 2 free: 108717 MB
+node 3 cpus: 216 217 218 219 220 221 222 223 224 225 226 227 228 229 230 231 232 233 234 235 236 237 238 239 240 241 242 243 244 245 246 247 248 249 250 251 252 253 254 255 256 257 258 259 260 261 262 263 264 265 266 267 268 269 270 271 272 273 274 275 276 277 278 279 280 281 282 283 284 285 286 287
+node 3 size: 120449 MB
+node 3 free: 99119 MB
+node 4 cpus:
+node 4 size: 97280 MB
+node 4 free: 97254 MB
+node 5 cpus:
+node 5 size: 0 MB
+node 5 free: 0 MB
+node 6 cpus:
+node 6 size: 0 MB
+node 6 free: 0 MB
+node 7 cpus:
+node 7 size: 0 MB
+node 7 free: 0 MB
+node 8 cpus:
+node 8 size: 0 MB
+node 8 free: 0 MB
+node 9 cpus:
+node 9 size: 0 MB
+node 9 free: 0 MB
+node 10 cpus:
+node 10 size: 0 MB
+node 10 free: 0 MB
+node 11 cpus:
+node 11 size: 0 MB
+node 11 free: 0 MB
+node 12 cpus:
+node 12 size: 97280 MB
+node 12 free: 97255 MB
+node 13 cpus:
+node 13 size: 0 MB
+node 13 free: 0 MB
+node 14 cpus:
+node 14 size: 0 MB
+node 14 free: 0 MB
+node 15 cpus:
+node 15 size: 0 MB
+node 15 free: 0 MB
+node 16 cpus:
+node 16 size: 0 MB
+node 16 free: 0 MB
+node 17 cpus:
+node 17 size: 0 MB
+node 17 free: 0 MB
+node 18 cpus:
+node 18 size: 0 MB
+node 18 free: 0 MB
+node 19 cpus:
+node 19 size: 0 MB
+node 19 free: 0 MB
+node 20 cpus:
+node 20 size: 97280 MB
+node 20 free: 97255 MB
+node 21 cpus:
+node 21 size: 0 MB
+node 21 free: 0 MB
+node 22 cpus:
+node 22 size: 0 MB
+node 22 free: 0 MB
+node 23 cpus:
+node 23 size: 0 MB
+node 23 free: 0 MB
+node 24 cpus:
+node 24 size: 0 MB
+node 24 free: 0 MB
+node 25 cpus:
+node 25 size: 0 MB
+node 25 free: 0 MB
+node 26 cpus:
+node 26 size: 0 MB
+node 26 free: 0 MB
+node 27 cpus:
+node 27 size: 0 MB
+node 27 free: 0 MB
+node 28 cpus:
+node 28 size: 97280 MB
+node 28 free: 97265 MB
+node 29 cpus:
+node 29 size: 0 MB
+node 29 free: 0 MB
+node 30 cpus:
+node 30 size: 0 MB
+node 30 free: 0 MB
+node 31 cpus:
+node 31 size: 0 MB
+node 31 free: 0 MB
+node 32 cpus:
+node 32 size: 0 MB
+node 32 free: 0 MB
+node 33 cpus:
+node 33 size: 0 MB
+node 33 free: 0 MB
+node 34 cpus:
+node 34 size: 0 MB
+node 34 free: 0 MB
+node 35 cpus:
+node 35 size: 0 MB
+node 35 free: 0 MB
+node distances:
+node   0   1   2   3   4   5   6   7   8   9  10  11  12  13  14  15  16  17  18  19  20  21  22  23  24  25  26  27  28  29  30  31  32  33  34  35 
+  0:  10  40  40  40  80  80  80  80  80  80  80  80  120  120  120  120  120  120  120  120  120  120  120  120  120  120  120  120  120  120  120  120  120  120  120  120 
+  1:  40  10  40  40  120  120  120  120  120  120  120  120  80  80  80  80  80  80  80  80  120  120  120  120  120  120  120  120  120  120  120  120  120  120  120  120 
+  2:  40  40  10  40  120  120  120  120  120  120  120  120  120  120  120  120  120  120  120  120  80  80  80  80  80  80  80  80  120  120  120  120  120  120  120  120 
+  3:  40  40  40  10  120  120  120  120  120  120  120  120  120  120  120  120  120  120  120  120  120  120  120  120  120  120  120  120  80  80  80  80  80  80  80  80 
+  4:  80  120  120  120  10  11  11  11  11  11  11  11  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40 
+  5:  80  120  120  120  11  10  11  11  11  11  11  11  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40 
+  6:  80  120  120  120  11  11  10  11  11  11  11  11  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40 
+  7:  80  120  120  120  11  11  11  10  11  11  11  11  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40 
+  8:  80  120  120  120  11  11  11  11  10  11  11  11  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40 
+  9:  80  120  120  120  11  11  11  11  11  10  11  11  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40 
+ 10:  80  120  120  120  11  11  11  11  11  11  10  11  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40 
+ 11:  80  120  120  120  11  11  11  11  11  11  11  10  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40 
+ 12:  120  80  120  120  40  40  40  40  40  40  40  40  10  11  11  11  11  11  11  11  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40 
+ 13:  120  80  120  120  40  40  40  40  40  40  40  40  11  10  11  11  11  11  11  11  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40 
+ 14:  120  80  120  120  40  40  40  40  40  40  40  40  11  11  10  11  11  11  11  11  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40 
+ 15:  120  80  120  120  40  40  40  40  40  40  40  40  11  11  11  10  11  11  11  11  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40 
+ 16:  120  80  120  120  40  40  40  40  40  40  40  40  11  11  11  11  10  11  11  11  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40 
+ 17:  120  80  120  120  40  40  40  40  40  40  40  40  11  11  11  11  11  10  11  11  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40 
+ 18:  120  80  120  120  40  40  40  40  40  40  40  40  11  11  11  11  11  11  10  11  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40 
+ 19:  120  80  120  120  40  40  40  40  40  40  40  40  11  11  11  11  11  11  11  10  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40 
+ 20:  120  120  80  120  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  10  11  11  11  11  11  11  11  40  40  40  40  40  40  40  40 
+ 21:  120  120  80  120  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  11  10  11  11  11  11  11  11  40  40  40  40  40  40  40  40 
+ 22:  120  120  80  120  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  11  11  10  11  11  11  11  11  40  40  40  40  40  40  40  40 
+ 23:  120  120  80  120  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  11  11  11  10  11  11  11  11  40  40  40  40  40  40  40  40 
+ 24:  120  120  80  120  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  11  11  11  11  10  11  11  11  40  40  40  40  40  40  40  40 
+ 25:  120  120  80  120  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  11  11  11  11  11  10  11  11  40  40  40  40  40  40  40  40 
+ 26:  120  120  80  120  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  11  11  11  11  11  11  10  11  40  40  40  40  40  40  40  40 
+ 27:  120  120  80  120  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  11  11  11  11  11  11  11  10  40  40  40  40  40  40  40  40 
+ 28:  120  120  120  80  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  10  11  11  11  11  11  11  11 
+ 29:  120  120  120  80  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  11  10  11  11  11  11  11  11 
+ 30:  120  120  120  80  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  11  11  10  11  11  11  11  11 
+ 31:  120  120  120  80  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  11  11  11  10  11  11  11  11 
+ 32:  120  120  120  80  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  11  11  11  11  10  11  11  11 
+ 33:  120  120  120  80  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  11  11  11  11  11  10  11  11 
+ 34:  120  120  120  80  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  11  11  11  11  11  11  10  11 
+ 35:  120  120  120  80  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  40  11  11  11  11  11  11  11  10 
+--- checkpoints ---
+-rw-rwxr-x+ 1 nobody nogroup 855 Feb 16 12:29 /capstor/store/cscs/swissai/infra01/hf_models/models/meta-llama/Llama-3.1-70B-Instruct/config.json
+-rw-rw----+ 1 yboughizane nogroup 5307211608 Jul 27 08:54 /capstor/store/cscs/swissai/infra01/cold-start-experiments/llama70b-tp4-sharded/model-rank-0-part-0.safetensors
+sharded shards=28
+--- engine ---
+python  = 3.12.3
+machine = aarch64
+vllm    = 0.24.0+092c4842.dev
+torch   = 2.13.0a0+9186a08b2c.nv26.07
+custom ops: True
+gpus    = 4
+capab   = (9, 0)
+name    = NVIDIA GH200 120GB
+bf16 matmul ok: True
+ENGINE PASS
+--- sharded_state reuse gate ---
+loader  = vllm.model_executor.model_loader.sharded_state_loader
+pattern = model-rank-{rank}-part-{part}.safetensors
+  rank 0: 7 parts
+  rank 1: 7 parts
+  rank 2: 7 parts
+  rank 3: 7 parts
+rank0 part0 tensors = 69
+    model.embed_tokens.weight
+    model.layers.0.input_layernorm.weight
+    model.layers.0.mlp.down_proj.weight
+    model.layers.0.mlp.gate_up_proj.weight
+    model.layers.0.post_attention_layernorm.weight
+SHARDED_STATE PASS
+
+NOTE: this proves the layout is addressable, NOT that the bytes are
+      right. Only errors=0 + correct output in the preshard run does.
+Traceback (most recent call last):
+  File "/usr/lib/python3.12/weakref.py", line 666, in _exitfunc
+    f()
+  File "/usr/lib/python3.12/weakref.py", line 590, in __call__
+    return info.func(*info.args, **(info.kwargs or {}))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/library.py", line 663, in _del_library
+    _clear_torch_ops_cache(op_defs)
+  File "/usr/local/lib/python3.12/dist-packages/torch/library.py", line 628, in _clear_torch_ops_cache
+    if not hasattr(namespace, name):
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/_ops.py", line 1387, in __getattr__
+    op, overload_names = _get_packet(qualified_op_name, module_name)
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/_ops.py", line 1412, in _get_packet
+    op, overload_names = torch._C._jit_get_operation(qualname)
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeDecodeError: 'utf-8' codec can't decode byte 0xa0 in position 180: invalid start byte
+shm_free_GB=357
+--- servekit ---
+framework = vllm
+/usr/local/bin/servekit
+ALL CHECKS PASSED

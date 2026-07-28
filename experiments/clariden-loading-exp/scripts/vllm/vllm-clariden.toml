@@ -1,0 +1,39 @@
+# vLLM EDF for clariden (GH200/sm_90a, aarch64).
+#
+# NVIDIA's own container, NOT upstream vllm/vllm-openai. The upstream arm64 build
+# imports, passes an arch check and loads the model, then dies at CUDA graph
+# capture on a bf16 cublasGemmEx (CUBLAS_STATUS_EXECUTION_FAILED), twice, at the
+# identical 32/51 capture -- see profile/llama-3.1-70b-clariden-vllm/results.md.
+# This image ships an OLDER vLLM (0.24.0.dev) and runs the same command through,
+# so it is a build/toolchain problem on arm+Hopper, not a version bug.
+#
+# Consequence for this experiment: the vLLM engine version is NOT matched to
+# anything -- SGLang runs 0.5.10 here and on bristen. Cross-engine comparisons
+# are therefore between "each engine's working build on GH200", which is what a
+# deployment would actually get, not a controlled version comparison.
+#
+# HOME=/root is deliberate: HF / Triton / pip caches land in the container's
+# ephemeral overlay, so every srun is a cold start. Note this does NOT make the
+# OS page cache cold -- hence one fresh node per run.
+image = "nvcr.io#nvidia/vllm:26.07-py3"
+
+mounts = [
+  "/capstor:/capstor",
+  "/iopsstor:/iopsstor",
+]
+
+workdir = "/iopsstor/scratch/cscs/yboughizane/simple-serving-stack/experiments/clariden-loading-exp"
+
+[env]
+HOME = "/root"
+NCCL_DEBUG = "WARN"
+PYTHONPATH = ""
+PYTHONNOUSERSITE = "1"
+HF_HUB_OFFLINE = "1"
+TRANSFORMERS_OFFLINE = "1"
+TOKENIZERS_PARALLELISM = "false"
+
+[annotations]
+com.pyxis.entrypoint_log = "true"
+com.hooks.aws_ofi_nccl.enabled = "true"
+com.hooks.aws_ofi_nccl.variant = "cuda12"

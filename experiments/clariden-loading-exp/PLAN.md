@@ -63,28 +63,42 @@ already answered; this experiment only asks whether the endpoints hold.
 Self-contained. Nothing under `lustre-loading-exp/` is read at runtime or
 modified.
 
-- `sglang-clariden.toml` — EDF. Same image tag as bristen; `HOME=/root` so
-  HF/Triton/pip caches are ephemeral and every srun is a cold start.
-- `preflight.sbatch` — the cheap gate (debug partition, 15 min).
+```
+submit.sh                            the only entry point
+scripts/shared/  models.sh           model paths + the constants both engines share
+                 stage_to_shm_sliced.sh
+                 save_sharded_state_fixed.py
+scripts/sglang/  sglang-clariden.toml  preflight/baseline_mmap/
+                 preshard_shm_overlap/save_sharded_ckpt .sbatch
+scripts/vllm/    vllm-clariden.toml    preflight/baseline_mmap/
+                 preshard_shm_overlap .sbatch
+results/<engine>/<model>/            .out, -profile.json, -stage.txt,
+                                     -timing.txt, results.md
+```
+
+- The `.toml`s are the EDFs. `HOME=/root` in both, so HF/Triton/pip caches are
+  ephemeral and every srun is a cold start.
+- `preflight.sbatch` — the cheap gate (debug partition, 15 min), one per engine.
 - `stage_to_shm_sliced.sh` — verbatim copy of
   `lustre-loading-exp/scripts/phase4_shm/stage_to_shm_sliced.sh`. A copy, not a
-  fork; do not diverge it.
+  fork; do not diverge it. Shared by both engines: it copies bytes and knows
+  nothing about either.
 - `baseline_mmap.sbatch` — the **default** config.
 - `preshard_shm_overlap.sbatch` — the **preshard+shm+overlap** config.
-- `results/` — `.out`, `-profile.json`, `-stage.txt`, `-timing.txt`, `results.md`.
+- `scripts/vllm/` has no `save_sharded_ckpt.sbatch` on purpose — see below.
 
 Measurement is `servekit profile` (`../../servekit`, pure-Python, no deps), which
-parses SGLang's own timestamped log lines into per-phase durations and adds a
-64-request throughput + correctness block. Bench parameters match bristen
+parses each engine's own timestamped log lines into per-phase durations and adds
+a 64-request throughput + correctness block. Bench parameters match bristen
 exactly so throughput is comparable across machines.
 
 ## Execution order
 
 ```
 cd experiments/clariden-loading-exp
-sbatch preflight.sbatch                                  # must pass first
-sbatch baseline_mmap.sbatch                              # note the node id
-sbatch --exclude=<that node> preshard_shm_overlap.sbatch
+./submit.sh <engine> llama70b preflight                    # must pass first
+./submit.sh <engine> llama70b default                      # note the node id
+./submit.sh <engine> llama70b preshard --exclude=<that node>
 ```
 
 The `--exclude` is not optional. Two rules learned the hard way in
@@ -128,3 +142,74 @@ to bristen and the comparison would need re-framing.
 
 No servekit changes, no engine patches, no new loader variants, no re-striping.
 Two jobs plus a preflight, and a written answer.
+
+---
+
+# Extension: does it reproduce on vLLM?
+
+The answer above is SGLang-only. `CLAUDE.md` names **both** vLLM and SGLang as
+targets and the whole point of the package is to be plug-and-play, so a
+technique that only pays off on one engine is not the deliverable. Same
+question, same shape, one engine changed:
+
+**Does preshard+shm+overlap reproduce on vLLM, on the same node type, same
+model, same TP?**
+
+## What is held constant, and what is not
+
+Constant: model, TP=4, 32768 context, 0.85 memory fraction, 256 concurrent
+requests, the stager, the bench, one fresh node per run — all read from
+`scripts/shared/models.sh` by both engines, so they cannot drift.
+
+**Not** constant: the engine *version*. SGLang runs 0.5.10 here and on bristen,
+but vLLM has to run `nvcr.io#nvidia/vllm:26.07-py3` (vLLM 0.24.0.dev). Upstream
+`vllm/vllm-openai:v0.25.0`'s arm64 build loads the model and then dies at CUDA
+graph capture on a bf16 `cublasGemmEx`, twice, at the identical 32/51 capture —
+`profile/llama-3.1-70b-clariden-vllm/results.md`. So this compares each engine's
+*working build on GH200*, which is what a deployment gets, not two versions
+matched by construction.
+
+## The checkpoint is reused, not rebuilt
+
+The preshard config points vLLM at the **shards SGLang wrote**
+(`llama70b-tp4-sharded`), rather than adding a vLLM `save_sharded_state` job.
+`sharded_state` originated in vLLM and SGLang inherited it, so the format should
+be common — but "should" is the assumption under test, and it is worth testing:
+if it holds, one presharded checkpoint serves both engines and the packaging
+work has one artifact to produce instead of two.
+
+It is gated in two places rather than assumed:
+
+- `scripts/vllm/preflight.sbatch` checks the filenames against
+  `ShardedStateLoader.DEFAULT_PATTERN` from the vLLM build itself, counts parts
+  per rank, and reads the safetensors header of rank 0 to confirm the keys are
+  plain parameter names with no wrapper prefix. Five minutes, on the debug
+  partition.
+- the run's own `errors=0` / `64/64` / correct output is what actually proves
+  the right bytes loaded. Addressable is not the same as correct.
+
+A hard load failure is a clean answer ("rebuild per engine"). Silent corruption
+is the dangerous outcome, which is why correctness is a gate and not a footnote.
+
+## Additional validity conditions
+
+Everything under "What counts as a valid result" applies, plus:
+
+- vLLM's preflight passes: aarch64, capability `(9,0)`, 4 GPUs, compiled ops
+  registered, a real bf16 matmul executes, and the `sharded_state` gate passes.
+- **The totals are not measured to the same boundary as SGLang's.** SGLang
+  announces ready only after its own warmup request; vLLM never issues one, so
+  its total stops earlier. Every vLLM total must be quoted with bench's
+  `ready_wait_s` beside it. The vLLM-vs-vLLM speedup this experiment is actually
+  after is unaffected — both configs stop at the same boundary.
+- vLLM's `weight_loading` is its engine-reported `Model loading took`, max over
+  the 4 ranks, exactly as for SGLang.
+
+## Expected result, stated in advance
+
+Weight loading was ~66% of vLLM's cold start (233.24 of 353.34 s, n=1) against
+~80% for SGLang. Removing essentially all of it predicts roughly **2.9x**, below
+SGLang's measured 4.61x, with a floor near 120 s that is dominated by worker
+spawn, compile and capture. A result far from that is more interesting than one
+near it: well below means the technique is engine-specific, and well above means
+the n=1 baseline was not representative.
