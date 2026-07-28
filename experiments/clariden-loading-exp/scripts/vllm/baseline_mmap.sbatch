@@ -31,6 +31,7 @@
 
 set -euo pipefail
 
+ENGINE=vllm
 source "${SLURM_SUBMIT_DIR}/scripts/shared/models.sh"
 
 EDF="${SLURM_SUBMIT_DIR}/scripts/vllm/vllm-clariden.toml"

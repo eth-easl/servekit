@@ -16,12 +16,16 @@
 #                    The stage is a plain host-side file copy with no GPU/torch
 #                    dependency, so it runs concurrently inside that window.
 #
-# THE CHECKPOINT IS THE ONE SGLANG WROTE. `sharded_state` originated in vLLM and
-# SGLang inherited it, so the format should be common -- but "should" is not
-# measured, so scripts/vllm/preflight.sbatch checks the filename pattern against
-# vLLM's own loader constant first, and errors=0 with correct output below is
-# what actually proves the right bytes were loaded. A fast run that serves
-# garbage is a failure of this config, not a result.
+# THE CHECKPOINT IS vLLM'S OWN, from scripts/vllm/save_sharded_ckpt.sbatch. The
+# experiment first tried SGLang's -- `sharded_state` originated in vLLM and
+# SGLang inherited it, so the format looked common -- and vLLM rejected it:
+# `Missing keys ('model.layers.0.self_attn.attn._k_scale', ...)`, 320 attention
+# scale params SGLang never writes (job 2918412). Presharded checkpoints are
+# portable across architectures but NOT across engines.
+#
+# errors=0 with correct output below is still what proves the right bytes were
+# loaded. A fast run that serves garbage is a failure of this config, not a
+# result.
 #
 # SYNCHRONISATION: none, deliberately -- no engine patch, no barrier. The run is
 # VERIFIED AFTER THE FACT: the stage's end timestamp must land before the
@@ -51,11 +55,13 @@
 
 set -euo pipefail
 
+ENGINE=vllm
 source "${SLURM_SUBMIT_DIR}/scripts/shared/models.sh"
 
 if [ ! -e "${SHARDED_SRC}/model-rank-0-part-0.safetensors" ]; then
   echo "ERROR: no sharded checkpoint at ${SHARDED_SRC}" >&2
-  echo "       run  ./submit.sh sglang ${MODEL_PRESET:-llama70b} save  first." >&2
+  echo "       run  ./submit.sh vllm ${MODEL_PRESET:-llama70b} save  first." >&2
+  echo "       (SGLang's shards do not load here -- see this file's header.)" >&2
   exit 1
 fi
 

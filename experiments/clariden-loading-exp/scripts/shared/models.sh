@@ -37,6 +37,17 @@ case "${MODEL_PRESET:-llama70b}" in
     ;;
 esac
 
+# The presharded checkpoint is PER ENGINE. vLLM's model carries four attention
+# scale params per layer (_k_scale/_v_scale/_q_scale/_prob_scale) that SGLang
+# never writes, and vLLM's ShardedStateLoader hard-fails on the missing keys
+# (job 2918412, 320 of them for the 80-layer 70B). The shards are portable
+# across ARCHITECTURES -- the SGLang arm reused a bristen x86 checkpoint on
+# GH200 -- but not across engines. Set by each engine's sbatch, not by the
+# caller.
+if [ "${ENGINE:-sglang}" = vllm ]; then
+  SHARDED_SRC="${SHARDED_SRC}-vllm"
+fi
+
 TP_SIZE=4
 MEM_FRACTION_STATIC=0.85
 MAX_MODEL_LEN=32768

@@ -6,15 +6,18 @@
 #   1. the NGC image runs on this node at all (arch, sm_90, 4 GPUs, a real bf16
 #      kernel -- the upstream image passes an import check and still dies later,
 #      so "imports" is not the test);
-#   2. vLLM's ShardedStateLoader accepts the checkpoint SGLang WROTE. Both
-#      engines implement the same `sharded_state` format, but the experiment
-#      reuses SGLang's files rather than rebuilding them with vLLM, so the
-#      filename pattern and the tensor keys are checked against vLLM's own
-#      loader constant here. This is the one gate that is specific to the
-#      cross-engine checkpoint reuse.
+#   2. vLLM's ShardedStateLoader accepts the presharded checkpoint: filename
+#      pattern from vLLM's own loader constant, one part per rank, and the
+#      per-layer attention scale params present. That last check is why this
+#      gate exists in its current form -- reusing SGLang's checkpoint looked
+#      fine on pattern and key shape and still failed at load with 320 missing
+#      `_k_scale`/`_v_scale`/`_q_scale`/`_prob_scale` keys (job 2918412).
 #
 # A mismatch found here costs 5 minutes. Found in the preshard run it costs an
 # hour, or worse: silently wrong bytes.
+#
+# Run it AFTER ./submit.sh vllm <preset> save, which writes the checkpoint it
+# checks.
 #
 #   cd experiments/clariden-loading-exp && ./submit.sh vllm llama70b preflight
 #
@@ -29,6 +32,7 @@
 
 set -euo pipefail
 
+ENGINE=vllm
 source "${SLURM_SUBMIT_DIR}/scripts/shared/models.sh"
 
 EDF="${SLURM_SUBMIT_DIR}/scripts/vllm/vllm-clariden.toml"
@@ -110,16 +114,14 @@ else:
     print("pattern =", pattern)
     want = pattern.format(rank=0, part=0)
     if not os.path.exists(os.path.join(src, want)):
-        print("FAIL: vllm expects %s, which SGLang did not write" % want); ok = False
+        print("FAIL: vllm expects %s, which is not in the checkpoint" % want); ok = False
     for rank in range(tp):
         n = len(glob.glob(os.path.join(src, pattern.format(rank=rank, part="*"))))
         print("  rank %d: %d parts" % (rank, n))
         if n == 0:
             print("FAIL: rank %d has no parts under vllm's pattern" % rank); ok = False
 
-# safetensors header only -- 8-byte length prefix then JSON. Cheap on Lustre and
-# it shows whether the keys are plain model parameter names or carry an
-# SGLang-specific prefix vLLM would never look up.
+# safetensors header only -- 8-byte length prefix then JSON. Cheap on Lustre.
 path = os.path.join(src, "model-rank-0-part-0.safetensors")
 with open(path, "rb") as f:
     n_hdr = struct.unpack("<Q", f.read(8))[0]
@@ -131,6 +133,13 @@ for k in keys[:5]:
 bad = [k for k in keys if k.startswith(("module.", "_orig_mod."))]
 if bad:
     print("FAIL: %d keys carry a wrapper prefix, e.g. %s" % (len(bad), bad[0])); ok = False
+
+# The check that an SGLang-written checkpoint fails. vLLM's model has four of
+# these per layer and its loader treats every one as mandatory.
+scales = [k for k in keys if k.endswith(("_k_scale", "_v_scale", "_q_scale", "_prob_scale"))]
+print("attention scale params =", len(scales))
+if not scales:
+    print("FAIL: no scale params -- this checkpoint was not written by vllm"); ok = False
 
 print("SHARDED_STATE", "PASS" if ok else "FAIL")
 print()
