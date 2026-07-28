@@ -109,6 +109,10 @@ def _process_stream(
     seen_phases = set()
     seen_milestones = set()
     phases: List[Phase] = []
+    phase_index: dict = {}
+    # The engine phase most recently opened, kept open so the other TP ranks can
+    # still report into it. See the max-over-ranks note in the matching loop.
+    pending_phase: Optional[str] = None
     last_marker_time = spawn_time
     ready_at: Optional[float] = None
     timed_out = False
@@ -151,6 +155,7 @@ def _process_stream(
                 continue
             if pattern.search(line):
                 seen_milestones.add(name)
+                pending_phase = None  # a milestone closes any open engine phase
                 gap = now - last_marker_time
                 if gap > GAP_THRESHOLD_S:
                     phases.append(Phase(name, round(gap, 2), "wall_clock"))
@@ -162,21 +167,43 @@ def _process_stream(
         if milestone_hit:
             continue
 
+        # Every one of these phases is TP-parallel: each rank logs its own
+        # `elapsed=`, so a TP=4 run emits four lines. The phase is not over until
+        # the SLOWEST rank is done, so we keep it open and take the MAX rather
+        # than locking on the first line seen.
+        #
+        # Taking the first line meant taking the *fastest* rank. That is
+        # near-harmless when the phase is slow -- ranks all bottleneck on the
+        # same storage and converge (466.20 vs 466.81 s reading Lustre) -- but
+        # badly wrong when it is fast and per-rank variance dominates: a
+        # /dev/shm load reported 3.72 s against a true 6.19 s, understating by
+        # 66%. It therefore biased exactly the configurations worth promoting.
         for name, pattern in SGLANG_PHASE_PATTERNS:
-            if name in seen_phases:
-                continue
             match = pattern.search(line)
             if not match:
                 continue
-            seen_phases.add(name)
             duration = float(match.group(1))
+            if name == pending_phase:
+                # Another rank reporting the phase still open. Extend, do not
+                # re-open: the gap before it was already accounted for.
+                idx = phase_index[name]
+                if duration > phases[idx].duration_s:
+                    phases[idx].duration_s = round(duration, 2)
+                last_marker_time = now
+                break
+            if name in seen_phases:
+                break  # a late straggler after another phase already started
+            seen_phases.add(name)
             record_gap(now - last_marker_time - duration)
+            phase_index[name] = len(phases)
             phases.append(Phase(name, round(duration, 2), "engine_reported"))
             last_marker_time = now
+            pending_phase = name
             break
 
         if READY_PATTERN.search(line):
             ready_at = now
+            pending_phase = None
             record_gap(now - last_marker_time)
             if on_ready is not None:
                 on_ready(ProfileReport(command="", started_at=spawn_time, ready_at=ready_at, success=True, phases=list(phases)))
