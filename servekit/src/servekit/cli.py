@@ -8,14 +8,15 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 
 from .bench import BenchConfig, run_benchmark, render_bench
-from .profile import ProfileReport, render_table, run_profile, save_json
+from .profile import ProfileReport, detect_framework, render_table, run_profile, save_json
 
 USAGE = """usage:
   servekit profile [--out PATH] [--timeout SECONDS] -- <command...>
   servekit bench --url URL (--into PATH | --out PATH) [--wait-ready SECONDS] [...]
 
-`profile` launches a server and measures its cold start; `bench` loads any live
-server, whether or not servekit launched it. To do both, run them side by side
+`profile` launches a server and measures its cold start (SGLang or vLLM, picked
+from the command itself); `bench` loads any live server over the OpenAI
+protocol, whether or not servekit launched it. To do both, run them side by side
 and join them on the report file:
 
   servekit profile --out run.json -- python -m sglang.launch_server ... &
@@ -44,7 +45,14 @@ def _profile(argv: List[str]) -> int:
         print("error: no command given after --", file=sys.stderr)
         return 2
 
-    print(f"[SERVEKIT] profiling cold start of: {' '.join(command)}", flush=True)
+    # Fail before spawning anything.
+    try:
+        spec = detect_framework(command)
+    except ValueError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 2
+
+    print(f"[SERVEKIT] profiling cold start of {spec.name}: {' '.join(command)}", flush=True)
 
     def emit(report: ProfileReport) -> None:
         report.command = " ".join(command)

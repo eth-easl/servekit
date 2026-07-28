@@ -11,44 +11,124 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Callable, Iterable, List, Optional
 
-# (phase name, regex whose capture group is the engine-reported elapsed seconds)
-SGLANG_PHASE_PATTERNS = [
-    ("torch_distributed_init", re.compile(r"Init torch distributed ends\. elapsed=([\d.]+) s")),
-    ("weight_loading", re.compile(r"Load weight end\. elapsed=([\d.]+) s")),
-    ("cuda_graph_capture", re.compile(r"Capture cuda graph end\. Time elapsed: ([\d.]+) s")),
-    ("piecewise_cuda_graph_capture", re.compile(r"Capture piecewise CUDA graph end\. Time elapsed: ([\d.]+) s")),
-]
-READY_PATTERN = re.compile(r"The server is fired up and ready to roll!")
-
-# Wall-clock milestones where the engine emits no `elapsed=` timing of its own;
-# each closes the interval since the previous marker as a phase servekit times
-# itself. Splits HTTP bind from the first (JIT-heavy) warmup request, which is
-# dominated by first-call lazy init rather than serving work.
-MILESTONE_PATTERNS = [
-    ("http_bind", re.compile(r"Uvicorn running on")),
-    ("warmup_request(JIT)", re.compile(r'"POST /generate HTTP/1\.1"\s+200')),
-]
-
 GAP_THRESHOLD_S = 0.5
 
-# A gap is only named if *all* marker regexes for that hypothesis were seen
-# inside it -- otherwise it stays "unknown" rather than assumed.
-GAP_HYPOTHESES = [
-    (
-        "tp_worker_spawn",
-        [
-            re.compile(r"Using default HuggingFace chat template"),
-            re.compile(r"TP\d+\]"),
-        ],
-    ),
-    (
-        "kv_cache_alloc",
-        [
-            re.compile(r"KV Cache is allocated"),
-            re.compile(r"Memory pool end\."),
-        ],
-    ),
-]
+
+@dataclass(frozen=True)
+class FrameworkSpec:
+    """Everything framework-specific about reading an engine's startup log.
+
+    Phase names are shared across frameworks where a counterpart exists, so two
+    reports from different engines stay directly diffable.
+    """
+
+    name: str
+    # (phase name, regex whose capture group is the engine-reported elapsed seconds)
+    phase_patterns: List[tuple]
+    ready_pattern: "re.Pattern"
+    # Markers with no engine timing of their own; each closes the interval since
+    # the previous marker as a phase servekit times itself.
+    milestone_patterns: List[tuple]
+    # A gap is only named if *all* marker regexes for that hypothesis were seen
+    # inside it -- otherwise it stays "unknown" rather than assumed.
+    gap_hypotheses: List[tuple]
+    command_markers: List["re.Pattern"]
+
+
+SGLANG = FrameworkSpec(
+    name="sglang",
+    phase_patterns=[
+        ("torch_distributed_init", re.compile(r"Init torch distributed ends\. elapsed=([\d.]+) s")),
+        ("weight_loading", re.compile(r"Load weight end\. elapsed=([\d.]+) s")),
+        ("cuda_graph_capture", re.compile(r"Capture cuda graph end\. Time elapsed: ([\d.]+) s")),
+        ("piecewise_cuda_graph_capture", re.compile(r"Capture piecewise CUDA graph end\. Time elapsed: ([\d.]+) s")),
+    ],
+    ready_pattern=re.compile(r"The server is fired up and ready to roll!"),
+    # Splits HTTP bind from the first warmup request, which is dominated by
+    # first-call lazy init rather than serving work.
+    milestone_patterns=[
+        ("http_bind", re.compile(r"Uvicorn running on")),
+        ("warmup_request(JIT)", re.compile(r'"POST /generate HTTP/1\.1"\s+200')),
+    ],
+    gap_hypotheses=[
+        (
+            "tp_worker_spawn",
+            [
+                re.compile(r"Using default HuggingFace chat template"),
+                re.compile(r"TP\d+\]"),
+            ],
+        ),
+        (
+            "kv_cache_alloc",
+            [
+                re.compile(r"KV Cache is allocated"),
+                re.compile(r"Memory pool end\."),
+            ],
+        ),
+    ],
+    command_markers=[re.compile(r"\bsglang\b")],
+)
+
+# The ready boundary is NOT the same event as SGLang's: vLLM never self-issues a
+# warmup request, so its total excludes the first-call JIT that SGLang's
+# includes. Read it together with bench's ready_wait_s.
+VLLM = FrameworkSpec(
+    name="vllm",
+    phase_patterns=[
+        ("weight_loading", re.compile(r"Model loading took .*? and ([\d.]+) seconds")),
+        ("torch_compile", re.compile(r"torch\.compile took ([\d.]+) s in total")),
+        ("cuda_graph_capture", re.compile(r"[Gg]raph capturing finished in ([\d.]+) secs")),
+    ],
+    ready_pattern=re.compile(r"Application startup complete"),
+    # No milestones. SGLang's two both sit before its ready line; vLLM's uvicorn
+    # never logs "Uvicorn running on", and ready is the last line of startup, so
+    # anything listed here could never fire (job 2918061).
+    milestone_patterns=[],
+    gap_hypotheses=[
+        # vLLM reports no elapsed time for distributed init, and it falls in the
+        # same gap as the worker spawn, so the two cannot be separated here.
+        (
+            "worker_spawn+dist_init",
+            [
+                re.compile(r"\(Worker(_TP\d+)? pid=\d+\)"),
+                re.compile(r"distributed_init_method="),
+            ],
+        ),
+        (
+            "kv_cache_alloc",
+            [
+                re.compile(r"GPU KV cache size"),
+                re.compile(r"Available KV cache memory"),
+            ],
+        ),
+        # The tail after the engine is ready: FastAPI app construction and route
+        # registration, which is all that separates graph capture from ready.
+        (
+            "api_server_startup",
+            [
+                re.compile(r"Starting vLLM server on"),
+                re.compile(r"Available routes are:"),
+            ],
+        ),
+    ],
+    command_markers=[re.compile(r"\bvllm\b")],
+)
+
+FRAMEWORKS = [SGLANG, VLLM]
+
+
+def detect_framework(command: List[str]) -> FrameworkSpec:
+    """Pick a spec from the launch command, or raise.
+
+    Deliberately no default: a guessed framework yields a half-parsed phase
+    table that still looks like a measurement.
+    """
+    joined = " ".join(command)
+    for spec in FRAMEWORKS:
+        if any(m.search(joined) for m in spec.command_markers):
+            return spec
+    known = ", ".join(s.name for s in FRAMEWORKS)
+    raise ValueError(f"cannot tell which framework launches {joined!r} (known: {known})")
 
 
 @dataclass
@@ -64,6 +144,7 @@ class ProfileReport:
     started_at: float
     ready_at: Optional[float]
     success: bool
+    framework: str
     phases: List[Phase] = field(default_factory=list)
     benchmark: Optional[dict] = None  # filled in later by `servekit bench --into <report>`
 
@@ -76,6 +157,7 @@ class ProfileReport:
     def to_dict(self) -> dict:
         return {
             "command": self.command,
+            "framework": self.framework,
             "started_at": self.started_at,
             "ready_at": self.ready_at,
             "success": self.success,
@@ -89,6 +171,7 @@ def _process_stream(
     lines: Iterable[str],
     spawn_time: float,
     ready_timeout: float,
+    spec: FrameworkSpec,
     clock: Callable[[], float] = time.time,
     echo: bool = True,
     stop_at_ready: bool = False,
@@ -111,10 +194,10 @@ def _process_stream(
     ready_at: Optional[float] = None
     timed_out = False
 
-    gap_evidence = {name: set() for name, _ in GAP_HYPOTHESES}
+    gap_evidence = {name: set() for name, _ in spec.gap_hypotheses}
 
     def gap_name() -> str:
-        for name, markers in GAP_HYPOTHESES:
+        for name, markers in spec.gap_hypotheses:
             if len(gap_evidence[name]) == len(markers):
                 return name
         return "unknown"
@@ -137,13 +220,13 @@ def _process_stream(
         if ready_at is not None:
             continue
 
-        for name, markers in GAP_HYPOTHESES:
+        for name, markers in spec.gap_hypotheses:
             for idx, marker in enumerate(markers):
                 if marker.search(line):
                     gap_evidence[name].add(idx)
 
         milestone_hit = False
-        for name, pattern in MILESTONE_PATTERNS:
+        for name, pattern in spec.milestone_patterns:
             if name in seen_milestones:
                 continue
             if pattern.search(line):
@@ -165,7 +248,7 @@ def _process_stream(
         # the MAX rather than locking on the first line seen. Taking the first
         # line took the *fastest* rank, which was badly wrong exactly when it
         # mattered: a fast /dev/shm load reported 3.72 s against a true 6.19 s.
-        for name, pattern in SGLANG_PHASE_PATTERNS:
+        for name, pattern in spec.phase_patterns:
             match = pattern.search(line)
             if not match:
                 continue
@@ -187,12 +270,21 @@ def _process_stream(
             pending_phase = name
             break
 
-        if READY_PATTERN.search(line):
+        if spec.ready_pattern.search(line):
             ready_at = now
             pending_phase = None
             record_gap(now - last_marker_time)
             if on_ready is not None:
-                on_ready(ProfileReport(command="", started_at=spawn_time, ready_at=ready_at, success=True, phases=list(phases)))
+                on_ready(
+                    ProfileReport(
+                        command="",
+                        started_at=spawn_time,
+                        ready_at=ready_at,
+                        success=True,
+                        framework=spec.name,
+                        phases=list(phases),
+                    )
+                )
             if stop_at_ready:
                 break
             continue
@@ -206,6 +298,7 @@ def _process_stream(
         started_at=spawn_time,
         ready_at=ready_at,
         success=ready_at is not None and not timed_out,
+        framework=spec.name,
         phases=phases,
     )
 
@@ -216,6 +309,8 @@ def run_profile(
     on_ready: Optional[Callable[[ProfileReport], None]] = None,
 ) -> ProfileReport:
     """Run `command`, profiling it until it reports ready.
+
+    The engine is identified from `command`, so callers need no flag.
 
     The wrapped process keeps running after ready is detected; only measurement
     stops, and `on_ready` (if given) fires once so a caller can emit the report
@@ -230,6 +325,7 @@ def run_profile(
     SIGTERM/SIGINT are forwarded to the child so a caller that backgrounded us
     (`servekit profile ... & ...; kill $!`) tears the server down too.
     """
+    spec = detect_framework(command)
     spawn_time = time.time()
     proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
 
@@ -241,7 +337,7 @@ def run_profile(
     for sig in (signal.SIGTERM, signal.SIGINT):
         previous[sig] = signal.signal(sig, _forward)
     try:
-        report = _process_stream(proc.stdout, spawn_time, ready_timeout, on_ready=on_ready)
+        report = _process_stream(proc.stdout, spawn_time, ready_timeout, spec=spec, on_ready=on_ready)
         if not report.success:
             proc.terminate()
         proc.wait()
@@ -257,7 +353,7 @@ def render_table(report: ProfileReport) -> str:
     name_w = max([len(r[0]) for r in rows] + [len("phase")])
     header = f"{'phase':<{name_w}}  {'duration_s':>10}  source"
     sep = "-" * len(header)
-    lines = ["[SERVEKIT] Cold-start profile", sep, header, sep]
+    lines = [f"[SERVEKIT] Cold-start profile (framework={report.framework})", sep, header, sep]
     for name, dur, source in rows:
         lines.append(f"{name:<{name_w}}  {dur:>10.2f}  {source}")
     lines.append(sep)
