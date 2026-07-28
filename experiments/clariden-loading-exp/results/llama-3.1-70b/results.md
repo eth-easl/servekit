@@ -49,7 +49,19 @@ The presharded checkpoint was **reused from the bristen run**
 28 shards, 141,115,552,320 B) — not regenerated. See Verdict for why that turned
 out to be safe.
 
-## Result
+## Headline — one run per config
+
+| config | node | total | weight_load | non-load | stage (hidden) | tok/s |
+|---|---|---|---|---|---|---|
+| default | nid007661 | 586.33 s | 466.81 s | 119.52 s | — | 822.9 |
+| preshard+shm+overlap | nid007585 | **127.06 s** | **6.19 s** | 120.87 s | 8.78 s @ 17.02 GB/s | 797.7 |
+| | | **4.61x** | **75x** | — | | — |
+
+`non-load` = total − weight_load. It is flat across configs (119.52 vs 120.87),
+which is the check that the technique moved only the phase it targets — and, on
+this cluster, that neither node was a slow one (see `../apertus-8b/results.md`).
+
+## Result, with the bristen reference
 
 | | default | preshard+shm+overlap | bristen default | bristen preshard+shm+overlap |
 |---|---|---|---|---|

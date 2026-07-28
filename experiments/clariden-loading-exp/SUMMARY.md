@@ -4,20 +4,25 @@
 (aarch64 Grace, GH200), and does it still pay for a small model?
 
 **Answer: yes for the 70B (4.61x, better than bristen's 4.4x), and yes but
-smaller for 8B (1.83x).** The technique removes essentially all of weight
+smaller for 8B (1.81-1.85x).** The technique removes essentially all of weight
 loading in both cases; what differs is how much of cold start that was.
 
-| model | default | preshard+shm+overlap | speedup | weight_loading share of default |
-|---|---|---|---|---|
-| Llama-3.1-70B (141 GB, 28 shards) | 586.33 s | **127.13 s** | **4.61x** | 80% |
-| Apertus-8B (16 GB, 4 shards) | 172.68 s | **94.36 s** | **1.83x** | 47% |
+One run per config, both on non-slow nodes (see "What it does not settle"):
 
-`weight_loading` itself, max over TP ranks:
+| model | config | node | total | weight_load | non-load | tok/s |
+|---|---|---|---|---|---|---|
+| **Llama-3.1-70B**<br>141 GB, 28 shards | default | nid007661 | 586.33 s | 466.81 s | 119.52 s | 822.9 |
+| | preshard+shm+overlap | nid007585 | **127.06 s** | **6.19 s** | 120.87 s | 797.7 |
+| | | | **4.61x** | **75x** | — | — |
+| **Apertus-8B**<br>16 GB, 4 shards | default | nid006653 | 172.68 s | 81.41 s | 91.27 s | 2825.7 |
+| | preshard+shm+overlap | nid006644 | **95.53 s** | **0.90 s** | 94.63 s | 2816.8 |
+| | | | **1.81x** | **90x** | — | — |
 
-| model | default | preshard+shm+overlap | ratio |
-|---|---|---|---|
-| Llama-3.1-70B | 466.81 s | 6.19 s | 75x |
-| Apertus-8B | 81.4 / 84.4 / 86.9 s | 0.90 / 0.93 s | ~92x |
+`non-load` = total − weight_load, and it is flat across configs in both models
+(119.5 vs 120.9; 91.3 vs 94.6) — the check that the technique moved only the
+phase it targets. weight_loading was 80% of the 70B's cold start and 47% of
+Apertus's, which is the whole reason the speedups differ. The Apertus preshard
+row is the slower of its two runs (the faster gives 1.85x).
 
 Stage (always hidden inside startup, gate VALID every run): 70B 8.78 s @
 17.02 GB/s with 30.75 s slack; Apertus 1.17 / 1.40 s @ 15.20 / 12.68 GB/s with
@@ -48,7 +53,7 @@ Side by side with bristen (x86, A100, TP=4, Llama-3.1-70B):
   stager cuts each into 64 ranges and still hit 12.7–15.2 GB/s. A loader relying
   on file-level parallelism would suffer here.
 - **The payoff scales with weight loading's share of cold start**, and is
-  predictable from it (1.83x measured vs 1.89x predicted for Apertus).
+  predictable from it (1.81-1.85x measured vs 1.89x predicted for Apertus).
 - **More cores help the stager.** 288 cores vs bristen's 64 took the 70B stage
   14.24 → 8.78 s (10.59 → 17.02 GB/s).
 

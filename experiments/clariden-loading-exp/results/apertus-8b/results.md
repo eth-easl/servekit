@@ -1,7 +1,8 @@
 # Clariden (GH200) — Apertus-8B, default vs preshard+shm+overlap
 
-**Status:** done — `weight_loading` drops **~92x** (81.4–86.9 s → 0.90–0.93 s),
-giving a total cold-start speedup of **~1.83x**. Much smaller than the 70B's
+**Status:** done — `weight_loading` drops **~90x** (81.4–86.9 s → 0.90–0.93 s),
+giving a total cold-start speedup of **1.81–1.85x** (which of the two preshard
+runs you pair with the one non-slow default). Much smaller than the 70B's
 4.61x, and that is the point: the technique's value scales with how much of cold
 start is weight loading.
 
@@ -31,7 +32,23 @@ nodes**. The presharded checkpoint was generated on Clariden by
 `weight_loading` below is the **max over TP ranks** — see the servekit note at
 the end.
 
-## Result
+## Headline — one run per config, both on non-slow nodes
+
+Two slow nodes (nid007244, nid007013) drew the default config and are excluded
+here; see "Node heterogeneity". The preshard row is the **slower** of the two
+preshard runs, so this is the conservative reading — using the faster one
+(93.19 s) gives 1.85x.
+
+| config | node | total | weight_load | non-load | stage (hidden) | tok/s |
+|---|---|---|---|---|---|---|
+| default | nid006653 | 172.68 s | 81.41 s | 91.27 s | — | 2825.7 |
+| preshard+shm+overlap | nid006644 | **95.53 s** | **0.90 s** | 94.63 s | 1.40 s @ 12.68 GB/s | 2816.8 |
+| | | **1.81x** | **90x** | — | | — |
+
+`non-load` = total − weight_load. It is flat across configs (91.27 vs 94.63),
+which is the check that the technique moved only the phase it targets.
+
+## All runs
 
 | config | node | total | weight_loading | **total − weight_loading** | bench1 |
 |---|---|---|---|---|---|
@@ -45,10 +62,10 @@ Stage (hidden): 1.17 s @ 15.20 GB/s and 1.40 s @ 12.68 GB/s, 4 files × 64 slice
 = 244 readers. Overlap gate **VALID** both times, 36.41 s and 38.79 s of slack —
 the stage finishes ~1 s into a ~40 s window before the loader opens a file.
 
-**Speedup: 172.68 / 94.36 = 1.83x**, comparing the default on a fast node against
-the preshard runs (which both landed on fast nodes). Using the slow-node defaults
-instead would give 2.5x, which would be an artifact of node assignment, not of
-the technique.
+**Speedup: 172.68 / 94.36 = 1.83x** against the *mean* of the two preshard runs
+(the Headline table above pairs single runs instead, giving 1.81x conservatively
+or 1.85x). Using the slow-node defaults would give 2.5x, which would be an
+artifact of node assignment, not of the technique.
 
 Correctness: 6/6 greedy probes byte-identical across configs, errors=0, 64/64
 completed in every run.
@@ -81,8 +98,8 @@ comparable and its 4.61x is unaffected.
 - **The technique works and is size-dependent, as expected.** It removes
   essentially all of weight loading (81 s → 0.9 s) in both models. What changes
   is how much that is worth: 80% of cold start for the 70B, 47% for Apertus-8B.
-- **Forecasting from `weight_loading` share is roughly right** — 1.83x measured
-  against 172.68/91.27 = 1.89x predicted by driving loading to zero.
+- **Forecasting from `weight_loading` share is roughly right** — 1.81–1.85x
+  measured against 172.68/91.27 = 1.89x predicted by driving loading to zero.
 - **The 4 shards were not a problem.** The sliced stager cuts each file into 64
   ranges, so it reached 12.7–15.2 GB/s from only 4 files. A loader relying on
   file-level parallelism would have suffered here; this one does not.
@@ -92,7 +109,7 @@ comparable and its 4.61x is unaffected.
 ## Caveats
 
 - **n=3 / n=2, and node assignment is the dominant nuisance variable.** The
-  1.83x rests on a single fast-node default run. A same-node paired design
+  speedup rests on a single fast-node default run. A same-node paired design
   (default first, then preshard — the stage uses O_DIRECT so it is not helped by
   the first run's page cache) would settle it properly; note the second run does
   get a warm container-image cache, which favours it, so both orders are needed.
