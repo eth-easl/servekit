@@ -130,13 +130,3 @@ def test_run_benchmark_gives_up_when_never_ready():
     rep = run_benchmark(_dead_url(), cfg)
     assert len(rep.errors) == 1 and "not serving" in rep.errors[0]
     assert rep.throughput is None and rep.correctness is None
-
-
-if __name__ == "__main__":
-    test_correctness_and_throughput()
-    test_correctness_captures_all_prompts()
-    test_wait_for_ready_polls_through_503()
-    test_wait_for_ready_times_out()
-    test_run_benchmark_waits_then_benchmarks()
-    test_run_benchmark_gives_up_when_never_ready()
-    print("ok")

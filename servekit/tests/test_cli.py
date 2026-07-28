@@ -132,16 +132,3 @@ def test_bench_reports_failure_when_server_never_serves():
         rc = main(["bench", "--url", _dead_url(), "--out", str(path), "--wait-ready", "0.3"])
         assert rc == 1
         assert json.loads(path.read_text())["errors"]
-
-
-if __name__ == "__main__":
-    test_bench_merges_into_profile_report()
-    test_bench_writes_standalone_report()
-    test_bench_waits_for_the_profile_report_before_loading()
-    test_bench_gives_up_if_the_profile_report_never_appears()
-    test_bench_salvages_results_when_into_never_appears()
-    test_bench_rejects_a_nonexistent_directory()
-    test_bench_requires_an_output_destination()
-    test_unknown_subcommand()
-    test_bench_reports_failure_when_server_never_serves()
-    print("ok")
