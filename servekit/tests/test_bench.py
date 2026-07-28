@@ -1,16 +1,19 @@
-"""Tests for the benchmark against an in-process stub /generate server."""
+"""Tests for the benchmark against an in-process stub OpenAI-protocol server."""
 import json
 import socket
 import threading
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from servekit.bench import CORRECTNESS_PROMPTS, BenchConfig, run_benchmark, wait_for_ready
+from servekit.bench import CORRECTNESS_PROMPTS, BenchConfig, discover_model, run_benchmark, wait_for_ready
+
+STUB_MODEL = "stub/Model-1B"
 
 
 def _make_handler(unready_posts: int):
-    """Stub /generate that 503s for its first `unready_posts` requests -- a
-    server that's listening but can't serve yet. GET returns the request count.
+    """Stub /v1/completions that 503s for its first `unready_posts` requests -- a
+    server that's listening but can't serve yet. GET /v1/models advertises the
+    model; any other GET returns the request count.
     """
     state = {"posts": 0}
     lock = threading.Lock()
@@ -25,6 +28,9 @@ def _make_handler(unready_posts: int):
             self.wfile.write(data)
 
         def do_GET(self):
+            if self.path == "/v1/models":
+                self._reply(200, {"data": [{"id": STUB_MODEL}]})
+                return
             with lock:
                 self._reply(200, {"posts": state["posts"]})
 
@@ -39,7 +45,14 @@ def _make_handler(unready_posts: int):
                 self.send_header("Content-Length", "0")
                 self.end_headers()
                 return
-            self._reply(200, {"text": "OUT:" + body["text"][:12], "meta_info": {"completion_tokens": 7}})
+            self._reply(
+                200,
+                {
+                    "model": body["model"],
+                    "choices": [{"text": "OUT:" + body["prompt"][:12]}],
+                    "usage": {"completion_tokens": 7},
+                },
+            )
 
         def log_message(self, *a):  # silence access logs
             pass
@@ -97,9 +110,20 @@ def test_correctness_captures_all_prompts():
 def test_wait_for_ready_polls_through_503():
     srv, url = _start_server(unready_posts=3)
     try:
-        waited = wait_for_ready(url, timeout_s=10.0, interval_s=0.05)
-        assert waited > 0
-        assert wait_for_ready(url, timeout_s=10.0, interval_s=0.05) >= 0
+        waited, model = wait_for_ready(url, timeout_s=10.0, interval_s=0.05)
+        assert waited > 0 and model == STUB_MODEL
+        assert wait_for_ready(url, timeout_s=10.0, interval_s=0.05)[0] >= 0
+    finally:
+        srv.shutdown()
+
+
+def test_model_is_discovered_and_recorded():
+    srv, url = _start_server()
+    try:
+        assert discover_model(url) == STUB_MODEL
+        rep = run_benchmark(url, BenchConfig(requests=2, input_len=4, output_len=2))
+        assert rep.model == STUB_MODEL
+        assert rep.to_dict()["model"] == STUB_MODEL
     finally:
         srv.shutdown()
 
