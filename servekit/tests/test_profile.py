@@ -10,8 +10,7 @@ TIMESTAMP_PATTERN = re.compile(r"^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})")
 
 def _fake_clock_stream(lines):
     """Replay `lines` against a clock driven by the log's own embedded
-    timestamps (second resolution), so gap sizes match real production runs
-    instead of an arbitrary per-line step."""
+    timestamps, so gap sizes match real production runs."""
     state = {"t": 0.0, "base": None}
 
     def clock():
@@ -44,30 +43,23 @@ def test_parses_real_sglang_log():
     by_name = {p.name: p for p in report.phases}
     assert by_name["process_startup"].source == "wall_clock"
     assert by_name["torch_distributed_init"].duration_s == 5.64
-    # Max over TP ranks, not the first line seen: the fixture's four ranks
-    # report 101.61 / 101.65 / 101.66 / 101.63 and the phase ends with the
-    # slowest.
+    # Max over TP ranks (fixture's four ranks report 101.61/101.65/101.66/101.63).
     assert by_name["weight_loading"].duration_s == 101.66
     assert by_name["cuda_graph_capture"].duration_s == 17.13
     assert by_name["piecewise_cuda_graph_capture"].duration_s == 21.42
 
-    # Diagnosed gaps: marker lines for each hypothesis are present in the
-    # fixture inside the expected window, so they should be named rather than
-    # left as "unknown".
-    assert by_name["tp_worker_spawn"].source == "wall_clock"  # chat template -> first TP-tagged line
-    assert by_name["kv_cache_alloc"].source == "wall_clock"  # KV Cache is allocated -> Memory pool end
+    # Diagnosed gaps: marker lines for each hypothesis are present, so they
+    # should be named rather than left as "unknown".
+    assert by_name["tp_worker_spawn"].source == "wall_clock"
+    assert by_name["kv_cache_alloc"].source == "wall_clock"
 
-    # The old lumped "http_bind_and_warmup" gap is now split at the "Uvicorn
-    # running" milestone: HTTP bind (piecewise graph end -> Uvicorn up) vs. the
-    # first, JIT-heavy warmup request (Uvicorn up -> POST /generate 200).
+    # HTTP bind vs. the first, JIT-heavy warmup request, split at "Uvicorn running".
     assert by_name["http_bind"].source == "wall_clock"
     assert 1.0 <= by_name["http_bind"].duration_s <= 4.0
     assert by_name["warmup_request(JIT)"].source == "wall_clock"
     assert 8.0 <= by_name["warmup_request(JIT)"].duration_s <= 12.0
 
-    # Gaps we haven't diagnosed a hypothesis for yet (e.g. between
-    # torch_distributed_init and weight_loading, where nothing is logged at
-    # all) must stay "unknown" rather than being guessed.
+    # An undiagnosed gap (torch_distributed_init -> weight_loading) stays "unknown".
     assert "unknown" in by_name
 
 

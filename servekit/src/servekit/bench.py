@@ -1,27 +1,15 @@
-"""Benchmark for a live inference server (stdlib only).
+"""Benchmark a live inference server (stdlib only).
 
-Runs against any reachable server -- one launched by ``servekit profile``, or one
-that servekit never launched at all (a CRIU-restored process, a server started by
-hand). Readiness is therefore established over HTTP (see ``wait_for_ready``), not
-by parsing a startup log: a restored process emits no startup log, and "can this
-server actually serve?" is the question a benchmark cares about anyway.
+Works against any reachable server, whether or not ``servekit profile`` launched
+it -- readiness is checked over HTTP (see ``wait_for_ready``) rather than by
+parsing a startup log, since e.g. a CRIU-restored process emits none.
 
-Two checks, run once the server answers:
+Runs two checks once the server answers: correctness (greedy completions on a
+fixed prompt set, compared qualitatively rather than hashed since SGLang is not
+bit-deterministic across runs) and throughput (a fixed concurrent workload,
+which also exercises first-call JIT/lazy-init that a single warmup misses).
 
-* correctness - greedy (temperature=0) completions on a fixed prompt set,
-  captured verbatim in the report. Different loaders (mmap / no-mmap /
-  fastsafetensors / a staged copy) should produce essentially the same, coherent
-  text; a loader that corrupted weights would yield garbage or clearly divergent
-  output. We do NOT hash-compare: SGLang is not bit-deterministic across runs
-  (batched atomic reductions, kernel nondeterminism), so exact equality would
-  false-alarm - the outputs are compared qualitatively instead.
-* throughput - a fixed concurrent workload (same seed everywhere) to confirm the
-  loaded model actually serves at the expected rate, and to exercise the first
-  real inference calls (JIT/lazy-init) that a single warmup request misses.
-
-Targets SGLang's / vLLM's native ``POST /generate`` (``{"text", "sampling_params"}``
--> ``{"text", "meta_info": {"completion_tokens": ...}}``). No third-party deps so
-servekit stays zero-dependency and engine-agnostic.
+Targets SGLang's / vLLM's native ``POST /generate``. No third-party deps.
 """
 from __future__ import annotations
 
@@ -33,7 +21,6 @@ from dataclasses import asdict, dataclass, field
 from random import Random
 from typing import List, Optional
 
-# Fixed correctness prompts - stable across runs so the output hash is comparable.
 CORRECTNESS_PROMPTS = [
     "The capital of France is",
     "Explain in one sentence why the sky is blue.",
@@ -43,7 +30,6 @@ CORRECTNESS_PROMPTS = [
     "The three laws of thermodynamics are:",
 ]
 
-# Small fixed vocab for synthetic throughput prompts (seeded -> reproducible).
 _VOCAB = (
     "the a of and to in is that it for on with as are was be by this from or an "
     "model server token weight memory kernel graph batch request latency system "
@@ -54,14 +40,14 @@ _VOCAB = (
 @dataclass
 class BenchConfig:
     requests: int = 100
-    input_len: int = 512          # approx prompt length in words (~tokens)
-    output_len: int = 128         # max_new_tokens per request
+    input_len: int = 512  # approx prompt length in words (~tokens)
+    output_len: int = 128  # max_new_tokens per request
     concurrency: int = 16
     seed: int = 42
     correctness: bool = True
     correctness_max_new_tokens: int = 64
     timeout_s: float = 600.0
-    wait_ready_s: float = 0.0     # >0: poll until the server serves (see wait_for_ready)
+    wait_ready_s: float = 0.0  # >0: poll until the server serves (see wait_for_ready)
 
 
 @dataclass
@@ -93,17 +79,10 @@ def wait_for_ready(
 ) -> float:
     """Poll ``POST /generate`` until the server answers; return seconds waited.
 
-    This is servekit's *serving* readiness signal, deliberately distinct from the
-    profiler's log-based one ("fired up and ready to roll", which marks the end of
-    cold start). Here we only care that the server can actually complete a request
-    -- the single question that survives when there is no startup log to read, as
-    after a CRIU restore.
-
-    The probe is a 1-token greedy generation, so it is cheap but still exercises
-    the real inference path. Every failure is retried: a connection refused (not
-    listening yet), a 503 (listening, model not loaded), and a probe timeout are
-    all indistinguishable from "not ready yet" and all resolve the same way.
-    Raises TimeoutError if `timeout_s` elapses first.
+    Distinct from the profiler's log-based ready signal: this only cares that the
+    server can complete a request, which is the only signal left after a CRIU
+    restore. Every failure (connection refused, 503, probe timeout) is treated as
+    "not ready yet" and retried. Raises TimeoutError if `timeout_s` elapses first.
     """
     t0 = time.time()
     last_error: Optional[Exception] = None
@@ -116,7 +95,7 @@ def wait_for_ready(
                 probe_timeout_s,
             )
             return time.time() - t0
-        except Exception as e:  # noqa: BLE001 - any failure means "not ready yet"
+        except Exception as e:  # noqa: BLE001
             last_error = e
         if time.time() - t0 >= timeout_s:
             raise TimeoutError(
@@ -161,8 +140,6 @@ def _make_prompt(rng: Random, n_words: int) -> str:
 def run_throughput(base_url: str, cfg: BenchConfig) -> dict:
     rng = Random(cfg.seed)
     prompts = [_make_prompt(rng, cfg.input_len) for _ in range(cfg.requests)]
-    # temperature=0 + ignore_eos => deterministic, fixed-length decode for a
-    # clean, reproducible throughput measurement.
     sp = {"temperature": 0.0, "max_new_tokens": cfg.output_len, "ignore_eos": True}
 
     latencies: List[float] = []
@@ -181,7 +158,7 @@ def run_throughput(base_url: str, cfg: BenchConfig) -> dict:
                 lat, toks = fut.result()
                 latencies.append(lat)
                 out_tokens += toks
-            except Exception:  # noqa: BLE001 - count failures, don't abort the run
+            except Exception:  # noqa: BLE001
                 errors += 1
     wall = time.time() - wall0
 
@@ -213,8 +190,6 @@ def run_benchmark(base_url: str, cfg: BenchConfig) -> BenchReport:
         try:
             report.ready_wait_s = round(wait_for_ready(base_url, cfg.wait_ready_s), 3)
         except TimeoutError as e:
-            # Nothing downstream can succeed against a server that never served;
-            # bail out rather than emit a wall of identical connection errors.
             report.errors.append(str(e))
             return report
     if cfg.correctness:

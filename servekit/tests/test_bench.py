@@ -9,11 +9,8 @@ from servekit.bench import CORRECTNESS_PROMPTS, BenchConfig, run_benchmark, wait
 
 
 def _make_handler(unready_posts: int):
-    """Stub /generate that 503s for its first `unready_posts` requests.
-
-    That models a server which is listening but cannot serve yet -- the state
-    `wait_for_ready` exists to poll through. GET returns the request count, so
-    a test can assert when load did (and did not) arrive.
+    """Stub /generate that 503s for its first `unready_posts` requests -- a
+    server that's listening but can't serve yet. GET returns the request count.
     """
     state = {"posts": 0}
     lock = threading.Lock()
@@ -42,7 +39,6 @@ def _make_handler(unready_posts: int):
                 self.send_header("Content-Length", "0")
                 self.end_headers()
                 return
-            # Deterministic echo so greedy correctness output/hash is stable per prompt.
             self._reply(200, {"text": "OUT:" + body["text"][:12], "meta_info": {"completion_tokens": 7}})
 
         def log_message(self, *a):  # silence access logs
@@ -58,13 +54,12 @@ def _start_server(unready_posts: int = 0):
 
 
 def _request_count(url: str) -> int:
-    """How many /generate requests the stub has served so far."""
     with urllib.request.urlopen(url, timeout=5) as r:
         return json.loads(r.read())["posts"]
 
 
 def _dead_url():
-    """A URL nothing is listening on (bind to get a free port, then release it)."""
+    """A URL nothing is listening on."""
     s = socket.socket()
     s.bind(("127.0.0.1", 0))
     port = s.getsockname()[1]
@@ -82,7 +77,7 @@ def test_correctness_and_throughput():
         assert all(r["output"] for r in rep.correctness["results"])
         t = rep.throughput
         assert t["completed"] == 12 and t["errors"] == 0
-        assert t["output_tokens"] == 12 * 7          # meta_info.completion_tokens honored
+        assert t["output_tokens"] == 12 * 7
         assert t["output_tok_per_s"] > 0
         assert t["latency_s"]["p50"] >= 0
     finally:
@@ -104,7 +99,6 @@ def test_wait_for_ready_polls_through_503():
     try:
         waited = wait_for_ready(url, timeout_s=10.0, interval_s=0.05)
         assert waited > 0
-        # The probe consumed the 503s; the server is now usable for real work.
         assert wait_for_ready(url, timeout_s=10.0, interval_s=0.05) >= 0
     finally:
         srv.shutdown()
@@ -134,7 +128,6 @@ def test_run_benchmark_waits_then_benchmarks():
 def test_run_benchmark_gives_up_when_never_ready():
     cfg = BenchConfig(requests=4, wait_ready_s=0.3)
     rep = run_benchmark(_dead_url(), cfg)
-    # No point hammering a server that never served: bail with one clear error.
     assert len(rep.errors) == 1 and "not serving" in rep.errors[0]
     assert rep.throughput is None and rep.correctness is None
 

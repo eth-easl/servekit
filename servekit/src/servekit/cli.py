@@ -54,10 +54,9 @@ def _profile(argv: List[str]) -> int:
         save_json(report, out_path)
         print(f"\nreport written to {out_path}", flush=True)
 
-    # The report is written the moment the server reports ready, not when it
-    # exits -- so a concurrent `servekit bench` (and the user) can see it while
-    # the server is still up. A run that never gets ready never fires the
-    # callback, so we emit the failure ourselves.
+    # Written the moment the server reports ready, not when it exits, so a
+    # concurrent `servekit bench` can see it while the server is still up. A run
+    # that never gets ready never fires the callback, so we emit it ourselves.
     emitted = {"done": False}
 
     def emit_once(report: ProfileReport) -> None:
@@ -73,17 +72,13 @@ def _profile(argv: List[str]) -> int:
 def _wait_for_report(path: Path, timeout_s: float, interval_s: float = 0.5) -> bool:
     """Block until `profile` has written its report, or `timeout_s` elapses.
 
-    This sequences the two subcommands, and it exists because an engine starts
-    accepting traffic *before* it announces itself: SGLang binds Uvicorn and
-    runs its warmup request several seconds before logging "fired up and ready
-    to roll". A bench that probed purely over HTTP could therefore win the race
-    and start loading the server while the profiler is still timing the warmup
-    phase -- corrupting the very cold-start measurement it runs alongside.
-
-    Profile writes the report the instant it detects ready, so the report
-    appearing is the signal that measurement is over and the server is ours.
-    Only used with --into; a standalone bench (a CRIU-restored server, say) has
-    no report to wait on and goes straight to the HTTP probe.
+    Sequences the two subcommands: an engine starts accepting traffic *before*
+    it announces itself, so a bench that probed purely over HTTP could start
+    loading the server while the profiler is still timing the warmup phase,
+    corrupting the cold-start measurement it runs alongside. Profile writes the
+    report the instant it detects ready, so its appearance is the signal that
+    the server is ours. Only used with --into; a standalone bench (a
+    CRIU-restored server, say) has no report to wait on.
     """
     t0 = time.time()
     while not path.exists():
@@ -96,15 +91,10 @@ def _wait_for_report(path: Path, timeout_s: float, interval_s: float = 0.5) -> b
 def _merge_into(path: Path, benchmark: dict) -> int:
     """Write `benchmark` into an existing profile report, in place.
 
-    This is the whole linking mechanism between the two subcommands: the report
-    file is the run identity. No run ids, no daemon, no IPC -- and the on-disk
-    schema stays exactly what `profile --bench` used to produce.
-
-    The report is expected to exist by now even though it may not have when we
-    started: `profile` writes it the instant the server reports ready, which is
-    necessarily before this server could answer our requests. If it is missing
-    anyway (profile crashed, wrong path), the benchmark we just spent minutes on
-    is still salvaged to a sibling file rather than thrown away.
+    The whole linking mechanism between the two subcommands: the report file is
+    the run identity, no run ids or IPC needed. If it's missing anyway (profile
+    crashed, wrong path), the benchmark is salvaged to a sibling file instead of
+    thrown away.
     """
     if not path.exists():
         fallback = path.with_suffix(".bench.json")
@@ -143,10 +133,8 @@ def _bench(argv: List[str]) -> int:
     if args.into is None and args.out is None:
         print("error: one of --into (merge into a profile report) or --out is required", file=sys.stderr)
         return 2
-    # Only the *directory* is checked up front. The report file itself usually
-    # does not exist yet: the normal flow starts this bench alongside a still
-    # booting `servekit profile`, which writes the report when the server is
-    # ready -- i.e. after we start, but before we finish. See _merge_into.
+    # Only the *directory* is checked up front -- the report file itself usually
+    # doesn't exist yet (see _merge_into).
     for dest in (args.into, args.out):
         if dest is not None and not dest.parent.is_dir():
             print(f"error: directory {dest.parent} does not exist", file=sys.stderr)

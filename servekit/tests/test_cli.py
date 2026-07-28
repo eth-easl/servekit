@@ -36,10 +36,8 @@ def test_bench_merges_into_profile_report():
             srv.shutdown()
         assert rc == 0
         merged = json.loads(path.read_text())
-        # The profile half must survive the merge untouched...
         for key in ("command", "started_at", "ready_at", "success", "phases"):
             assert merged[key] == PROFILE_REPORT[key]
-        # ...and the bench half lands under the same key `profile --bench` used.
         assert merged["benchmark"]["throughput"]["completed"] == 4
         assert merged["benchmark"]["base_url"] == url
 
@@ -62,10 +60,9 @@ def test_bench_writes_standalone_report():
 def test_bench_waits_for_the_profile_report_before_loading():
     """--into sequences the two commands: no load until profiling is done.
 
-    The report does not exist when bench starts -- profile writes it on ready.
-    And because a real engine serves traffic before it announces readiness,
-    an HTTP probe alone would let bench start hammering a server the profiler
-    is still measuring. So the report file, not the socket, is the go signal.
+    The report file, not the socket, is the go signal -- a real engine serves
+    traffic before it announces readiness, so an HTTP probe alone would let
+    bench start hammering a server the profiler is still measuring.
     """
     srv, url = _start_server()
     with tempfile.TemporaryDirectory() as d:
@@ -73,8 +70,7 @@ def test_bench_waits_for_the_profile_report_before_loading():
         served_before_report = []
 
         def write_report_late():
-            # The server is already answering here -- exactly the window in
-            # which bench must NOT be generating load.
+            # Server already answering: the window bench must NOT be loading.
             wait_for_ready(url, timeout_s=10.0, interval_s=0.05)
             time.sleep(0.5)
             served_before_report.append(_request_count(url))
@@ -89,8 +85,7 @@ def test_bench_waits_for_the_profile_report_before_loading():
             srv.shutdown()
         assert rc == 0
         assert json.loads(path.read_text())["benchmark"]["throughput"]["completed"] == 4
-        # Only the probe from write_report_late itself; bench stayed off the wire.
-        assert served_before_report[0] <= 1
+        assert served_before_report[0] <= 1  # only the probe from write_report_late
 
 
 def test_bench_gives_up_if_the_profile_report_never_appears():
@@ -102,7 +97,6 @@ def test_bench_gives_up_if_the_profile_report_never_appears():
         finally:
             srv.shutdown()
         assert rc == 1
-        # Bailed before generating any load, so there is nothing to salvage.
         assert not (Path(d) / "run.bench.json").exists()
 
 
@@ -115,7 +109,6 @@ def test_bench_salvages_results_when_into_never_appears():
         finally:
             srv.shutdown()
         assert rc == 1
-        # The load test still cost real time -- its results must not be lost.
         salvaged = json.loads((Path(d) / "nope.bench.json").read_text())
         assert salvaged["throughput"]["completed"] == 4
 

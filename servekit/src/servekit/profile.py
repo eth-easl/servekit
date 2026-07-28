@@ -11,7 +11,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Callable, Iterable, List, Optional
 
-# (phase name, regex whose sole capture group is the engine-reported elapsed seconds)
+# (phase name, regex whose capture group is the engine-reported elapsed seconds)
 SGLANG_PHASE_PATTERNS = [
     ("torch_distributed_init", re.compile(r"Init torch distributed ends\. elapsed=([\d.]+) s")),
     ("weight_loading", re.compile(r"Load weight end\. elapsed=([\d.]+) s")),
@@ -20,14 +20,10 @@ SGLANG_PHASE_PATTERNS = [
 ]
 READY_PATTERN = re.compile(r"The server is fired up and ready to roll!")
 
-# Wall-clock milestones from the tail of startup, where the engine emits no
-# `elapsed=` timing of its own. Each milestone, the first time it is seen,
-# closes the interval since the previous marker as a phase whose duration
-# servekit measures itself. This is what splits the old lumped
-# "http_bind_and_warmup" gap into the HTTP bind vs. the first (JIT-heavy)
-# warmup request: the warmup POST on an already-loaded, already-captured model
-# is dominated by first-call lazy init (FlashInfer JIT/autotune, sampling
-# backend, first kernel loads), not by serving work.
+# Wall-clock milestones where the engine emits no `elapsed=` timing of its own;
+# each closes the interval since the previous marker as a phase servekit times
+# itself. Splits HTTP bind from the first (JIT-heavy) warmup request, which is
+# dominated by first-call lazy init rather than serving work.
 MILESTONE_PATTERNS = [
     ("http_bind", re.compile(r"Uvicorn running on")),
     ("warmup_request(JIT)", re.compile(r'"POST /generate HTTP/1\.1"\s+200')),
@@ -35,10 +31,8 @@ MILESTONE_PATTERNS = [
 
 GAP_THRESHOLD_S = 0.5
 
-# A gap between two phases is only named if *all* marker regexes for that
-# hypothesis were seen among the lines inside the gap -- otherwise it's
-# labeled "unknown" rather than assumed. Add entries here as gaps get
-# diagnosed one at a time; unmatched gaps stay "unknown" until then.
+# A gap is only named if *all* marker regexes for that hypothesis were seen
+# inside it -- otherwise it stays "unknown" rather than assumed.
 GAP_HYPOTHESES = [
     (
         "tp_worker_spawn",
@@ -110,8 +104,8 @@ def _process_stream(
     seen_milestones = set()
     phases: List[Phase] = []
     phase_index: dict = {}
-    # The engine phase most recently opened, kept open so the other TP ranks can
-    # still report into it. See the max-over-ranks note in the matching loop.
+    # The engine phase most recently opened, kept open so other TP ranks can
+    # still report into it (see the max-over-ranks note below).
     pending_phase: Optional[str] = None
     last_marker_time = spawn_time
     ready_at: Optional[float] = None
@@ -131,7 +125,6 @@ def _process_stream(
         for evidence in gap_evidence.values():
             evidence.clear()
 
-    # blocks this thread when a new line is not available yet and the pipe is not closed.
     for line in lines:
         if echo:
             sys.stdout.write(line)
@@ -167,32 +160,25 @@ def _process_stream(
         if milestone_hit:
             continue
 
-        # Every one of these phases is TP-parallel: each rank logs its own
-        # `elapsed=`, so a TP=4 run emits four lines. The phase is not over until
-        # the SLOWEST rank is done, so we keep it open and take the MAX rather
-        # than locking on the first line seen.
-        #
-        # Taking the first line meant taking the *fastest* rank. That is
-        # near-harmless when the phase is slow -- ranks all bottleneck on the
-        # same storage and converge (466.20 vs 466.81 s reading Lustre) -- but
-        # badly wrong when it is fast and per-rank variance dominates: a
-        # /dev/shm load reported 3.72 s against a true 6.19 s, understating by
-        # 66%. It therefore biased exactly the configurations worth promoting.
+        # Each of these phases is TP-parallel (one `elapsed=` line per rank), and
+        # is not over until the SLOWEST rank reports, so we keep it open and take
+        # the MAX rather than locking on the first line seen. Taking the first
+        # line took the *fastest* rank, which was badly wrong exactly when it
+        # mattered: a fast /dev/shm load reported 3.72 s against a true 6.19 s.
         for name, pattern in SGLANG_PHASE_PATTERNS:
             match = pattern.search(line)
             if not match:
                 continue
             duration = float(match.group(1))
             if name == pending_phase:
-                # Another rank reporting the phase still open. Extend, do not
-                # re-open: the gap before it was already accounted for.
+                # Another rank reporting into the still-open phase: extend, don't re-open.
                 idx = phase_index[name]
                 if duration > phases[idx].duration_s:
                     phases[idx].duration_s = round(duration, 2)
                 last_marker_time = now
                 break
             if name in seen_phases:
-                break  # a late straggler after another phase already started
+                break  # late straggler after another phase already started
             seen_phases.add(name)
             record_gap(now - last_marker_time - duration)
             phase_index[name] = len(phases)
@@ -231,21 +217,18 @@ def run_profile(
 ) -> ProfileReport:
     """Run `command`, profiling it until it reports ready.
 
-    The wrapped process (e.g. the SGLang server) keeps running after ready is
-    detected; only measurement stops, and `on_ready` (if given) fires once so
-    a caller can emit the report without waiting for the server to exit. If
-    ready is never seen within `ready_timeout`, the process is terminated and
-    the run is marked failed.
+    The wrapped process keeps running after ready is detected; only measurement
+    stops, and `on_ready` (if given) fires once so a caller can emit the report
+    without waiting for the server to exit. If ready is never seen within
+    `ready_timeout`, the process is terminated and the run is marked failed.
 
-    We keep draining the server's stdout for its whole life rather than
-    detaching once measured. Two reasons: we own the read end of the pipe, so
-    exiting would SIGPIPE the server on its next log line; and a pipe nobody
-    reads eventually fills, blocking the server on write -- which would stall
-    it precisely under the load of a concurrent `servekit bench`.
+    stdout keeps draining for the process's whole life rather than detaching
+    once measured: we own the read end of the pipe, so exiting would SIGPIPE the
+    server on its next log line, and an unread pipe eventually fills and blocks
+    the server on write.
 
-    SIGTERM/SIGINT are forwarded to the child so that a caller which
-    backgrounded us (`servekit profile ... & ...; kill $!`) tears the server
-    down instead of orphaning it.
+    SIGTERM/SIGINT are forwarded to the child so a caller that backgrounded us
+    (`servekit profile ... & ...; kill $!`) tears the server down too.
     """
     spawn_time = time.time()
     proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
@@ -258,7 +241,6 @@ def run_profile(
     for sig in (signal.SIGTERM, signal.SIGINT):
         previous[sig] = signal.signal(sig, _forward)
     try:
-        # Terminating the child closes the pipe, which ends this loop.
         report = _process_stream(proc.stdout, spawn_time, ready_timeout, on_ready=on_ready)
         if not report.success:
             proc.terminate()
