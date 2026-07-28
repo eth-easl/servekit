@@ -103,9 +103,11 @@ The trimmed log is `servekit/tests/fixtures/llama70b-vllm-ngc.log`, asserted in
 
 ## Raw artifacts
 
-`logs/llama-70b-vllm-ngc-2918061.out`,
-`logs/llama-70b-vllm-ngc-2918061-nid006183-profile.json`. Failed upstream-image
-runs: jobs 2917848, 2917951.
+`llama-70b-vllm-ngc-2918061.out` and
+`llama-70b-vllm-ngc-2918061-nid006183-profile.json`, in this directory.
+
+The failed upstream-image runs (jobs 2917848, 2917951) and the preflights are
+kept but not committed, under `logs/archive/` — `logs/` is gitignored.
 
 ## Reproducing
 
