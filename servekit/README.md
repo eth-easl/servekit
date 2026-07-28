@@ -15,6 +15,7 @@ pip install -e .
 
 ```bash
 servekit profile -- python -m sglang.launch_server --model-path <model> ...
+servekit profile -- vllm serve <model> --tensor-parallel-size 4 ...
 ```
 
 - `--out PATH` — JSON report path (default: `servekit-profile-<timestamp>.json`)
@@ -25,6 +26,8 @@ needed) and prints a per-phase duration table once the server is ready. The
 report is written the moment the server reports ready, not when it exits. The
 server process keeps running — servekit only stops measuring. Send it SIGTERM
 to shut the server down.
+
+The engine is identified from the launch command, so there is no framework flag. 
 
 ### `servekit bench`
 
@@ -40,11 +43,7 @@ servekit bench --url http://127.0.0.1:8080 --out bench.json --wait-ready 300
 - `--no-correctness` — skip the correctness probe
 
 Runs a correctness check (greedy completions on fixed prompts) and a fixed
-concurrent throughput workload against `POST /generate`. It needs nothing but a
-URL — no launch command, no log to parse — so it works against a server servekit
-never started, such as one resurrected by `criu restore`. `--wait-ready` polls
-`/generate` until the server answers and records how long that took as
-`ready_wait_s`.
+concurrent throughput workload against `POST /v1/completions`. 
 
 ### Both together
 
@@ -65,3 +64,9 @@ announces readiness (SGLang binds Uvicorn and runs its warmup request seconds
 before logging "fired up and ready to roll"), so a bench that only probed over
 HTTP could start loading a server the profiler is still measuring. The report
 file appearing is the signal that measurement is finished.
+
+## Tests
+
+```bash
+PYTHONPATH=src python -m pytest tests -q
+```

@@ -18,19 +18,24 @@ for models deployed on the SwissAI serving platform, running on CSCS
    assumptions.
 
    Delivered as `servekit/`, a minimal package with a `servekit profile --
-   <command...>` CLI: wraps any launch command (e.g. `python -m
-   sglang.launch_server ...`), parses SGLang's own timestamped log lines
-   (`Init torch distributed`, `Load weight`, `Capture cuda graph`, the
-   "fired up and ready to roll" line) with no changes to the engine, and
-   emits a per-phase duration table + JSON report the moment the server
-   reports ready — without killing the still-running server process.
+   <command...>` CLI: wraps any launch command (`python -m
+   sglang.launch_server ...` or `vllm serve ...`), parses that engine's own
+   timestamped log lines with no changes to the engine, and emits a per-phase
+   duration table + JSON report the moment the server reports ready — without
+   killing the still-running server process. The framework is detected from
+   the launch command (no flag); an unrecognized command is rejected rather
+   than guessed at. Note the two engines' ready signals are not the same
+   event: SGLang's comes after its own warmup request, vLLM's ("Application
+   startup complete") does not, so vLLM totals must be read together with
+   bench's `ready_wait_s`.
 
    A second subcommand, `servekit bench --url ...`, loads a live server
-   (correctness + throughput) and is independent of `profile`: it needs only
-   a URL, no launch command and no log to parse. Run alongside `profile`
-   (`--into <report.json>`) it merges into the same JSON; run alone it
-   benchmarks a server servekit never launched — which is what makes a
-   CRIU-restored server measurable, since a restored process emits no
+   (correctness + throughput) over the OpenAI protocol both engines serve
+   (`GET /v1/models` + `POST /v1/completions`), and is independent of
+   `profile`: it needs only a URL, no launch command and no log to parse. Run
+   alongside `profile` (`--into <report.json>`) it merges into the same JSON;
+   run alone it benchmarks a server servekit never launched — which is what
+   makes a CRIU-restored server measurable, since a restored process emits no
    startup log at all.
 
    Scope is "process launch -> first request served" (not SLURM queue
