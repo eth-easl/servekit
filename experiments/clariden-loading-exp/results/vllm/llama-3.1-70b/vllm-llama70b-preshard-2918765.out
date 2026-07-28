@@ -1,0 +1,366 @@
+job=2918765 node=nid006918 cpus=288
+preset=llama70b sharded_src=/capstor/store/cscs/swissai/infra01/cold-start-experiments/llama70b-tp4-sharded-vllm
+started=2026-07-28T18:20:49+02:00
+bash: -c: option requires an argument
+nproc=288
+Filesystem      Size  Used Avail Use% Mounted on
+tmpfs           334G   43M  334G   1% /dev/shm
+sync-copied 10 non-safetensors files
+BASH_ENV=[/etc/bash.bashrc] -- unset for the stager below
+--- bench repeat 1/1 ---
+[SERVEKIT] profiling cold start of vllm: vllm serve /dev/shm/llama70b --host 0.0.0.0 --port 8080 --served-model-name meta-llama/Llama-3.1-70B-Instruct --tensor-parallel-size 4 --trust-remote-code --max-model-len 32768 --gpu-memory-utilization 0.85 --max-num-seqs 256 --load-format sharded_state --disable-custom-all-reduce
+[SERVEKIT] waiting for the profile report /iopsstor/scratch/cscs/yboughizane/simple-serving-stack/experiments/clariden-loading-exp/results/vllm/llama-3.1-70b/preshard-shm-overlap-2918765-nid006918-profile.json
+(APIServer pid=123404) INFO 07-28 18:21:19 [api_utils.py:339] 
+(APIServer pid=123404) INFO 07-28 18:21:19 [api_utils.py:339]        █     █     █▄   ▄█
+(APIServer pid=123404) INFO 07-28 18:21:19 [api_utils.py:339]  ▄▄ ▄█ █     █     █ ▀▄▀ █  version 0.24.0+092c4842.dev
+(APIServer pid=123404) INFO 07-28 18:21:19 [api_utils.py:339]   █▄█▀ █     █     █     █  model   /dev/shm/llama70b
+(APIServer pid=123404) INFO 07-28 18:21:19 [api_utils.py:339]    ▀▀  ▀▀▀▀▀ ▀▀▀▀▀ ▀     ▀
+(APIServer pid=123404) INFO 07-28 18:21:19 [api_utils.py:339] 
+(APIServer pid=123404) INFO 07-28 18:21:19 [api_utils.py:273] non-default args: {'model_tag': '/dev/shm/llama70b', 'host': '0.0.0.0', 'port': 8080, 'model': '/dev/shm/llama70b', 'trust_remote_code': True, 'max_model_len': 32768, 'served_model_name': ['meta-llama/Llama-3.1-70B-Instruct'], 'load_format': 'sharded_state', 'tensor_parallel_size': 4, 'disable_custom_all_reduce': True, 'gpu_memory_utilization': 0.85, 'max_num_seqs': 256}
+(APIServer pid=123404) WARNING 07-28 18:21:19 [envs.py:2033] Unknown vLLM environment variable detected: VLLM_VERSION
+(APIServer pid=123404) WARNING 07-28 18:21:19 [envs.py:2033] Unknown vLLM environment variable detected: VLLM_FLASH_ATTN_SRC_DIR
+(APIServer pid=123404) INFO 07-28 18:21:29 [model.py:598] Resolved architecture: LlamaForCausalLM
+(APIServer pid=123404) INFO 07-28 18:21:29 [model.py:1725] Using max model len 32768
+(APIServer pid=123404) INFO 07-28 18:21:29 [scheduler.py:252] Chunked prefill is enabled with max_num_batched_tokens=8192.
+(APIServer pid=123404) INFO 07-28 18:21:29 [vllm.py:1006] Asynchronous scheduling is enabled.
+(APIServer pid=123404) INFO 07-28 18:21:29 [kernel.py:276] Final IR op priority after setting platform defaults: IrOpPriorityConfig(rms_norm=['native'], fused_add_rms_norm=['native'])
+(APIServer pid=123404) INFO 07-28 18:21:33 [compilation.py:310] Enabled custom fusions: allreduce_rms
+(EngineCore pid=128168) INFO 07-28 18:21:44 [core.py:114] Initializing a V1 LLM engine (v0.24.0+092c4842.dev) with config: model='/dev/shm/llama70b', speculative_config=None, tokenizer='/dev/shm/llama70b', skip_tokenizer_init=False, tokenizer_mode=auto, revision=None, tokenizer_revision=None, trust_remote_code=True, dtype=torch.bfloat16, max_seq_len=32768, download_dir=None, load_format=sharded_state, tensor_parallel_size=4, pipeline_parallel_size=1, data_parallel_size=1, decode_context_parallel_size=1, dcp_comm_backend=ag_rs, disable_custom_all_reduce=True, quantization=None, quantization_config=None, enforce_eager=False, enable_return_routed_experts=False, kv_cache_dtype=auto, device_config=cuda, structured_outputs_config=StructuredOutputsConfig(backend='auto', disable_any_whitespace=False, disable_additional_properties=False, reasoning_parser='', reasoning_parser_plugin='', enable_in_reasoning=False), observability_config=ObservabilityConfig(show_hidden_metrics_for_version=None, otlp_traces_endpoint=None, collect_detailed_traces=None, kv_cache_metrics=False, kv_cache_metrics_sample=0.01, cudagraph_metrics=False, enable_layerwise_nvtx_tracing=False, enable_mfu_metrics=False, enable_mm_processor_stats=False, enable_logging_iteration_details=False, jit_monitor_verbose=False), seed=0, served_model_name=meta-llama/Llama-3.1-70B-Instruct, enable_prefix_caching=True, enable_chunked_prefill=True, pooler_config=None, compilation_config={'mode': <CompilationMode.VLLM_COMPILE: 3>, 'debug_dump_path': None, 'cache_dir': '', 'compile_cache_save_format': 'binary', 'backend': 'inductor', 'custom_ops': ['none'], 'ir_enable_torch_wrap': True, 'splitting_ops': ['vllm::unified_attention_with_output', 'vllm::unified_mla_attention_with_output', 'vllm::mamba_mixer2', 'vllm::mamba_mixer', 'vllm::short_conv', 'vllm::linear_attention', 'vllm::plamo2_mamba_mixer', 'vllm::qwen_gdn_attention_core', 'vllm::gdn_attention_core_xpu', 'vllm::olmo_hybrid_gdn_full_forward', 'vllm::kda_attention', 'vllm::sparse_attn_indexer', 'vllm::rocm_aiter_sparse_attn_indexer', 'vllm::deepseek_v4_attention', 'vllm::unified_kv_cache_update', 'vllm::unified_mla_kv_cache_update'], 'compile_mm_encoder': False, 'cudagraph_mm_encoder': False, 'encoder_cudagraph_token_budgets': [], 'encoder_cudagraph_max_vision_items_per_batch': 0, 'encoder_cudagraph_max_frames_per_batch': None, 'compile_sizes': [], 'compile_ranges_endpoints': [128, 8192], 'inductor_compile_config': {'enable_auto_functionalized_v2': False, 'combo_kernels': True, 'benchmark_combo_kernel': True}, 'inductor_passes': {}, 'cudagraph_mode': <CUDAGraphMode.FULL_AND_PIECEWISE: (2, 1)>, 'cudagraph_num_of_warmups': 1, 'cudagraph_capture_sizes': [1, 2, 4, 8, 16, 24, 32, 40, 48, 56, 64, 72, 80, 88, 96, 104, 112, 120, 128, 136, 144, 152, 160, 168, 176, 184, 192, 200, 208, 216, 224, 232, 240, 248, 256, 272, 288, 304, 320, 336, 352, 368, 384, 400, 416, 432, 448, 464, 480, 496, 512], 'cudagraph_copy_inputs': False, 'cudagraph_specialize_lora': True, 'use_inductor_graph_partition': False, 'pass_config': {'fuse_norm_quant': False, 'fuse_act_quant': False, 'fuse_attn_quant': False, 'enable_sp': False, 'fuse_gemm_comms': False, 'fuse_allreduce_rms': True, 'fuse_rope_kvcache_cat_mla': False, 'fuse_act_padding': False}, 'max_cudagraph_capture_size': 512, 'dynamic_shapes_config': {'type': <DynamicShapesType.BACKED: 'backed'>, 'evaluate_guards': False, 'assume_32_bit_indexing': False}, 'local_cache_dir': None, 'fast_moe_cold_start': False, 'static_all_moe_layers': []}, kernel_config=KernelConfig(ir_op_priority=IrOpPriorityConfig(rms_norm=['native'], fused_add_rms_norm=['native']), enable_flashinfer_autotune=True, moe_backend='auto', linear_backend='auto')
+(EngineCore pid=128168) WARNING 07-28 18:21:44 [multiproc_executor.py:1063] Reducing Torch parallelism from 288 threads to 1 to avoid unnecessary CPU contention. Set OMP_NUM_THREADS in the external environment to tune this value as needed.
+(EngineCore pid=128168) INFO 07-28 18:21:44 [multiproc_executor.py:140] DP group leader: node_rank=0, node_rank_within_dp=0, master_addr=127.0.0.1, mq_connect_ip=172.28.36.192 (local), world_size=4, local_world_size=4
+(Worker pid=128465) INFO 07-28 18:21:57 [parallel_state.py:1588] world_size=4 rank=0 local_rank=0 distributed_init_method=tcp://127.0.0.1:47735 backend=nccl
+(Worker pid=128467) INFO 07-28 18:21:58 [parallel_state.py:1588] world_size=4 rank=2 local_rank=2 distributed_init_method=tcp://127.0.0.1:47735 backend=nccl
+(Worker pid=128466) INFO 07-28 18:21:58 [parallel_state.py:1588] world_size=4 rank=1 local_rank=1 distributed_init_method=tcp://127.0.0.1:47735 backend=nccl
+(Worker pid=128468) INFO 07-28 18:21:58 [parallel_state.py:1588] world_size=4 rank=3 local_rank=3 distributed_init_method=tcp://127.0.0.1:47735 backend=nccl
+(Worker pid=128465) INFO 07-28 18:21:58 [pynccl.py:113] vLLM is using nccl==2.30.7
+(Worker pid=128465) WARNING 07-28 18:22:02 [symm_mem.py:106] SymmMemCommunicator: symmetric memory multicast operations are not supported.
+(Worker pid=128467) WARNING 07-28 18:22:02 [symm_mem.py:106] SymmMemCommunicator: symmetric memory multicast operations are not supported.
+(Worker pid=128468) WARNING 07-28 18:22:02 [symm_mem.py:106] SymmMemCommunicator: symmetric memory multicast operations are not supported.
+(Worker pid=128465) INFO 07-28 18:22:02 [cuda_communicator.py:245] Using ['PYNCCL'] all-reduce backends (in dispatch order) for group 'tp:0' out of potential backends: ['NCCL_SYMM_MEM', 'QUICK_REDUCE', 'FLASHINFER', 'CUSTOM', 'SYMM_MEM', 'PYNCCL'].
+(Worker pid=128466) WARNING 07-28 18:22:02 [symm_mem.py:106] SymmMemCommunicator: symmetric memory multicast operations are not supported.
+(Worker pid=128465) INFO 07-28 18:22:03 [parallel_state.py:1923] rank 0 in world size 4 is assigned as DP rank 0, PP rank 0, PCP rank 0, TP rank 0, EP rank N/A, EPLB rank N/A
+(Worker pid=128465) INFO 07-28 18:22:03 [gpu_worker.py:331] Using V2 Model Runner
+(Worker_TP1 pid=128466) INFO 07-28 18:22:03 [model_runner.py:281] Loading model from scratch...
+(Worker_TP3 pid=128468) INFO 07-28 18:22:03 [model_runner.py:281] Loading model from scratch...
+(Worker_TP2 pid=128467) INFO 07-28 18:22:03 [model_runner.py:281] Loading model from scratch...
+(Worker_TP0 pid=128465) INFO 07-28 18:22:03 [model_runner.py:281] Loading model from scratch...
+(Worker_TP0 pid=128465) INFO 07-28 18:22:03 [cuda.py:480] Using FLASH_ATTN attention backend out of potential backends: ['FLASH_ATTN', 'FLASHINFER', 'TRITON_ATTN', 'FLEX_ATTENTION'].
+(Worker_TP0 pid=128465) INFO 07-28 18:22:03 [flash_attn.py:670] Using FlashAttention version 3
+(Worker_TP0 pid=128465) INFO 07-28 18:22:08 [sharded_state_loader.py:157] Loading weights took 3.80 seconds
+(Worker_TP1 pid=128466) INFO 07-28 18:22:08 [model_runner.py:302] Model loading took 32.89 GiB and 5.125254 seconds
+(Worker_TP0 pid=128465) INFO 07-28 18:22:08 [model_runner.py:302] Model loading took 32.89 GiB and 5.363256 seconds
+(Worker_TP0 pid=128465) INFO 07-28 18:22:08 [topk_topp_sampler.py:55] Using FlashInfer for top-p & top-k sampling.
+(Worker_TP2 pid=128467) INFO 07-28 18:22:10 [model_runner.py:302] Model loading took 32.89 GiB and 7.382848 seconds
+(Worker_TP3 pid=128468) INFO 07-28 18:22:10 [model_runner.py:302] Model loading took 32.89 GiB and 7.502456 seconds
+(Worker_TP0 pid=128465) INFO 07-28 18:22:24 [backends.py:1089] Using cache directory: /root/.cache/vllm/torch_compile_cache/40db5cee7e/rank_0_0/backbone for vLLM's torch.compile
+(Worker_TP0 pid=128465) INFO 07-28 18:22:24 [backends.py:1148] Dynamo bytecode transform time: 12.09 s
+(Worker_TP0 pid=128465) INFO 07-28 18:22:24 [flashinfer_all_reduce.py:112] Auto-selected flashinfer allreduce backend: trtllm
+(Worker_TP0 pid=128465) /usr/local/lib/python3.12/dist-packages/torch/distributed/c10d_logger.py:83: UserWarning: barrier(): using the device under current context. You can specify `device_id` in `init_process_group` to mute this warning.
+(Worker_TP0 pid=128465)   return func(*args, **kwargs)
+NCCL version 2.30.7+cuda13.3
+
+[2026-07-28 18:22:00] nid006918:128465:128465 [0] ncclResult_t nccl_ofi_gin_init(void**, uint64_t, ncclDebugLogger_t):55 NCCL WARN NET/OFI GIN only supports RDMA transport protocol.
+
+[2026-07-28 18:22:00] nid006918:128465:128465 [0] ncclResult_t nccl_ofi_gin_init(void**, uint64_t, ncclDebugLogger_t):55 NCCL WARN NET/OFI GIN only supports RDMA transport protocol.
+[rank0]:[W728 18:22:25.040896658 ProcessGroupNCCL.cpp:5276] Guessing device ID based on global rank. This can cause a hang if rank to GPU mapping is heterogeneous. You can specify device_id in init_process_group()
+(Worker_TP0 pid=128465) INFO 07-28 18:22:25 [flashinfer_all_reduce.py:152] Initialized FlashInfer Allreduce norm fusion workspace with backend=trtllm
+(Worker_TP0 pid=128465) INFO 07-28 18:22:37 [backends.py:393] Compiling a graph for compile range (1, 128) takes 7.17 s
+(Worker_TP0 pid=128465) INFO 07-28 18:22:38 [backends.py:393] Compiling a graph for compile range (129, 8192) takes 8.05 s
+(Worker_TP1 pid=128466) INFO 07-28 18:22:46 [backends.py:915] collected artifacts: 162 entries, 7 artifacts, 9939039 bytes total
+(Worker_TP3 pid=128468) INFO 07-28 18:22:46 [backends.py:915] collected artifacts: 162 entries, 7 artifacts, 9972886 bytes total
+(Worker_TP2 pid=128467) INFO 07-28 18:22:47 [backends.py:915] collected artifacts: 162 entries, 7 artifacts, 9912264 bytes total
+(Worker_TP0 pid=128465) INFO 07-28 18:22:48 [backends.py:915] collected artifacts: 162 entries, 7 artifacts, 9877397 bytes total
+(Worker_TP0 pid=128465) INFO 07-28 18:22:48 [decorators.py:708] saved AOT compiled function to /root/.cache/vllm/torch_compile_cache/torch_aot_compile/f043e780e824f8a8d48c33c595c9717297efd1fce4046f8aa82d46a9209662f5/rank_0_0/model
+(Worker_TP0 pid=128465) INFO 07-28 18:22:48 [monitor.py:53] torch.compile took 35.45 s in total
+(Worker_TP0 pid=128465) INFO 07-28 18:22:49 [monitor.py:81] Initial profiling/warmup run took 0.70 s
+(Worker_TP0 pid=128465) /usr/local/lib/python3.12/dist-packages/torch/distributed/c10d_logger.py:83: FutureWarning: `torch.distributed.all_gather_into_tensor` is deprecated. Please use `torch.distributed.all_gather_single` instead.
+(Worker_TP0 pid=128465)   return func(*args, **kwargs)
+(Worker_TP1 pid=128466) /usr/local/lib/python3.12/dist-packages/torch/distributed/c10d_logger.py:83: FutureWarning: `torch.distributed.all_gather_into_tensor` is deprecated. Please use `torch.distributed.all_gather_single` instead.
+(Worker_TP1 pid=128466)   return func(*args, **kwargs)
+(Worker_TP3 pid=128468) /usr/local/lib/python3.12/dist-packages/torch/distributed/c10d_logger.py:83: FutureWarning: `torch.distributed.all_gather_into_tensor` is deprecated. Please use `torch.distributed.all_gather_single` instead.
+(Worker_TP3 pid=128468)   return func(*args, **kwargs)
+(Worker_TP2 pid=128467) /usr/local/lib/python3.12/dist-packages/torch/distributed/c10d_logger.py:83: FutureWarning: `torch.distributed.all_gather_into_tensor` is deprecated. Please use `torch.distributed.all_gather_single` instead.
+(Worker_TP2 pid=128467)   return func(*args, **kwargs)
+(Worker_TP0 pid=128465) INFO 07-28 18:22:50 [gpu_worker.py:508] Available KV cache memory: 46.54 GiB
+(EngineCore pid=128168) INFO 07-28 18:22:50 [kv_cache_utils.py:2146] GPU KV cache size: 609,984 tokens
+(EngineCore pid=128168) INFO 07-28 18:22:50 [kv_cache_utils.py:2147] Maximum concurrency for 32,768 tokens per request: 18.62x
+(Worker_TP0 pid=128465) INFO 07-28 18:22:50 [deep_gemm.py:175] deep_gemm not found in site-packages, trying vendored vllm.third_party.deep_gemm
+(Worker_TP0 pid=128465) INFO 07-28 18:22:50 [deep_gemm.py:202] DeepGEMM PDL enabled on vllm.third_party.deep_gemm.
+(Worker_TP3 pid=128468) 2026-07-28 18:22:50,726 - INFO - autotuner.py:651 - flashinfer.jit: [Autotuner]: Autotuning process starts ...
+(Worker_TP2 pid=128467) 2026-07-28 18:22:50,726 - INFO - autotuner.py:651 - flashinfer.jit: [Autotuner]: Autotuning process starts ...
+(Worker_TP0 pid=128465) 2026-07-28 18:22:50,726 - INFO - autotuner.py:651 - flashinfer.jit: [Autotuner]: Autotuning process starts ...
+(Worker_TP1 pid=128466) 2026-07-28 18:22:50,726 - INFO - autotuner.py:651 - flashinfer.jit: [Autotuner]: Autotuning process starts ...
+(Worker_TP0 pid=128465) 2026-07-28 18:22:50,862 - INFO - autotuner.py:674 - flashinfer.jit: [Autotuner]: Autotuning process ends
+(Worker_TP3 pid=128468) 2026-07-28 18:22:50,862 - INFO - autotuner.py:674 - flashinfer.jit: [Autotuner]: Autotuning process ends
+(Worker_TP2 pid=128467) 2026-07-28 18:22:50,862 - INFO - autotuner.py:674 - flashinfer.jit: [Autotuner]: Autotuning process ends
+(Worker_TP1 pid=128466) 2026-07-28 18:22:50,862 - INFO - autotuner.py:674 - flashinfer.jit: [Autotuner]: Autotuning process ends
+(Worker_TP0 pid=128465) 
+Capturing CUDA graphs (PIECEWISE):   0%|          | 0/51 [00:00<?, ?it/s]
+Capturing CUDA graphs (PIECEWISE):   2%|▏         | 1/51 [00:00<00:05,  9.45it/s]
+Capturing CUDA graphs (PIECEWISE):   6%|▌         | 3/51 [00:00<00:04, 10.13it/s]
+Capturing CUDA graphs (PIECEWISE):  10%|▉         | 5/51 [00:00<00:04, 10.31it/s]
+Capturing CUDA graphs (PIECEWISE):  14%|█▎        | 7/51 [00:00<00:04, 10.46it/s]
+Capturing CUDA graphs (PIECEWISE):  18%|█▊        | 9/51 [00:00<00:03, 10.57it/s]
+Capturing CUDA graphs (PIECEWISE):  22%|██▏       | 11/51 [00:01<00:03, 10.66it/s]
+Capturing CUDA graphs (PIECEWISE):  25%|██▌       | 13/51 [00:01<00:03, 10.79it/s]
+Capturing CUDA graphs (PIECEWISE):  29%|██▉       | 15/51 [00:01<00:03, 10.84it/s]
+Capturing CUDA graphs (PIECEWISE):  33%|███▎      | 17/51 [00:01<00:03, 10.89it/s]
+Capturing CUDA graphs (PIECEWISE):  37%|███▋      | 19/51 [00:01<00:02, 10.84it/s]
+Capturing CUDA graphs (PIECEWISE):  41%|████      | 21/51 [00:01<00:02, 10.79it/s]
+Capturing CUDA graphs (PIECEWISE):  45%|████▌     | 23/51 [00:02<00:02, 10.76it/s]
+Capturing CUDA graphs (PIECEWISE):  49%|████▉     | 25/51 [00:02<00:02, 10.74it/s]
+Capturing CUDA graphs (PIECEWISE):  53%|█████▎    | 27/51 [00:02<00:02, 10.70it/s]
+Capturing CUDA graphs (PIECEWISE):  57%|█████▋    | 29/51 [00:02<00:02, 10.47it/s]
+Capturing CUDA graphs (PIECEWISE):  61%|██████    | 31/51 [00:02<00:01, 10.49it/s]
+Capturing CUDA graphs (PIECEWISE):  65%|██████▍   | 33/51 [00:03<00:01, 10.31it/s]
+Capturing CUDA graphs (PIECEWISE):  69%|██████▊   | 35/51 [00:03<00:01, 10.73it/s]
+Capturing CUDA graphs (PIECEWISE):  73%|███████▎  | 37/51 [00:03<00:01, 10.95it/s]
+Capturing CUDA graphs (PIECEWISE):  76%|███████▋  | 39/51 [00:03<00:01, 11.12it/s]
+Capturing CUDA graphs (PIECEWISE):  80%|████████  | 41/51 [00:03<00:00, 11.16it/s]
+Capturing CUDA graphs (PIECEWISE):  84%|████████▍ | 43/51 [00:03<00:00, 11.17it/s]
+Capturing CUDA graphs (PIECEWISE):  88%|████████▊ | 45/51 [00:04<00:00, 11.21it/s]
+Capturing CUDA graphs (PIECEWISE):  92%|█████████▏| 47/51 [00:04<00:00, 11.31it/s]
+Capturing CUDA graphs (PIECEWISE):  96%|█████████▌| 49/51 [00:04<00:00, 11.40it/s]
+Capturing CUDA graphs (PIECEWISE): 100%|██████████| 51/51 [00:04<00:00, 11.48it/s]
+Capturing CUDA graphs (PIECEWISE): 100%|██████████| 51/51 [00:04<00:00, 10.88it/s]
+(Worker_TP0 pid=128465) 
+Capturing CUDA graphs (FULL):   0%|          | 0/35 [00:00<?, ?it/s]
+Capturing CUDA graphs (FULL):   6%|▌         | 2/35 [00:00<00:02, 12.27it/s]
+Capturing CUDA graphs (FULL):  11%|█▏        | 4/35 [00:00<00:02, 12.44it/s]
+Capturing CUDA graphs (FULL):  17%|█▋        | 6/35 [00:00<00:02, 12.79it/s]
+Capturing CUDA graphs (FULL):  23%|██▎       | 8/35 [00:00<00:02, 12.75it/s]
+Capturing CUDA graphs (FULL):  29%|██▊       | 10/35 [00:00<00:01, 12.95it/s]
+Capturing CUDA graphs (FULL):  34%|███▍      | 12/35 [00:00<00:01, 12.94it/s]
+Capturing CUDA graphs (FULL):  40%|████      | 14/35 [00:01<00:01, 12.95it/s]
+Capturing CUDA graphs (FULL):  46%|████▌     | 16/35 [00:01<00:01, 13.13it/s]
+Capturing CUDA graphs (FULL):  51%|█████▏    | 18/35 [00:01<00:01, 13.32it/s]
+Capturing CUDA graphs (FULL):  57%|█████▋    | 20/35 [00:01<00:01, 13.69it/s]
+Capturing CUDA graphs (FULL):  63%|██████▎   | 22/35 [00:01<00:00, 13.74it/s]
+Capturing CUDA graphs (FULL):  69%|██████▊   | 24/35 [00:01<00:00, 13.87it/s]
+Capturing CUDA graphs (FULL):  74%|███████▍  | 26/35 [00:01<00:00, 13.75it/s]
+Capturing CUDA graphs (FULL):  80%|████████  | 28/35 [00:02<00:00, 13.74it/s]
+Capturing CUDA graphs (FULL):  86%|████████▌ | 30/35 [00:02<00:00, 13.86it/s]
+Capturing CUDA graphs (FULL):  91%|█████████▏| 32/35 [00:02<00:00, 13.85it/s]
+Capturing CUDA graphs (FULL):  97%|█████████▋| 34/35 [00:02<00:00, 14.06it/s](Worker_TP1 pid=128466) INFO 07-28 18:22:58 [model_runner.py:726] Graph capturing finished in 8 secs, took 1.17 GiB
+(Worker_TP2 pid=128467) INFO 07-28 18:22:58 [model_runner.py:726] Graph capturing finished in 8 secs, took 1.17 GiB
+(Worker_TP3 pid=128468) INFO 07-28 18:22:58 [model_runner.py:726] Graph capturing finished in 8 secs, took 1.17 GiB
+
+Capturing CUDA graphs (FULL): 100%|██████████| 35/35 [00:02<00:00, 13.47it/s]
+(Worker_TP0 pid=128465) INFO 07-28 18:22:58 [model_runner.py:726] Graph capturing finished in 8 secs, took 1.17 GiB
+(Worker_TP0 pid=128465) INFO 07-28 18:23:00 [jit_monitor.py:60] Kernel JIT monitor activated — Triton JIT compilations during inference will be logged as warnings.
+(Worker_TP1 pid=128466) INFO 07-28 18:23:00 [jit_monitor.py:60] Kernel JIT monitor activated — Triton JIT compilations during inference will be logged as warnings.
+(Worker_TP3 pid=128468) INFO 07-28 18:23:00 [jit_monitor.py:60] Kernel JIT monitor activated — Triton JIT compilations during inference will be logged as warnings.
+(Worker_TP2 pid=128467) INFO 07-28 18:23:00 [jit_monitor.py:60] Kernel JIT monitor activated — Triton JIT compilations during inference will be logged as warnings.
+(EngineCore pid=128168) INFO 07-28 18:23:01 [core.py:337] init engine (profile, create kv cache, warmup model) took 50.30 s (compilation: 35.45 s)
+(EngineCore pid=128168) INFO 07-28 18:23:02 [vllm.py:1006] Asynchronous scheduling is enabled.
+(EngineCore pid=128168) INFO 07-28 18:23:02 [kernel.py:276] Final IR op priority after setting platform defaults: IrOpPriorityConfig(rms_norm=['native'], fused_add_rms_norm=['native'])
+(EngineCore pid=128168) INFO 07-28 18:23:03 [compilation.py:310] Enabled custom fusions: allreduce_rms
+(APIServer pid=123404) INFO 07-28 18:23:03 [api_server.py:577] Supported tasks: ['generate']
+(APIServer pid=123404) WARNING 07-28 18:23:03 [model.py:1477] Default vLLM sampling parameters have been overridden by the model's `generation_config.json`: `{'temperature': 0.6, 'top_p': 0.9}`. If this is not intended, please relaunch vLLM instance with `--generation-config vllm`.
+(APIServer pid=123404) INFO 07-28 18:23:04 [hf.py:548] Detected the chat template content format to be 'string'. You can set `--chat-template-content-format` to override this.
+(APIServer pid=123404) INFO 07-28 18:23:04 [api_server.py:581] Starting vLLM server on http://0.0.0.0:8080
+(APIServer pid=123404) INFO 07-28 18:23:04 [launcher.py:37] Available routes are:
+(APIServer pid=123404) INFO 07-28 18:23:04 [launcher.py:46] Route: /openapi.json, Methods: GET, HEAD
+(APIServer pid=123404) INFO 07-28 18:23:04 [launcher.py:46] Route: /docs, Methods: GET, HEAD
+(APIServer pid=123404) INFO 07-28 18:23:04 [launcher.py:46] Route: /docs/oauth2-redirect, Methods: GET, HEAD
+(APIServer pid=123404) INFO 07-28 18:23:04 [launcher.py:46] Route: /redoc, Methods: GET, HEAD
+(APIServer pid=123404) INFO 07-28 18:23:04 [launcher.py:46] Route: /load, Methods: GET
+(APIServer pid=123404) INFO 07-28 18:23:04 [launcher.py:46] Route: /version, Methods: GET
+(APIServer pid=123404) INFO 07-28 18:23:04 [launcher.py:46] Route: /health, Methods: GET
+(APIServer pid=123404) INFO 07-28 18:23:04 [launcher.py:46] Route: /metrics, Methods: GET
+(APIServer pid=123404) INFO 07-28 18:23:04 [launcher.py:46] Route: /tokenize, Methods: POST
+(APIServer pid=123404) INFO 07-28 18:23:04 [launcher.py:46] Route: /detokenize, Methods: POST
+(APIServer pid=123404) INFO 07-28 18:23:04 [launcher.py:46] Route: /v1/models, Methods: GET
+(APIServer pid=123404) INFO 07-28 18:23:04 [launcher.py:46] Route: /ping, Methods: GET
+(APIServer pid=123404) INFO 07-28 18:23:04 [launcher.py:46] Route: /ping, Methods: POST
+(APIServer pid=123404) INFO 07-28 18:23:04 [launcher.py:46] Route: /invocations, Methods: POST
+(APIServer pid=123404) INFO 07-28 18:23:04 [launcher.py:46] Route: /v1/chat/completions, Methods: POST
+(APIServer pid=123404) INFO 07-28 18:23:04 [launcher.py:46] Route: /v1/chat/completions/batch, Methods: POST
+(APIServer pid=123404) INFO 07-28 18:23:04 [launcher.py:46] Route: /v1/responses, Methods: POST
+(APIServer pid=123404) INFO 07-28 18:23:04 [launcher.py:46] Route: /v1/responses/{response_id}, Methods: GET
+(APIServer pid=123404) INFO 07-28 18:23:04 [launcher.py:46] Route: /v1/responses/{response_id}/cancel, Methods: POST
+(APIServer pid=123404) INFO 07-28 18:23:04 [launcher.py:46] Route: /v1/completions, Methods: POST
+(APIServer pid=123404) INFO 07-28 18:23:04 [launcher.py:46] Route: /v1/messages, Methods: POST
+(APIServer pid=123404) INFO 07-28 18:23:04 [launcher.py:46] Route: /v1/messages/count_tokens, Methods: POST
+(APIServer pid=123404) INFO 07-28 18:23:04 [launcher.py:46] Route: /generative_scoring, Methods: POST
+(APIServer pid=123404) INFO 07-28 18:23:04 [launcher.py:46] Route: /inference/v1/generate, Methods: POST
+(APIServer pid=123404) INFO 07-28 18:23:04 [launcher.py:46] Route: /scale_elastic_ep, Methods: POST
+(APIServer pid=123404) INFO 07-28 18:23:04 [launcher.py:46] Route: /is_scaling_elastic_ep, Methods: POST
+(APIServer pid=123404) INFO 07-28 18:23:04 [launcher.py:46] Route: /v1/chat/completions/render, Methods: POST
+(APIServer pid=123404) INFO 07-28 18:23:04 [launcher.py:46] Route: /v1/completions/render, Methods: POST
+(APIServer pid=123404) INFO 07-28 18:23:04 [launcher.py:46] Route: /v1/chat/completions/derender, Methods: POST
+(APIServer pid=123404) INFO 07-28 18:23:04 [launcher.py:46] Route: /v1/completions/derender, Methods: POST
+(APIServer pid=123404) INFO:     Started server process [123404]
+(APIServer pid=123404) INFO:     Waiting for application startup.
+(APIServer pid=123404) INFO:     Application startup complete.
+
+[SERVEKIT] Cold-start profile (framework=vllm)
+------------------------------------------
+phase                   duration_s  source
+------------------------------------------
+process_startup              20.52  wall_clock
+worker_spawn+dist_init       44.08  wall_clock
+weight_loading                7.50  engine_reported
+unknown                       2.05  wall_clock
+torch_compile                35.45  engine_reported
+kv_cache_alloc                2.30  wall_clock
+cuda_graph_capture            8.00  engine_reported
+api_server_startup            5.81  wall_clock
+------------------------------------------
+total                       125.72  ready
+
+report written to /iopsstor/scratch/cscs/yboughizane/simple-serving-stack/experiments/clariden-loading-exp/results/vllm/llama-3.1-70b/preshard-shm-overlap-2918765-nid006918-profile.json
+[SERVEKIT] waiting up to 3000s for http://127.0.0.1:8080 to serve
+[SERVEKIT] benchmarking http://127.0.0.1:8080
+
+[SERVEKIT] Benchmark of http://127.0.0.1:8080 (model=meta-llama/Llama-3.1-70B-Instruct)
+----------------------------------------
+ready_wait: 0.072 s (until the server served a request)
+correctness: 6 greedy prompts captured (compare outputs in report JSON)
+  'The capital of France is' -> 'a city of love, art, fashion, and cuisine. Paris is a mu'
+  'Explain in one sentence why the sk' -> 'The sky is blue because of a phenomenon called Rayleigh '
+throughput: 798.1 tok/s  (64/64 reqs, conc=16, in=512 out=128)
+latency_s: mean=2.565 p50=2.522 p99=2.726 max=2.727   errors=0
+
+benchmark merged into /iopsstor/scratch/cscs/yboughizane/simple-serving-stack/experiments/clariden-loading-exp/results/vllm/llama-3.1-70b/preshard-shm-overlap-2918765-nid006918-profile.json
+(APIServer pid=123404) INFO:     127.0.0.1:57626 - "GET /v1/models HTTP/1.1" 200 OK
+(APIServer pid=123404) INFO:     127.0.0.1:57632 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=123404) INFO:     127.0.0.1:57636 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=123404) INFO:     127.0.0.1:57652 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=123404) INFO:     127.0.0.1:57666 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=123404) INFO:     127.0.0.1:34432 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=123404) INFO:     127.0.0.1:34442 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=123404) INFO:     127.0.0.1:34452 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=123404) INFO:     127.0.0.1:34454 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=123404) INFO:     127.0.0.1:34464 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=123404) INFO:     127.0.0.1:34478 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=123404) INFO:     127.0.0.1:34486 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=123404) INFO:     127.0.0.1:34500 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=123404) INFO:     127.0.0.1:34506 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=123404) INFO:     127.0.0.1:34518 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=123404) INFO:     127.0.0.1:34522 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=123404) INFO:     127.0.0.1:34538 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=123404) INFO:     127.0.0.1:34554 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=123404) INFO:     127.0.0.1:34566 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=123404) INFO:     127.0.0.1:34570 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=123404) INFO:     127.0.0.1:34572 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=123404) INFO:     127.0.0.1:34580 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=123404) INFO:     127.0.0.1:34582 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=123404) INFO:     127.0.0.1:34598 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=123404) INFO 07-28 18:23:14 [loggers.py:273] Engine 000: Avg prompt throughput: 1372.7 tokens/s, Avg generation throughput: 294.7 tokens/s, Running: 16 reqs, Waiting: 0 reqs, GPU KV cache usage: 1.6%, Prefix cache hit rate: 0.0%
+(APIServer pid=123404) INFO:     127.0.0.1:34604 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=123404) INFO:     127.0.0.1:34610 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=123404) INFO:     127.0.0.1:34636 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=123404) INFO:     127.0.0.1:34620 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=123404) INFO:     127.0.0.1:34616 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=123404) INFO:     127.0.0.1:34686 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=123404) INFO:     127.0.0.1:34670 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=123404) INFO:     127.0.0.1:34640 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=123404) INFO:     127.0.0.1:34694 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=123404) INFO:     127.0.0.1:34658 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=123404) INFO:     127.0.0.1:34644 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=123404) INFO:     127.0.0.1:34706 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=123404) INFO:     127.0.0.1:34710 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=123404) INFO:     127.0.0.1:34726 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=123404) INFO:     127.0.0.1:34738 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=123404) INFO:     127.0.0.1:34744 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=123404) INFO:     127.0.0.1:34758 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=123404) INFO:     127.0.0.1:34762 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=123404) INFO:     127.0.0.1:34828 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=123404) INFO:     127.0.0.1:34760 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=123404) INFO:     127.0.0.1:34772 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=123404) INFO:     127.0.0.1:34844 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=123404) INFO:     127.0.0.1:34782 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=123404) INFO:     127.0.0.1:34834 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=123404) INFO:     127.0.0.1:34796 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=123404) INFO:     127.0.0.1:34776 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=123404) INFO:     127.0.0.1:34816 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=123404) INFO:     127.0.0.1:34800 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=123404) INFO:     127.0.0.1:34852 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=123404) INFO:     127.0.0.1:34860 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=123404) INFO:     127.0.0.1:34870 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=123404) INFO:     127.0.0.1:34880 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=123404) INFO:     127.0.0.1:34698 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=123404) INFO:     127.0.0.1:34700 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=123404) INFO:     127.0.0.1:34724 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=123404) INFO:     127.0.0.1:34718 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=123404) INFO:     127.0.0.1:34740 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=123404) INFO:     127.0.0.1:34748 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=123404) INFO:     127.0.0.1:34714 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=123404) INFO:     127.0.0.1:34772 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=123404) INFO:     127.0.0.1:34756 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=123404) INFO:     127.0.0.1:34758 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=123404) INFO:     127.0.0.1:34730 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=123404) INFO:     127.0.0.1:34782 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=123404) INFO:     127.0.0.1:34790 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=123404) INFO:     127.0.0.1:34794 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=123404) INFO:     127.0.0.1:34802 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=123404) INFO:     127.0.0.1:34806 - "POST /v1/completions HTTP/1.1" 200 OK
+
+[SERVEKIT] got signal 15, terminating the server
+(APIServer pid=123404) INFO 07-28 18:23:23 [launcher.py:100] [shutdown] API server: shutdown triggered
+(APIServer pid=123404) INFO 07-28 18:23:23 [launcher.py:116] [shutdown] API server: stopping engine client mode=abort timeout=0s
+(APIServer pid=123404) INFO 07-28 18:23:23 [core_client.py:655] [shutdown] MPClient: start timeout=0s
+(APIServer pid=123404) INFO 07-28 18:23:23 [core_client.py:657] [shutdown] MPClient: stopping engine manager
+(APIServer pid=123404) WARNING 07-28 18:23:23 [utils.py:620] [shutdown] Process manager: force killing remaining processes count=1
+(EngineCore pid=128168) INFO 07-28 18:23:23 [core.py:1214] [shutdown] EngineCore: trigger received signal=SIGTERM
+(EngineCore pid=128168) INFO 07-28 18:23:23 [core.py:1333] [shutdown] EngineCore: start mode=abort timeout=0s
+(EngineCore pid=128168) INFO 07-28 18:23:23 [core.py:1364] [shutdown] EngineCore: request processing complete; starting resource teardown
+(EngineCore pid=128168) INFO 07-28 18:23:23 [core.py:1227] [shutdown] EngineCore: exiting busy loop
+(Worker_TP0 pid=128465) INFO 07-28 18:23:23 [multiproc_executor.py:790] Parent process exited, terminating worker queues
+(EngineCore pid=128168) INFO 07-28 18:23:23 [multiproc_executor.py:426] [shutdown] Executor: waiting for worker exit count=4
+(APIServer pid=123404) INFO:     Shutting down
+(APIServer pid=123404) INFO 07-28 18:23:23 [core_client.py:659] [shutdown] MPClient: engine manager stopped
+(APIServer pid=123404) INFO 07-28 18:23:23 [core_client.py:660] [shutdown] MPClient: cleaning up background resources
+(APIServer pid=123404) INFO 07-28 18:23:23 [core_client.py:662] [shutdown] MPClient: complete
+(APIServer pid=123404) INFO 07-28 18:23:23 [launcher.py:125] [shutdown] API server: engine client stopped
+(APIServer pid=123404) INFO 07-28 18:23:23 [launcher.py:128] [shutdown] API server: signalling HTTP server shutdown
+(APIServer pid=123404) INFO 07-28 18:23:23 [launcher.py:149] [shutdown] API server: shutting down FastAPI HTTP server
+(APIServer pid=123404) INFO:     Shutting down
+(APIServer pid=123404) INFO:     Waiting for application shutdown.
+(APIServer pid=123404) INFO:     Application shutdown complete.
+(APIServer pid=123404) Traceback (most recent call last):
+(APIServer pid=123404)   File "/usr/lib/python3.12/weakref.py", line 666, in _exitfunc
+(APIServer pid=123404)     f()
+(APIServer pid=123404)   File "/usr/lib/python3.12/weakref.py", line 590, in __call__
+(APIServer pid=123404)     return info.func(*info.args, **(info.kwargs or {}))
+(APIServer pid=123404)            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(APIServer pid=123404)   File "/usr/local/lib/python3.12/dist-packages/torch/library.py", line 663, in _del_library
+(APIServer pid=123404)     _clear_torch_ops_cache(op_defs)
+(APIServer pid=123404)   File "/usr/local/lib/python3.12/dist-packages/torch/library.py", line 628, in _clear_torch_ops_cache
+(APIServer pid=123404)     if not hasattr(namespace, name):
+(APIServer pid=123404)            ^^^^^^^^^^^^^^^^^^^^^^^^
+(APIServer pid=123404)   File "/usr/local/lib/python3.12/dist-packages/torch/_ops.py", line 1387, in __getattr__
+(APIServer pid=123404)     op, overload_names = _get_packet(qualified_op_name, module_name)
+(APIServer pid=123404)                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(APIServer pid=123404)   File "/usr/local/lib/python3.12/dist-packages/torch/_ops.py", line 1412, in _get_packet
+(APIServer pid=123404)     op, overload_names = torch._C._jit_get_operation(qualname)
+(APIServer pid=123404)                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(APIServer pid=123404) UnicodeDecodeError: 'utf-8' codec can't decode byte 0xa6 in position 180: invalid start byte
+/usr/lib/python3.12/multiprocessing/resource_tracker.py:254: UserWarning: resource_tracker: There appear to be 4 leaked semaphore objects to clean up at shutdown
+  warnings.warn('resource_tracker: There appear to be %d '
+/usr/lib/python3.12/multiprocessing/resource_tracker.py:254: UserWarning: resource_tracker: There appear to be 6 leaked shared_memory objects to clean up at shutdown
+  warnings.warn('resource_tracker: There appear to be %d '
+staging(sliced): /capstor/store/cscs/swissai/infra01/cold-start-experiments/llama70b-tp4-sharded-vllm -> /dev/shm/llama70b (files=28, slices/file=64, bs=16M, direct read, buffered write)
+staged_files=28 staged_bytes=141115677120 slices=64 read_mode=direct readers=1704 stage_wall_s=16.37 stage_GBps=8.62
+
+=== result (vllm preshard+shm+overlap) ===
+  stage (overlapped) =   16.89 s   (8.62 GB/s, rc=0)
+  weight_loading     =    7.50 s
+  servekit total     =  125.72 s
+  TOTAL COLD START   =  125.80 s   (ready_at - stage_start)
+
+  --- overlap validity gate ---
+  stage finished 16.89 s into the run; weight_loading began at 64.68 s
+  VALID: stage beat the loader by 47.80 s of slack
+
+  ready_wait_s       = 0.072
+  throughput         = 798.1 tok/s, 64/64 ok, errors=0
+
+  (sglang clariden reference: stage 8.78 s, weight_loading 6.19 s,
+   TOTAL 127.06 s vs a 586.33 s default => 4.61x)
+  NOTE: errors>0 or a throughput drop = shards loaded wrong. This config is
+        valid only if it SERVES correctly, not just if it is faster -- and
+        that matters more here, because these shards were written by the
+        OTHER engine.
+finished=2026-07-28T18:23:25+02:00

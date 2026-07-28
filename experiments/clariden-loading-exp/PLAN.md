@@ -169,7 +169,15 @@ graph capture on a bf16 `cublasGemmEx`, twice, at the identical 32/51 capture �
 *working build on GH200*, which is what a deployment gets, not two versions
 matched by construction.
 
-## The checkpoint is reused, not rebuilt
+## The checkpoint is reused, not rebuilt — tried, and it failed
+
+**Outcome first, since this section is the plan as written and the plan was
+wrong:** vLLM rejects SGLang's checkpoint (320 missing attention scale params,
+job 2918412), so `scripts/vllm/save_sharded_ckpt.sbatch` builds a vLLM one. The
+reasoning below is kept because it is why the experiment was worth running —
+"one checkpoint for both engines" was a cheap thing to test and an expensive
+thing to assume. Result: `results/vllm/llama-3.1-70b/results.md`.
+
 
 The preshard config points vLLM at the **shards SGLang wrote**
 (`llama70b-tp4-sharded`), rather than adding a vLLM `save_sharded_state` job.
@@ -213,3 +221,7 @@ SGLang's measured 4.61x, with a floor near 120 s that is dominated by worker
 spawn, compile and capture. A result far from that is more interesting than one
 near it: well below means the technique is engine-specific, and well above means
 the n=1 baseline was not representative.
+
+**Measured: 2.56x** (322.01 → 125.80 s), floor 118 s, dominated by worker spawn
+44 s + compile 35 s + capture 8 s exactly as predicted. The prediction was made
+against a 353 s baseline that turned out to be 322 s on the day.

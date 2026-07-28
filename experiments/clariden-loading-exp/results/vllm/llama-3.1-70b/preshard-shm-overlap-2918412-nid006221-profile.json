@@ -1,0 +1,16 @@
+{
+  "command": "vllm serve /dev/shm/llama70b --host 0.0.0.0 --port 8080 --served-model-name meta-llama/Llama-3.1-70B-Instruct --tensor-parallel-size 4 --trust-remote-code --max-model-len 32768 --gpu-memory-utilization 0.85 --max-num-seqs 256 --load-format sharded_state --disable-custom-all-reduce",
+  "framework": "vllm",
+  "started_at": 1785252755.1934893,
+  "ready_at": null,
+  "success": false,
+  "total_duration_s": 0.0,
+  "phases": [
+    {
+      "name": "process_startup",
+      "duration_s": 377.62,
+      "source": "wall_clock"
+    }
+  ],
+  "benchmark": null
+}
