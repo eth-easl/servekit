@@ -37,19 +37,37 @@ set -euo pipefail
 STAGER="${SLURM_SUBMIT_DIR}/scripts/shared/stage_to_shm_sliced.sh"
 BASE=/capstor/store/cscs/swissai/infra01/cold-start-experiments
 SLICES="${SLICES:-64}"
+CKPTS="${CKPTS:-llama70b-tp4-sharded llama70b-tp4-sharded-vllm}"
+
+# EDF=<path> runs the stage INSIDE that container; unset runs it on the bare
+# host. This matters: the first probe (job 2918617) ran on the host and reported
+# 26-28 GB/s, which does NOT rule out the container being the slow part, because
+# the measured runs stage from inside one.
+EDF="${EDF:-}"
 
 echo "job=${SLURM_JOB_ID} node=$(hostname) cpus=${SLURM_CPUS_PER_TASK}"
+echo "edf=${EDF:-<none, bare host>}"
 echo "started=$(date --iso-8601=seconds)"
 df -h /dev/shm
 
-for ckpt in llama70b-tp4-sharded llama70b-tp4-sharded-vllm; do
+run() {
+  if [ -n "${EDF}" ]; then
+    srun --nodes=1 --ntasks=1 --ntasks-per-node=1 \
+      --cpus-per-task="${SLURM_CPUS_PER_TASK}" \
+      --environment="${EDF}" bash -c "$1"
+  else
+    bash -c "$1"
+  fi
+}
+
+for ckpt in ${CKPTS}; do
   echo
   echo "=== ${ckpt} ==="
   # A fresh dest each time, removed after, so neither stage sees the other's
   # tmpfs pages and /dev/shm never has to hold both at once.
   dest="/dev/shm/probe-${ckpt}"
-  FILE_PATTERN='*.safetensors' bash "${STAGER}" "${BASE}/${ckpt}" "${dest}" "${SLICES}"
-  rm -r "${dest}"
+  run "FILE_PATTERN='*.safetensors' bash '${STAGER}' '${BASE}/${ckpt}' '${dest}' '${SLICES}'"
+  run "rm -r '${dest}'"
 done
 
 echo

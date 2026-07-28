@@ -104,9 +104,19 @@ echo "sync-copied \$(find "${SHM_DEST}" -maxdepth 1 -type f ! -name '*.safetenso
 STAGE_START=\$(date +%s.%N)
 echo "stage_start_epoch=\${STAGE_START}" > "${TIMING}"
 
+# BASH_ENV is unset for the stage subtree, and it is not a detail. The NGC image
+# sets BASH_ENV=/etc/bash.bashrc, so EVERY non-interactive bash sources the
+# NVIDIA banner, which shells out to nvidia-smi. The stager forks one `bash -c`
+# per slice -- 1704 of them, concurrently -- giving 1704 concurrent nvidia-smi
+# processes: load average 1658, not one dd actually running, the stage taking
+# 350 s instead of 5 s AND starving vllm's own startup to 366 s against a normal
+# 14.8 s (jobs 2918555, 2918623, 2918657). The bytes and the storage were never
+# the problem. The stager is a verbatim copy of the bristen one and stays that
+# way, so the fix goes here, at the call site.
+echo "BASH_ENV=[\${BASH_ENV:-}] -- unset for the stager below"
 (
   set +e
-  FILE_PATTERN='*.safetensors' \
+  FILE_PATTERN='*.safetensors' env -u BASH_ENV -u ENV \
     bash "${STAGER}" "${SHARDED_SRC}" "${SHM_DEST}" "${SLICES}" > "${STAGE_LOG}" 2>&1
   rc=\$?
   echo "stage_end_epoch=\$(date +%s.%N)" >> "${TIMING}"
@@ -223,12 +233,11 @@ print('  ready_wait_s       = %s' % b.get('ready_wait_s'))
 print('  throughput         = %s tok/s, %s/%s ok, errors=%s'
       % (tp.get('output_tok_per_s'), tp.get('completed'), tp.get('requests'), tp.get('errors')))
 print()
-print('  (sglang clariden reference: stage 8.78 s, weight_loading 6.19 s,')
-print('   TOTAL 127.06 s vs a 586.33 s default => 4.61x)')
+print('  (vllm clariden reference: stage 16.89 s, weight_loading 7.50 s,')
+print('   TOTAL 125.80 s vs a 322.01 s default => 2.56x)')
+print('  (sglang clariden reference: TOTAL 127.06 s vs 586.33 s => 4.61x)')
 print('  NOTE: errors>0 or a throughput drop = shards loaded wrong. This config is')
-print('        valid only if it SERVES correctly, not just if it is faster -- and')
-print('        that matters more here, because these shards were written by the')
-print('        OTHER engine.')
+print('        valid only if it SERVES correctly, not just if it is faster.')
 PY
 else
   echo "  MISSING profile json or timing file - run did not reach ready"
