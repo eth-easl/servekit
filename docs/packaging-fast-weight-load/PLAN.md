@@ -355,9 +355,12 @@ manifest and derives what it previously had to be told.
   manifest. **Also fix the trap the experiment left in:** it copies the original
   `model.safetensors.index.json`, whose `weight_map` points at files that do not
   exist in the prepared dir. Exclude it.
-- `manifest.py` — `{format, tp_size, engine, engine_version, dtype, source,
-  source_bytes, num_files, created_at, servekit_version}`. **TP mismatch is a
-  hard error** with an actionable message; engine-version drift is a warning.
+- `manifest.py` — `{format, engine, engine_version, tp_size, pp_size, dp_size,
+  dtype, quantization, source}`. Only fields that make a checkpoint unloadable
+  or silently wrong; provenance was cut. **Parallelism, dtype and engine
+  mismatches are hard errors** (`engine_args.check_manifest`, called before the
+  stage). `engine_version` is recorded but not yet compared — that needs the
+  running engine's version, which servekit cannot read without importing it.
 - `engine_args.py` grows the rest of the rewrite: `--load-format sharded_state`
   when the manifest says sharded, and `--served-model-name` pinned to the
   original model id if the user did not set one — otherwise the API starts
@@ -366,26 +369,22 @@ manifest and derives what it previously had to be told.
 - **No manifest → stage as-is**, exactly as Phase 1 behaved. A raw checkpoint
   still gets the `/dev/shm` win without anyone running `prepare`.
 
-**Ordering: copy first, check alongside.** This phase is the first to add work
-between `t0` and the first byte, and it must not. The only thing allowed before
-the stage starts is the argv scan for the model path. Manifest read, TP check
-and the load-format decision run *concurrently with the copy*; a TP mismatch
-kills the stager and aborts a second in, having spent bandwidth rather than
-time. Making every launch wait on a JSON read to protect a case that aborts
-anyway is the wrong trade: staging unwanted bytes costs a second of Lustre
-bandwidth once, delaying the stage costs a second of critical path forever.
+**Ordering: the check runs before the stage.** An earlier draft ran it
+concurrently with the copy to keep a JSON read off the critical path. Dropped:
+the read is one small file on the same filesystem the stage is about to hit at
+17 GB/s, and buying that back cost a second code path plus a stager that has to
+be killed mid-flight. Sequential, a mismatch aborts having spent nothing.
 
 ### Done when
 
-1. **Unit** — manifest round-trip; TP mismatch is a hard error; load-format
-   conflict is a hard error; `--served-model-name` preserved when set, injected
-   when not; no manifest → Phase 1 behaviour unchanged.
-2. **The copy really starts first** — instrument `t0` and assert the stager's
-   first `dd` precedes the manifest read and the engine spawn. Otherwise this
-   ordering silently regresses the first time someone adds a check.
-3. **End-to-end** — `prepare` then `launch` with no `--load-format` in the
+1. **Unit** — manifest round-trip; parallelism, dtype and engine mismatches are
+   hard errors; no manifest → Phase 1 behaviour unchanged. *Done:
+   `tests/test_prepare.py`.* Still open: load-format conflict, and
+   `--served-model-name` preserved when set / injected when not.
+2. **End-to-end** — `prepare` then `launch` with no `--load-format` in the
    command, reproducing the Phase 2 numbers, and a deliberate TP mismatch
-   failing loudly and fast.
+   failing loudly and fast. *`prepare` + `launch` measured at 126.07 s
+   (job 2928546), still with `--load-format` in the command.*
 
 ---
 

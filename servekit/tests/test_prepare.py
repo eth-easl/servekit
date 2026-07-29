@@ -7,8 +7,10 @@ import pytest
 
 from servekit import manifest as manifest_mod
 from servekit.cli import main
+from servekit.engine_args import check_manifest
 from servekit.manifest import Manifest
 from servekit.prepare import SAVE_SCRIPT, prepare
+from servekit.profile import SGLANG
 
 RESOLVED = {
     "engine": "sglang",
@@ -115,6 +117,69 @@ def test_prepare_cli_forwards_extra_engine_args(tmp_path, model, monkeypatch):
 def test_prepare_cli_requires_model_and_out():
     with pytest.raises(SystemExit):
         main(["prepare", "--model", "/store/m"])
+
+
+PREPARED = Manifest(format="sharded_state", source="/store/m", **RESOLVED)
+
+
+def _command(*args):
+    return ["python", "-m", "sglang.launch_server", "--model-path", "/store/m", *args]
+
+
+def test_a_matching_command_has_no_problems():
+    command = _command("--tensor-parallel-size", "4", "--load-format", "sharded_state")
+    assert check_manifest(command, SGLANG, PREPARED) == []
+
+
+@pytest.mark.parametrize(
+    "args, expected",
+    [
+        (["--tensor-parallel-size", "2"], "tp_size: the checkpoint is sharded for 4, the command asks for 2"),
+        (["--tp-size=8"], "tp_size: the checkpoint is sharded for 4, the command asks for 8"),
+        (["--tp", "1"], "tp_size: the checkpoint is sharded for 4, the command asks for 1"),
+        ([], "tp_size: the checkpoint is sharded for 4, the command asks for 1"),
+        (["--tensor-parallel-size", "4", "--pp-size", "2"], "pp_size: the checkpoint is sharded for 1, the command asks for 2"),
+        (["--tensor-parallel-size", "4", "--data-parallel-size", "2"], "dp_size: the checkpoint is sharded for 1, the command asks for 2"),
+    ],
+)
+def test_a_parallelism_mismatch_is_refused(args, expected):
+    assert check_manifest(_command(*args), SGLANG, PREPARED) == [expected]
+
+
+def test_a_dtype_the_engine_would_silently_cast_is_refused():
+    command = _command("--tensor-parallel-size", "4", "--dtype", "float16")
+    assert check_manifest(command, SGLANG, PREPARED) == [
+        "dtype: the checkpoint was written as bfloat16, --dtype says float16"
+    ]
+
+
+def test_dtype_auto_and_an_unset_dtype_are_left_to_the_engine():
+    assert check_manifest(_command("--tp", "4", "--dtype", "auto"), SGLANG, PREPARED) == []
+    assert check_manifest(_command("--tp", "4"), SGLANG, PREPARED) == []
+
+
+def test_a_checkpoint_prepared_for_another_engine_is_refused():
+    other = Manifest(format="sharded_state", source="/store/m", **{**RESOLVED, "engine": "vllm"})
+    problems = check_manifest(_command("--tp", "4"), SGLANG, other)
+    assert problems == ["engine: the checkpoint was prepared for vllm, and sglang cannot load another engine's shards"]
+
+
+def test_launch_refuses_a_mismatched_checkpoint_before_staging(tmp_path):
+    src = tmp_path / "llama70b-tp4"
+    src.mkdir()
+    (src / "config.json").write_text("{}")
+    (src / "model-rank-0-part-0.safetensors").write_bytes(b"weights")
+    PREPARED.write(src)
+
+    shm = tmp_path / "shm"
+    rc = main([
+        "launch", "--shm-root", str(shm),
+        "--", "python", "-m", "sglang.launch_server",
+        "--model-path", str(src), "--tensor-parallel-size", "2",
+    ])
+
+    assert rc == 2
+    assert not shm.exists()
 
 
 def test_the_vendored_sharder_skips_the_stale_weight_index(tmp_path):

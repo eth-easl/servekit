@@ -14,7 +14,8 @@ import time
 from pathlib import Path
 from typing import List, Optional
 
-from .engine_args import find_model_path, replace_model_path
+from . import manifest as manifest_mod
+from .engine_args import check_manifest, find_model_path, replace_model_path
 from .profile import Phase, ProfileReport, detect_framework, render_table, run_profile, save_json
 from .stage import DEFAULT_SLICES, stage
 
@@ -66,6 +67,16 @@ def launch(
     if not src_path.is_dir():
         print(f"error: model path {src} is not a directory", file=sys.stderr)
         return 2
+
+    prepared = manifest_mod.read(src_path)
+    if prepared is not None:
+        problems = check_manifest(command, spec, prepared)
+        if problems:
+            print(f"error: {src} cannot be loaded by this command:", file=sys.stderr)
+            for problem in problems:
+                print(f"  {problem}", file=sys.stderr)
+            print("       re-run `servekit prepare` for these settings, or fix the command", file=sys.stderr)
+            return 2
 
     dest = shm_root / src_path.name
     engine_command = replace_model_path(command, spec, str(dest))

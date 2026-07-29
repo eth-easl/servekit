@@ -9,7 +9,7 @@ import sys
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Callable, Iterable, List, Optional
+from typing import Callable, Dict, Iterable, List, Optional
 
 GAP_THRESHOLD_S = 0.5
 
@@ -36,6 +36,8 @@ class FrameworkSpec:
     # Flags whose value is the model directory, most-specific first. Empty means
     # `servekit launch` cannot rewrite this engine's command (see engine_args).
     model_flags: List[str] = field(default_factory=list)
+    # manifest field -> the flags that set it, defaulting to 1 when absent.
+    parallel_flags: Dict[str, List[str]] = field(default_factory=dict)
 
 
 SGLANG = FrameworkSpec(
@@ -78,6 +80,11 @@ SGLANG = FrameworkSpec(
     ],
     command_markers=[re.compile(r"\bsglang\b")],
     model_flags=["--model-path", "--model_path"],
+    parallel_flags={
+        "tp_size": ["--tensor-parallel-size", "--tp-size", "--tp"],
+        "pp_size": ["--pipeline-parallel-size", "--pp-size", "--pp"],
+        "dp_size": ["--data-parallel-size", "--dp-size", "--dp"],
+    },
 )
 
 # The ready boundary is NOT the same event as SGLang's: vLLM never self-issues a
