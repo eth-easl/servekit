@@ -13,7 +13,7 @@
 set -euo pipefail
 
 EDF="${SLURM_SUBMIT_DIR}/llama-3.1-70b-sglang.toml"
-SHARDED_SRC=/capstor/store/cscs/swissai/infra01/cold-start-experiments/llama70b-tp4-sharded
+SHARDED_SRC="${SHARDED_SRC:-/capstor/store/cscs/swissai/infra01/cold-start-experiments/llama70b-tp4-sharded}"
 SERVED_MODEL_NAME=meta-llama/Llama-3.1-70B-Instruct
 
 SERVEKIT_DIR="${SLURM_SUBMIT_DIR}/../../servekit"
