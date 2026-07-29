@@ -9,11 +9,13 @@ from typing import List, Optional, Tuple
 
 from .bench import BenchConfig, run_benchmark, render_bench
 from .launch import DEFAULT_ROOT, launch
+from .prepare import prepare
 from .profile import ProfileReport, detect_framework, render_table, run_profile, save_json
 from .stage import DEFAULT_SLICES
 
 USAGE = """usage:
   servekit launch [--out PATH] [--slices N] [--overlap] -- <command...>
+  servekit prepare --model PATH --out PATH [--tp N] [-- <extra engine args>]
   servekit profile [--out PATH] [--timeout SECONDS] -- <command...>
   servekit bench --url URL (--into PATH | --out PATH) [--wait-ready SECONDS] [...]
 
@@ -22,7 +24,9 @@ engine against the copy, and frees the copy once the server reports ready --
 returning the RAM to the running job while it serves. It behaves like the
 command it wraps, so removing the wrapper gives the baseline back. `profile` is
 `launch` without the staging. `bench` loads any live server over the OpenAI
-protocol, whether or not servekit launched it.
+protocol, whether or not servekit launched it. `prepare` is the one offline
+step: it writes a TP-presharded checkpoint that `launch` stages and loads with
+`--load-format sharded_state`.
 
   servekit launch -- python -m sglang.launch_server --model-path /store/llama70b-tp4 \\
       --tensor-parallel-size 4 --load-format sharded_state
@@ -116,6 +120,18 @@ def _launch(argv: List[str]) -> int:
     except ValueError as e:
         print(f"error: {e}", file=sys.stderr)
         return 2
+
+
+def _prepare(argv: List[str]) -> int:
+    options, engine_args = _split_command(argv)
+
+    parser = argparse.ArgumentParser(prog="servekit prepare")
+    parser.add_argument("--model", type=Path, required=True, help="source checkpoint (a local directory)")
+    parser.add_argument("--out", type=Path, required=True, help="where to write the presharded checkpoint")
+    parser.add_argument("--tp", type=int, default=1, help="tensor-parallel size the shards will be locked to")
+    args = parser.parse_args(options)
+
+    return prepare(args.model, args.out, args.tp, engine_args=engine_args)
 
 
 def _wait_for_report(path: Path, timeout_s: float, interval_s: float = 0.5) -> bool:
@@ -218,7 +234,7 @@ def _bench(argv: List[str]) -> int:
 
 def main(argv: Optional[List[str]] = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
-    commands = {"launch": _launch, "profile": _profile, "bench": _bench}
+    commands = {"launch": _launch, "prepare": _prepare, "profile": _profile, "bench": _bench}
     if not argv or argv[0] not in commands:
         print(USAGE, file=sys.stderr)
         return 2
