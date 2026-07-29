@@ -34,7 +34,8 @@ TAG="${TAG:?set TAG, e.g. shm_mmap, shm_nommap, or shm_fastsafetensors}"
 # "--load-format fastsafetensors" for the TP-rank-aware loader.
 LOADER_FLAG="${LOADER_FLAG-}"
 
-SRC="${SRC:-/capstor/store/cscs/swissai/infra01/cold-start-experiments/llama70b_c8_s16M}"
+# Was llama70b_c8_s16M, one of the phase 2 stripe-layout copies, since deleted.
+SRC="${SRC:-/capstor/store/cscs/swissai/infra01/hf_models/models/meta-llama/Llama-3.1-70B-Instruct}"
 WORKERS="${WORKERS:-60}"
 SHM_DEST="${SHM_DEST:-/dev/shm/llama70b}"
 
