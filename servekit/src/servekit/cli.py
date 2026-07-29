@@ -13,7 +13,7 @@ from .profile import ProfileReport, detect_framework, render_table, run_profile,
 from .stage import DEFAULT_SLICES
 
 USAGE = """usage:
-  servekit launch [--out PATH] [--slices N] -- <command...>
+  servekit launch [--out PATH] [--slices N] [--overlap] -- <command...>
   servekit profile [--out PATH] [--timeout SECONDS] -- <command...>
   servekit bench --url URL (--into PATH | --out PATH) [--wait-ready SECONDS] [...]
 
@@ -93,6 +93,11 @@ def _launch(argv: List[str]) -> int:
     parser.add_argument("--timeout", type=float, default=1800.0, help="seconds to wait for the ready signal")
     parser.add_argument("--shm-root", type=Path, default=DEFAULT_ROOT)
     parser.add_argument("--slices", type=int, default=DEFAULT_SLICES, help="concurrent read slices per file")
+    parser.add_argument(
+        "--overlap",
+        action="store_true",
+        help="UNSAFE: start the engine concurrently with the stage; no barrier, corruption is silent",
+    )
     args = parser.parse_args(options)
 
     if not command:
@@ -106,6 +111,7 @@ def _launch(argv: List[str]) -> int:
             shm_root=args.shm_root,
             slices=args.slices,
             timeout=args.timeout,
+            overlap=args.overlap,
         )
     except ValueError as e:
         print(f"error: {e}", file=sys.stderr)

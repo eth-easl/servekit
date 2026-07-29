@@ -32,7 +32,7 @@ class StageResult:
     bytes: int
 
 
-def stage(src: Path, dest: Path, slices: int = DEFAULT_SLICES) -> StageResult:
+def stage(src: Path, dest: Path, slices: int = DEFAULT_SLICES, file_pattern: str = "*") -> StageResult:
     """Copy `src` into `dest`, returning the stager's own timing.
 
     Raises on a non-zero exit, which covers the free-space pre-flight and the
@@ -43,6 +43,7 @@ def stage(src: Path, dest: Path, slices: int = DEFAULT_SLICES) -> StageResult:
     # nvidia-smi before its dd: 0.41 GB/s instead of 16.89, and the engine
     # starved alongside it (clariden-loading-exp, results/vllm/llama-3.1-70b).
     env = {k: v for k, v in os.environ.items() if k != "BASH_ENV"}
+    env["FILE_PATTERN"] = file_pattern
     proc = subprocess.run(
         ["bash", str(STAGER), str(src), str(dest), str(slices)],
         stdout=subprocess.PIPE,

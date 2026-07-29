@@ -34,9 +34,25 @@ never involved.
 - `--timeout SECONDS` — max wait for ready signal (default: 1800)
 - `--shm-root PATH` — where copies go (default: `/dev/shm/servekit`)
 - `--slices N` — concurrent read slices per file (default: 64)
+- `--overlap` — **unsafe, opt-in**; see below
 
 The report is the `profile` report plus a leading `stage` phase, so the copy is
-visible in the phase table rather than hidden in the total.
+visible in the phase table rather than hidden in the total. With `--overlap` the
+stage is concurrent with those phases, so it is not listed as one.
+
+### `--overlap` (unsafe)
+
+Starts the engine at the same time as the stage, saving at most the stage wall
+time (4.3–5.0 s of the 70B's ~126 s). The stager truncates every destination to
+full size before writing, so an engine that opens a file too early reads zeros
+with no error from anything — and the final content is correct, so nothing is
+left to find afterwards. There is no barrier making the engine wait; that is
+Phase 2 of `docs/packaging-fast-weight-load/PLAN.md` and it is not built. Use it
+to measure whether those seconds are worth the barrier, not in production.
+
+config.json, the tokenizer and every other non-`.safetensors` file are copied
+synchronously before the engine starts, so only the shards are overlapped — the
+engine reads those small files within seconds and cannot be racing them.
 
 Nothing else about the command is rewritten: `--load-format` and every other
 flag pass through untouched. To load a TP-presharded checkpoint, produce it with
@@ -47,9 +63,10 @@ Known limits, all deliberate for now:
 
 - **SGLang only.** vLLM staging is unmeasured, so `launch` refuses it rather
   than guessing at its argv; use `servekit profile` there.
-- **Not overlapped.** The stage finishes before the engine starts, which costs
-  its wall time (~8.8 s for a 141 GB model on Clariden) but means a
-  partially-written file can never be read.
+- **Not overlapped by default.** The stage finishes before the engine starts,
+  which costs its wall time (4.3–5.0 s for a 141 GB model on Clariden) but means
+  a partially-written file can never be read. `--overlap` opts out of that
+  guarantee; see above.
 - **Freeing is `unlink`**, and tmpfs pages return only once nothing maps them.
   With `sharded_state` the loader reads into GPU memory and closes the files, so
   the RAM comes back at once; with the default mmap loader the engine may still

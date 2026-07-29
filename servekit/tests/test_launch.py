@@ -4,6 +4,7 @@ import json
 import os
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 import pytest
@@ -124,10 +125,18 @@ def test_stage_fails_loudly_on_a_missing_source(odirect_tmpdir):
 # Enough SGLang output to drive run_profile through to ready. Also exercises
 # run_profile's subprocess path, which profile.py's own tests never enter.
 FAKE_SGLANG = '''
-import sys, time
+import os, sys, time
 args = sys.argv[1:]
 model = args[args.index("--model-path") + 1]
 open(sys.argv[0] + ".seen", "w").write(model)
+# What config.json looked like the instant the engine started, the way SGLang
+# reads it seconds in.
+cfg = os.path.join(model, "config.json")
+open(sys.argv[0] + ".cfg", "w").write(open(cfg).read() if os.path.exists(cfg) else "MISSING")
+# --slow-start delays the loader so a concurrent stage finishes first, the way a
+# real engine's ~40 s of import/TP-spawn/NCCL init does.
+if "--slow-start" in args:
+    time.sleep(float(args[args.index("--slow-start") + 1]))
 print("Init torch distributed ends. elapsed=1.00 s", flush=True)
 print("Load weight end. elapsed=2.00 s", flush=True)
 if "--never-ready" not in args:
@@ -160,6 +169,7 @@ def _src_model(tmpdir):
 
 
 def test_launch_stages_rewrites_and_frees_on_ready(odirect_tmpdir):
+    """The default is sequential: the stage completes before the engine starts."""
     src = _src_model(odirect_tmpdir)
     dest = odirect_tmpdir / "shm" / "llama70b-tp4"
 
@@ -176,6 +186,57 @@ def test_launch_stages_rewrites_and_frees_on_ready(odirect_tmpdir):
     assert phases["weight_loading"] == 2.0
     # The report records what the user asked for, not the rewritten path.
     assert str(src) in report["command"] and str(dest) not in report["command"]
+
+
+def test_overlap_is_opt_in_and_warns(odirect_tmpdir, capsys):
+    src = _src_model(odirect_tmpdir)
+    dest = odirect_tmpdir / "shm" / "llama70b-tp4"
+
+    assert main(_launch_argv(odirect_tmpdir, src, extra=["--overlap"]) + ["--slow-start", "1.5"]) == 0
+
+    assert (odirect_tmpdir / "fake-sglang.py.seen").read_text() == str(dest)
+    assert not dest.exists()
+    assert "UNSAFE" in capsys.readouterr().err
+
+    report = json.loads((odirect_tmpdir / "run.json").read_text())
+    assert report["success"]
+    # Concurrent with the engine's phases, so not a serial phase of its own.
+    assert "stage" not in {p["name"] for p in report["phases"]}
+
+
+def test_overlap_copies_metadata_before_starting_the_engine(odirect_tmpdir, monkeypatch):
+    """config.json must be readable at t=0, not left to a stage still running.
+
+    The stager truncates every destination to full size before writing, so an
+    engine that reads config.json mid-stage gets zeros. The stage is slowed here
+    so the engine would lose that race if the metadata were not copied up front.
+    """
+    import servekit.launch as launch_mod
+
+    real_stage = launch_mod.stage
+
+    def slow_stage(*a, **kw):
+        time.sleep(1.0)
+        return real_stage(*a, **kw)
+
+    monkeypatch.setattr(launch_mod, "stage", slow_stage)
+
+    src = _src_model(odirect_tmpdir)
+    assert main(_launch_argv(odirect_tmpdir, src, extra=["--overlap"])) == 0
+    assert (odirect_tmpdir / "fake-sglang.py.cfg").read_text() == "{}"
+
+
+def test_a_failed_stage_fails_the_run_even_when_overlapped(odirect_tmpdir, monkeypatch):
+    """The engine can reach ready on a half-staged directory; rc must still be 1."""
+    import servekit.launch as launch_mod
+
+    def broken_stage(*a, **kw):
+        raise RuntimeError("stager failed (rc=2) staging x -> y")
+
+    monkeypatch.setattr(launch_mod, "stage", broken_stage)
+
+    src = _src_model(odirect_tmpdir)
+    assert main(_launch_argv(odirect_tmpdir, src, extra=["--overlap"])) == 1
 
 
 def test_a_run_that_never_reaches_ready_leaves_the_copy_intact(odirect_tmpdir):
