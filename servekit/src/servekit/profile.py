@@ -43,7 +43,14 @@ SGLANG = FrameworkSpec(
     phase_patterns=[
         ("torch_distributed_init", re.compile(r"Init torch distributed ends\. elapsed=([\d.]+) s")),
         ("weight_loading", re.compile(r"Load weight end\. elapsed=([\d.]+) s")),
+        # Two spellings. SGLang renamed these between v0.5.10 and the 2026-07
+        # nightlies ("Capture cuda graph end. Time elapsed: X s" ->
+        # "Capture target decode CUDA graph end. elapsed=X s"), which silently
+        # dropped ~16 s of a 121 s cold start into the unaccounted gap on job
+        # 2922770. Both forms are kept so older profiles still parse.
         ("cuda_graph_capture", re.compile(r"Capture cuda graph end\. Time elapsed: ([\d.]+) s")),
+        ("cuda_graph_capture", re.compile(r"Capture target decode CUDA graph end\. elapsed=([\d.]+) s")),
+        ("prefill_cuda_graph_capture", re.compile(r"Capture target prefill CUDA graph end\. elapsed=([\d.]+) s")),
         ("piecewise_cuda_graph_capture", re.compile(r"Capture piecewise CUDA graph end\. Time elapsed: ([\d.]+) s")),
     ],
     ready_pattern=re.compile(r"The server is fired up and ready to roll!"),
