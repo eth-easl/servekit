@@ -93,11 +93,9 @@ def wait_for_ready(
 ) -> tuple:
     """Poll until the server completes a request; return (seconds waited, model id).
 
-    Distinct from the profiler's log-based ready signal: this only cares that the
-    server can complete a request, which is the only signal left after a CRIU
-    restore. Every failure (connection refused, 503, probe timeout, model list
-    not up yet) is treated as "not ready yet" and retried. Raises TimeoutError if
-    `timeout_s` elapses first.
+    Distinct from the profiler's log-based ready signal: this only cares that
+    the server can complete a request, the only signal left after a CRIU
+    restore. Raises TimeoutError if `timeout_s` elapses first.
     """
     t0 = time.time()
     last_error: Optional[Exception] = None

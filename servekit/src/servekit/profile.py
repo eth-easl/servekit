@@ -84,9 +84,8 @@ VLLM = FrameworkSpec(
         ("cuda_graph_capture", re.compile(r"[Gg]raph capturing finished in ([\d.]+) secs")),
     ],
     ready_pattern=re.compile(r"Application startup complete"),
-    # No milestones. SGLang's two both sit before its ready line; vLLM's uvicorn
-    # never logs "Uvicorn running on", and ready is the last line of startup, so
-    # anything listed here could never fire (job 2918061).
+    # vLLM's uvicorn never logs a distinct bind line, and ready is the last
+    # line of startup, so a milestone here could never fire (job 2918061).
     milestone_patterns=[],
     gap_hypotheses=[
         # vLLM reports no elapsed time for distributed init, and it falls in the
@@ -318,8 +317,6 @@ def run_profile(
     on_ready: Optional[Callable[[ProfileReport], None]] = None,
 ) -> ProfileReport:
     """Run `command`, profiling it until it reports ready.
-
-    The engine is identified from `command`, so callers need no flag.
 
     The wrapped process keeps running after ready is detected; only measurement
     stops, and `on_ready` (if given) fires once so a caller can emit the report
