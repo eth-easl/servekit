@@ -1,0 +1,718 @@
+job=2922381 node=nid006119 cpus=288
+preset=llama70b loader=sharded src=/capstor/store/cscs/swissai/infra01/cold-start-experiments/llama70b-tp4-sharded
+started=2026-07-29T10:18:29+02:00
+nproc=288
+Filesystem      Size  Used Avail Use% Mounted on
+tmpfs           334G   43M  334G   1% /dev/shm
+[SERVEKIT] staging /capstor/store/cscs/swissai/infra01/cold-start-experiments/llama70b-tp4-sharded -> /dev/shm/servekit/llama70b-tp4-sharded
+[SERVEKIT] waiting for the profile report /iopsstor/scratch/cscs/yboughizane/simple-serving-stack/experiments/servekit-fast-weight-load/phase-1-no-overlap/results/llama-3.1-70b/sharded-2922381-nid006119-launch.json
+staging(sliced): /capstor/store/cscs/swissai/infra01/cold-start-experiments/llama70b-tp4-sharded -> /dev/shm/servekit/llama70b-tp4-sharded (files=38, slices/file=64, bs=16M, direct read, buffered write)
+staged_files=38 staged_bytes=141124812955 slices=64 read_mode=direct readers=1714 stage_wall_s=4.98 stage_GBps=28.34
+[SERVEKIT] staged 141.1 GB in 4.98 s (28.34 GB/s)
+[SERVEKIT] launching: python -m sglang.launch_server --model-path /dev/shm/servekit/llama70b-tp4-sharded --host 0.0.0.0 --port 8080 --served-model-name meta-llama/Llama-3.1-70B-Instruct --tensor-parallel-size 4 --trust-remote-code --context-length 32768 --mem-fraction-static 0.85 --max-running-requests 256 --load-format sharded_state --enable-metrics
+/sgl-workspace/sglang/python/sglang/launch_server.py:51: UserWarning: 'python -m sglang.launch_server' is still supported, but 'sglang serve' is the recommended entrypoint.
+  Example: sglang serve --model-path <model> [options]
+  warnings.warn(
+/sgl-workspace/sglang/python/sglang/srt/entrypoints/http_server.py:172: FastAPIDeprecationWarning: ORJSONResponse is deprecated, FastAPI now serializes data directly to JSON bytes via Pydantic when a return type or response model is set, which is faster and doesn't need a custom response class. Read more in the FastAPI docs: https://fastapi.tiangolo.com/advanced/custom-response/#orjson-or-response-model and https://fastapi.tiangolo.com/tutorial/response-model/
+  from sglang.srt.utils.json_response import (
+[2026-07-29 10:18:59] server_args=ServerArgs(model_path='/dev/shm/servekit/llama70b-tp4-sharded', tokenizer_path='/dev/shm/servekit/llama70b-tp4-sharded', tokenizer_mode='auto', tokenizer_worker_num=1, skip_tokenizer_init=False, load_format='sharded_state', model_loader_extra_config='{}', trust_remote_code=True, context_length=32768, is_embedding=False, enable_multimodal=None, revision=None, model_impl='auto', host='0.0.0.0', port=8080, fastapi_root_path='', grpc_mode=False, skip_server_warmup=False, warmups=None, nccl_port=None, checkpoint_engine_wait_weights_before_ready=False, ssl_keyfile=None, ssl_certfile=None, ssl_ca_certs=None, ssl_keyfile_password=None, enable_ssl_refresh=False, dtype='auto', quantization=None, quantization_param_path=None, kv_cache_dtype='auto', enable_fp32_lm_head=False, modelopt_quant=None, modelopt_checkpoint_restore_path=None, modelopt_checkpoint_save_path=None, modelopt_export_path=None, quantize_and_serve=False, rl_quant_profile=None, mem_fraction_static=0.85, max_running_requests=256, max_queued_requests=None, max_total_tokens=None, chunked_prefill_size=8192, enable_dynamic_chunking=False, max_prefill_tokens=16384, prefill_max_requests=None, schedule_policy='fcfs', enable_priority_scheduling=False, disable_priority_preemption=False, default_priority_value=None, abort_on_priority_when_disabled=False, schedule_low_priority_values_first=False, priority_scheduling_preemption_threshold=10, schedule_conservativeness=1.0, page_size=1, swa_full_tokens_ratio=0.8, disable_hybrid_swa_memory=False, radix_eviction_policy='lru', enable_prefill_delayer=False, prefill_delayer_max_delay_passes=30, prefill_delayer_token_usage_low_watermark=None, prefill_delayer_forward_passes_buckets=None, prefill_delayer_wait_seconds_buckets=None, device='cuda', tp_size=4, pp_size=1, pp_max_micro_batch_size=None, pp_async_batch_depth=0, stream_interval=1, stream_response_default_include_usage=False, incremental_streaming_output=False, enable_streaming_session=False, random_seed=765443682, constrained_json_whitespace_pattern=None, constrained_json_disable_any_whitespace=False, watchdog_timeout=300, soft_watchdog_timeout=None, dist_timeout=None, download_dir=None, model_checksum=None, base_gpu_id=0, gpu_id_step=1, sleep_on_idle=False, use_ray=False, custom_sigquit_handler=None, log_level='info', log_level_http=None, log_requests=False, log_requests_level=2, log_requests_format='text', log_requests_target=None, uvicorn_access_log_exclude_prefixes=[], crash_dump_folder=None, show_time_cost=False, enable_metrics=True, enable_mfu_metrics=False, enable_metrics_for_all_schedulers=False, tokenizer_metrics_custom_labels_header='x-custom-labels', tokenizer_metrics_allowed_custom_labels=None, extra_metric_labels=None, bucket_time_to_first_token=None, bucket_inter_token_latency=None, bucket_e2e_request_latency=None, collect_tokens_histogram=False, prompt_tokens_buckets=None, generation_tokens_buckets=None, gc_warning_threshold_secs=0.0, decode_log_interval=40, enable_request_time_stats_logging=False, kv_events_config=None, enable_trace=False, otlp_traces_endpoint='localhost:4317', export_metrics_to_file=False, export_metrics_to_file_dir=None, api_key=None, admin_api_key=None, served_model_name='meta-llama/Llama-3.1-70B-Instruct', weight_version='default', chat_template=None, hf_chat_template_name=None, completion_template=None, file_storage_path='sglang_storage', enable_cache_report=False, reasoning_parser=None, tool_call_parser=None, tool_server=None, sampling_defaults='model', dp_size=1, load_balance_method='round_robin', attn_cp_size=1, moe_dp_size=1, dist_init_addr=None, nnodes=1, node_rank=0, json_model_override_args='{}', preferred_sampling_params=None, enable_lora=None, enable_lora_overlap_loading=None, max_lora_rank=None, lora_target_modules=None, lora_paths=None, max_loaded_loras=None, max_loras_per_batch=8, lora_eviction_policy='lru', lora_backend='csgmv', max_lora_chunk_size=16, experts_shared_outer_loras=None, attention_backend='fa3', decode_attention_backend=None, prefill_attention_backend=None, sampling_backend='flashinfer', grammar_backend='xgrammar', mm_attention_backend=None, fp8_gemm_runner_backend='auto', fp4_gemm_runner_backend='auto', nsa_prefill_backend=None, nsa_decode_backend=None, disable_flashinfer_autotune=False, mamba_backend='triton', speculative_algorithm=None, speculative_draft_model_path=None, speculative_draft_model_revision=None, speculative_draft_load_format=None, speculative_num_steps=None, speculative_eagle_topk=None, speculative_num_draft_tokens=None, speculative_accept_threshold_single=1.0, speculative_accept_threshold_acc=1.0, speculative_token_map=None, speculative_attention_mode='prefill', speculative_draft_attention_backend=None, speculative_moe_runner_backend='auto', speculative_moe_a2a_backend=None, speculative_draft_model_quantization=None, speculative_ngram_min_bfs_breadth=1, speculative_ngram_max_bfs_breadth=10, speculative_ngram_match_type='BFS', speculative_ngram_max_trie_depth=18, speculative_ngram_capacity=10000000, enable_multi_layer_eagle=False, ep_size=1, moe_a2a_backend='none', moe_runner_backend='auto', flashinfer_mxfp4_moe_precision='default', enable_flashinfer_allreduce_fusion=False, enforce_disable_flashinfer_allreduce_fusion=False, enable_aiter_allreduce_fusion=False, deepep_mode='auto', ep_num_redundant_experts=0, ep_dispatch_algorithm=None, init_expert_location='trivial', enable_eplb=False, eplb_algorithm='auto', eplb_rebalance_num_iterations=1000, eplb_rebalance_layers_per_chunk=None, eplb_min_rebalancing_utilization_threshold=1.0, expert_distribution_recorder_mode=None, expert_distribution_recorder_buffer_size=1000, enable_expert_distribution_metrics=False, deepep_config=None, moe_dense_tp_size=None, elastic_ep_backend=None, enable_elastic_expert_backup=False, mooncake_ib_device=None, max_mamba_cache_size=None, mamba_ssm_dtype=None, mamba_full_memory_ratio=0.9, mamba_scheduler_strategy='no_buffer', mamba_track_interval=256, linear_attn_backend='triton', linear_attn_decode_backend=None, linear_attn_prefill_backend=None, enable_hierarchical_cache=False, hicache_ratio=2.0, hicache_size=0, hicache_write_policy='write_through', hicache_io_backend='kernel', hicache_mem_layout='layer_first', hicache_storage_backend=None, hicache_storage_prefetch_policy='best_effort', hicache_storage_backend_extra_config=None, enable_hisparse=False, hisparse_config=None, enable_lmcache=False, kt_weight_path=None, kt_method='AMXINT4', kt_cpuinfer=None, kt_threadpool_count=2, kt_num_gpu_experts=None, kt_max_deferred_experts_per_token=None, dllm_algorithm=None, dllm_algorithm_config=None, enable_double_sparsity=False, ds_channel_config_path=None, ds_heavy_channel_num=32, ds_heavy_token_num=256, ds_heavy_channel_type='qk', ds_sparse_decode_threshold=4096, cpu_offload_gb=0, offload_group_size=-1, offload_num_in_group=1, offload_prefetch_step=1, offload_mode='cpu', multi_item_scoring_delimiter=None, disable_radix_cache=False, cuda_graph_max_bs=512, cuda_graph_bs=[1, 2, 4, 8, 12, 16, 24, 32, 40, 48, 56, 64, 72, 80, 88, 96, 104, 112, 120, 128, 136, 144, 152, 160, 168, 176, 184, 192, 200, 208, 216, 224, 232, 240, 248, 256, 272, 288, 304, 320, 336, 352, 368, 384, 400, 416, 432, 448, 464, 480, 496, 512], disable_cuda_graph=False, disable_cuda_graph_padding=False, enable_profile_cuda_graph=False, enable_cudagraph_gc=False, enable_layerwise_nvtx_marker=False, enable_nccl_nvls=False, enable_symm_mem=False, disable_flashinfer_cutlass_moe_fp4_allgather=False, enable_tokenizer_batch_encode=False, disable_tokenizer_batch_decode=False, disable_outlines_disk_cache=False, disable_custom_all_reduce=False, enable_mscclpp=False, enable_torch_symm_mem=False, pre_warm_nccl=False, disable_overlap_schedule=False, enable_mixed_chunk=False, enable_dp_attention=False, enable_dp_lm_head=False, enable_two_batch_overlap=False, enable_single_batch_overlap=False, tbo_token_distribution_threshold=0.48, enable_torch_compile=False, disable_piecewise_cuda_graph=False, enforce_piecewise_cuda_graph=False, enable_torch_compile_debug_mode=False, torch_compile_max_bs=32, piecewise_cuda_graph_max_tokens=8192, piecewise_cuda_graph_tokens=[4, 8, 12, 16, 20, 24, 28, 32, 48, 64, 80, 96, 112, 128, 144, 160, 176, 192, 208, 224, 240, 256, 288, 320, 352, 384, 416, 448, 480, 512, 576, 640, 704, 768, 832, 896, 960, 1024, 1280, 1536, 1792, 2048, 2304, 2560, 2816, 3072, 3328, 3584, 3840, 4096, 4608, 5120, 5632, 6144, 6656, 7168, 7680, 8192], piecewise_cuda_graph_compiler='eager', torchao_config='', enable_nan_detection=False, enable_p2p_check=False, triton_attention_reduce_in_fp32=False, triton_attention_num_kv_splits=8, triton_attention_split_tile_size=None, num_continuous_decode_steps=1, delete_ckpt_after_loading=False, enable_memory_saver=False, enable_weights_cpu_backup=False, enable_draft_weights_cpu_backup=False, allow_auto_truncate=False, enable_custom_logit_processor=False, flashinfer_mla_disable_ragged=False, disable_shared_experts_fusion=False, disable_chunked_prefix_cache=False, disable_fast_image_processor=False, keep_mm_feature_on_device=False, enable_return_hidden_states=False, enable_return_routed_experts=False, scheduler_recv_interval=1, numa_node=None, enable_deterministic_inference=False, rl_on_policy_target=None, enable_attn_tp_input_scattered=False, gc_threshold=None, enable_nsa_prefill_context_parallel=False, nsa_prefill_cp_mode='round-robin-split', enable_fused_qk_norm_rope=False, enable_precise_embedding_interpolation=False, enable_fused_moe_sum_all_reduce=False, enable_prefill_context_parallel=False, prefill_cp_mode='in-seq-split', enable_dynamic_batch_tokenizer=False, dynamic_batch_tokenizer_batch_size=32, dynamic_batch_tokenizer_batch_timeout=0.002, debug_tensor_dump_output_folder=None, debug_tensor_dump_layers=None, debug_tensor_dump_input_file=None, debug_tensor_dump_inject=False, disaggregation_mode='null', disaggregation_transfer_backend='mooncake', disaggregation_bootstrap_port=8998, disaggregation_ib_device=None, disaggregation_decode_enable_offload_kvcache=False, num_reserved_decode_tokens=512, disaggregation_decode_polling_interval=1, encoder_only=False, language_only=False, encoder_transfer_backend='zmq_to_scheduler', encoder_urls=[], enable_adaptive_dispatch_to_encoder=False, custom_weight_loader=[], weight_loader_disable_mmap=False, remote_instance_weight_loader_seed_instance_ip=None, remote_instance_weight_loader_seed_instance_service_port=None, remote_instance_weight_loader_send_weights_group_ports=None, remote_instance_weight_loader_backend='nccl', remote_instance_weight_loader_start_seed_via_transfer_engine=False, engine_info_bootstrap_port=6789, modelexpress_config=None, enable_pdmux=False, pdmux_config_path=None, sm_group_num=8, enable_broadcast_mm_inputs_process=False, enable_prefix_mm_cache=False, mm_enable_dp_encoder=False, mm_process_config={}, limit_mm_data_per_request=None, enable_mm_global_cache=False, decrypted_config_file=None, decrypted_draft_config_file=None, forward_hooks=None)
+[2026-07-29 10:19:00] mp.set_executable /usr/bin/python -> /tmp/sglang_temp_file_1785313140.0324895_40781.sh (script='#!/bin/sh\nexec numactl --cpunodebind=0 --membind=0 /usr/bin/python "$@"')
+[2026-07-29 10:19:00] mp.set_executable revert to /usr/bin/python
+[2026-07-29 10:19:00] mp.set_executable /usr/bin/python -> /tmp/sglang_temp_file_1785313140.0371878_8134382.sh (script='#!/bin/sh\nexec numactl --cpunodebind=1 --membind=1 /usr/bin/python "$@"')
+[2026-07-29 10:19:00] mp.set_executable revert to /usr/bin/python
+[2026-07-29 10:19:00] mp.set_executable /usr/bin/python -> /tmp/sglang_temp_file_1785313140.0388906_1983333.sh (script='#!/bin/sh\nexec numactl --cpunodebind=2 --membind=2 /usr/bin/python "$@"')
+[2026-07-29 10:19:00] mp.set_executable revert to /usr/bin/python
+[2026-07-29 10:19:00] mp.set_executable /usr/bin/python -> /tmp/sglang_temp_file_1785313140.0407565_8288074.sh (script='#!/bin/sh\nexec numactl --cpunodebind=3 --membind=3 /usr/bin/python "$@"')
+[2026-07-29 10:19:00] mp.set_executable revert to /usr/bin/python
+[2026-07-29 10:19:01] Using default HuggingFace chat template with detected content format: string
+[2026-07-29 10:19:09 TP1] NUMA affinity is already constrained for process, skipping NUMA node configuration for GPU. Remove your constraints to allow automatic configuration.
+[2026-07-29 10:19:10 TP1] Init torch distributed begin.
+[2026-07-29 10:19:10 TP2] NUMA affinity is already constrained for process, skipping NUMA node configuration for GPU. Remove your constraints to allow automatic configuration.
+[2026-07-29 10:19:10 TP3] NUMA affinity is already constrained for process, skipping NUMA node configuration for GPU. Remove your constraints to allow automatic configuration.
+[2026-07-29 10:19:10 TP0] NUMA affinity is already constrained for process, skipping NUMA node configuration for GPU. Remove your constraints to allow automatic configuration.
+[2026-07-29 10:19:11 TP2] Init torch distributed begin.
+[2026-07-29 10:19:11 TP3] Init torch distributed begin.
+[2026-07-29 10:19:11 TP0] Init torch distributed begin.
+[Gloo] Rank 0 is connected to 3 peer ranks. Expected number of connected peer ranks is : 3
+[Gloo] Rank 2 is connected to 3 peer ranks. Expected number of connected peer ranks is : 3
+[Gloo] Rank 1 is connected to 3 peer ranks. Expected number of connected peer ranks is : 3
+[Gloo] Rank 3 is connected to 3 peer ranks. Expected number of connected peer ranks is : 3
+[Gloo] Rank 0 is connected to 3 peer ranks. Expected number of connected peer ranks is : 3
+[Gloo] Rank 1 is connected to 3 peer ranks. Expected number of connected peer ranks is : 3
+[Gloo] Rank 2 is connected to 3 peer ranks. Expected number of connected peer ranks is : 3
+[Gloo] Rank 3 is connected to 3 peer ranks. Expected number of connected peer ranks is : 3
+[2026-07-29 10:19:12 TP0] sglang is using nccl==2.28.3
+NCCL version 2.28.3+cuda12.9
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[2026-07-29 10:19:17 TP0] Init torch distributed ends. elapsed=5.98 s, mem usage=1.26 GB
+[2026-07-29 10:19:17 TP3] Init torch distributed ends. elapsed=6.06 s, mem usage=1.26 GB
+[2026-07-29 10:19:17 TP2] Init torch distributed ends. elapsed=6.19 s, mem usage=1.36 GB
+[2026-07-29 10:19:17 TP1] Init torch distributed ends. elapsed=7.35 s, mem usage=1.36 GB
+[2026-07-29 10:19:18 TP3] Load weight begin. avail mem=93.15 GB
+[2026-07-29 10:19:18 TP0] Load weight begin. avail mem=93.16 GB
+[2026-07-29 10:19:18 TP1] Load weight begin. avail mem=93.05 GB
+[2026-07-29 10:19:18 TP2] Load weight begin. avail mem=93.06 GB
+[2026-07-29 10:19:22 TP1] Load weight end. elapsed=3.89 s, type=LlamaForCausalLM, avail mem=60.13 GB, mem usage=32.92 GB.
+[2026-07-29 10:19:24 TP0] Load weight end. elapsed=5.22 s, type=LlamaForCausalLM, avail mem=60.24 GB, mem usage=32.92 GB.
+[2026-07-29 10:19:24 TP2] Load weight end. elapsed=5.57 s, type=LlamaForCausalLM, avail mem=60.14 GB, mem usage=32.92 GB.
+[2026-07-29 10:19:24 TP3] Load weight end. elapsed=5.80 s, type=LlamaForCausalLM, avail mem=60.23 GB, mem usage=32.92 GB.
+[2026-07-29 10:19:24 TP0] Using KV cache dtype: torch.bfloat16
+[2026-07-29 10:19:25 TP1] KV Cache is allocated. #tokens: 605205, K size: 23.09 GB, V size: 23.09 GB
+[2026-07-29 10:19:25 TP1] Memory pool end. avail mem=13.85 GB
+[2026-07-29 10:19:25 TP3] KV Cache is allocated. #tokens: 605205, K size: 23.09 GB, V size: 23.09 GB
+[2026-07-29 10:19:25 TP3] Memory pool end. avail mem=13.95 GB
+[2026-07-29 10:19:25 TP2] KV Cache is allocated. #tokens: 605205, K size: 23.09 GB, V size: 23.09 GB
+[2026-07-29 10:19:25 TP2] Memory pool end. avail mem=13.86 GB
+[2026-07-29 10:19:25 TP0] KV Cache is allocated. #tokens: 605205, K size: 23.09 GB, V size: 23.09 GB
+[2026-07-29 10:19:25 TP0] Memory pool end. avail mem=13.96 GB
+[2026-07-29 10:19:25 TP1] Capture cuda graph begin. This can take up to several minutes. avail mem=13.75 GB
+[2026-07-29 10:19:25 TP3] Capture cuda graph begin. This can take up to several minutes. avail mem=13.86 GB
+[2026-07-29 10:19:25 TP2] Capture cuda graph begin. This can take up to several minutes. avail mem=13.76 GB
+[2026-07-29 10:19:25 TP0] Capture cuda graph begin. This can take up to several minutes. avail mem=13.86 GB
+[2026-07-29 10:19:25 TP0] Capture cuda graph bs [1, 2, 4, 8, 12, 16, 24, 32, 40, 48, 56, 64, 72, 80, 88, 96, 104, 112, 120, 128, 136, 144, 152, 160, 168, 176, 184, 192, 200, 208, 216, 224, 232, 240, 248, 256]
+
+  0%|          | 0/36 [00:00<?, ?it/s]
+Capturing batches (bs=256 avail_mem=13.71 GB):   0%|          | 0/36 [00:00<?, ?it/s]2026-07-29 10:19:27,403 - CUTE_DSL - WARNING - [handle_import_error] - Unexpected error during package walk: cutlass.cute.experimental
+[2026-07-29 10:19:27 TP1] Unexpected error during package walk: cutlass.cute.experimental
+2026-07-29 10:19:27,404 - CUTE_DSL - WARNING - [handle_import_error] - Unexpected error during package walk: cutlass.cute.experimental
+[2026-07-29 10:19:27 TP3] Unexpected error during package walk: cutlass.cute.experimental
+2026-07-29 10:19:27,405 - CUTE_DSL - WARNING - [handle_import_error] - Unexpected error during package walk: cutlass.cute.experimental
+[2026-07-29 10:19:27 TP2] Unexpected error during package walk: cutlass.cute.experimental
+2026-07-29 10:19:27,405 - CUTE_DSL - WARNING - [handle_import_error] - Unexpected error during package walk: cutlass.cute.experimental
+[2026-07-29 10:19:27 TP0] Unexpected error during package walk: cutlass.cute.experimental
+
+Capturing batches (bs=256 avail_mem=13.71 GB):   3%|▎         | 1/36 [00:13<07:36, 13.03s/it]
+Capturing batches (bs=248 avail_mem=13.40 GB):   3%|▎         | 1/36 [00:13<07:36, 13.03s/it]
+Capturing batches (bs=248 avail_mem=13.40 GB):   6%|▌         | 2/36 [00:13<03:14,  5.73s/it]
+Capturing batches (bs=240 avail_mem=13.39 GB):   6%|▌         | 2/36 [00:13<03:14,  5.73s/it]
+Capturing batches (bs=240 avail_mem=13.39 GB):   8%|▊         | 3/36 [00:13<01:45,  3.19s/it]
+Capturing batches (bs=232 avail_mem=13.39 GB):   8%|▊         | 3/36 [00:13<01:45,  3.19s/it]
+Capturing batches (bs=232 avail_mem=13.39 GB):  11%|█         | 4/36 [00:13<01:03,  1.99s/it]
+Capturing batches (bs=224 avail_mem=13.38 GB):  11%|█         | 4/36 [00:13<01:03,  1.99s/it]
+Capturing batches (bs=224 avail_mem=13.38 GB):  14%|█▍        | 5/36 [00:14<00:41,  1.33s/it]
+Capturing batches (bs=216 avail_mem=13.38 GB):  14%|█▍        | 5/36 [00:14<00:41,  1.33s/it]
+Capturing batches (bs=216 avail_mem=13.38 GB):  17%|█▋        | 6/36 [00:14<00:27,  1.08it/s]
+Capturing batches (bs=208 avail_mem=13.37 GB):  17%|█▋        | 6/36 [00:14<00:27,  1.08it/s]
+Capturing batches (bs=208 avail_mem=13.37 GB):  19%|█▉        | 7/36 [00:14<00:19,  1.48it/s]
+Capturing batches (bs=200 avail_mem=13.37 GB):  19%|█▉        | 7/36 [00:14<00:19,  1.48it/s]
+Capturing batches (bs=200 avail_mem=13.37 GB):  22%|██▏       | 8/36 [00:14<00:14,  1.97it/s]
+Capturing batches (bs=192 avail_mem=13.36 GB):  22%|██▏       | 8/36 [00:14<00:14,  1.97it/s]
+Capturing batches (bs=192 avail_mem=13.36 GB):  25%|██▌       | 9/36 [00:14<00:10,  2.52it/s]
+Capturing batches (bs=184 avail_mem=13.36 GB):  25%|██▌       | 9/36 [00:14<00:10,  2.52it/s]
+Capturing batches (bs=184 avail_mem=13.36 GB):  28%|██▊       | 10/36 [00:14<00:08,  3.12it/s]
+Capturing batches (bs=176 avail_mem=13.35 GB):  28%|██▊       | 10/36 [00:14<00:08,  3.12it/s]
+Capturing batches (bs=176 avail_mem=13.35 GB):  31%|███       | 11/36 [00:15<00:06,  3.72it/s]
+Capturing batches (bs=168 avail_mem=13.35 GB):  31%|███       | 11/36 [00:15<00:06,  3.72it/s]
+Capturing batches (bs=168 avail_mem=13.35 GB):  33%|███▎      | 12/36 [00:15<00:05,  4.29it/s]
+Capturing batches (bs=160 avail_mem=13.34 GB):  33%|███▎      | 12/36 [00:15<00:05,  4.29it/s]
+Capturing batches (bs=160 avail_mem=13.34 GB):  36%|███▌      | 13/36 [00:15<00:04,  4.71it/s]
+Capturing batches (bs=152 avail_mem=13.34 GB):  36%|███▌      | 13/36 [00:15<00:04,  4.71it/s]
+Capturing batches (bs=152 avail_mem=13.34 GB):  39%|███▉      | 14/36 [00:15<00:04,  5.16it/s]
+Capturing batches (bs=144 avail_mem=13.33 GB):  39%|███▉      | 14/36 [00:15<00:04,  5.16it/s]
+Capturing batches (bs=144 avail_mem=13.33 GB):  42%|████▏     | 15/36 [00:15<00:03,  5.50it/s]
+Capturing batches (bs=136 avail_mem=13.33 GB):  42%|████▏     | 15/36 [00:15<00:03,  5.50it/s]
+Capturing batches (bs=136 avail_mem=13.33 GB):  44%|████▍     | 16/36 [00:15<00:03,  5.79it/s]
+Capturing batches (bs=128 avail_mem=13.32 GB):  44%|████▍     | 16/36 [00:15<00:03,  5.79it/s]
+Capturing batches (bs=128 avail_mem=13.32 GB):  47%|████▋     | 17/36 [00:15<00:03,  6.01it/s]
+Capturing batches (bs=120 avail_mem=13.32 GB):  47%|████▋     | 17/36 [00:15<00:03,  6.01it/s]
+Capturing batches (bs=120 avail_mem=13.32 GB):  50%|█████     | 18/36 [00:16<00:02,  6.21it/s]
+Capturing batches (bs=112 avail_mem=13.32 GB):  50%|█████     | 18/36 [00:16<00:02,  6.21it/s]
+Capturing batches (bs=112 avail_mem=13.32 GB):  53%|█████▎    | 19/36 [00:16<00:02,  6.37it/s]
+Capturing batches (bs=104 avail_mem=13.31 GB):  53%|█████▎    | 19/36 [00:16<00:02,  6.37it/s]
+Capturing batches (bs=104 avail_mem=13.31 GB):  56%|█████▌    | 20/36 [00:16<00:02,  6.47it/s]
+Capturing batches (bs=96 avail_mem=13.31 GB):  56%|█████▌    | 20/36 [00:16<00:02,  6.47it/s] 
+Capturing batches (bs=96 avail_mem=13.31 GB):  58%|█████▊    | 21/36 [00:16<00:02,  6.52it/s]
+Capturing batches (bs=88 avail_mem=13.30 GB):  58%|█████▊    | 21/36 [00:16<00:02,  6.52it/s]
+Capturing batches (bs=88 avail_mem=13.30 GB):  61%|██████    | 22/36 [00:16<00:02,  6.54it/s]
+Capturing batches (bs=80 avail_mem=13.30 GB):  61%|██████    | 22/36 [00:16<00:02,  6.54it/s]
+Capturing batches (bs=80 avail_mem=13.30 GB):  64%|██████▍   | 23/36 [00:16<00:01,  6.58it/s]
+Capturing batches (bs=72 avail_mem=13.29 GB):  64%|██████▍   | 23/36 [00:16<00:01,  6.58it/s]
+Capturing batches (bs=72 avail_mem=13.29 GB):  67%|██████▋   | 24/36 [00:16<00:01,  6.59it/s]
+Capturing batches (bs=64 avail_mem=13.29 GB):  67%|██████▋   | 24/36 [00:16<00:01,  6.59it/s]
+Capturing batches (bs=64 avail_mem=13.29 GB):  69%|██████▉   | 25/36 [00:17<00:01,  6.56it/s]
+Capturing batches (bs=56 avail_mem=13.28 GB):  69%|██████▉   | 25/36 [00:17<00:01,  6.56it/s]
+Capturing batches (bs=56 avail_mem=13.28 GB):  72%|███████▏  | 26/36 [00:17<00:01,  6.57it/s]
+Capturing batches (bs=48 avail_mem=13.27 GB):  72%|███████▏  | 26/36 [00:17<00:01,  6.57it/s]
+Capturing batches (bs=48 avail_mem=13.27 GB):  75%|███████▌  | 27/36 [00:17<00:01,  6.57it/s]
+Capturing batches (bs=40 avail_mem=13.27 GB):  75%|███████▌  | 27/36 [00:17<00:01,  6.57it/s]
+Capturing batches (bs=40 avail_mem=13.27 GB):  78%|███████▊  | 28/36 [00:17<00:01,  6.59it/s]
+Capturing batches (bs=32 avail_mem=13.26 GB):  78%|███████▊  | 28/36 [00:17<00:01,  6.59it/s]
+Capturing batches (bs=32 avail_mem=13.26 GB):  81%|████████  | 29/36 [00:17<00:01,  6.59it/s]
+Capturing batches (bs=24 avail_mem=13.26 GB):  81%|████████  | 29/36 [00:17<00:01,  6.59it/s]
+Capturing batches (bs=24 avail_mem=13.26 GB):  83%|████████▎ | 30/36 [00:17<00:00,  6.62it/s]
+Capturing batches (bs=16 avail_mem=13.25 GB):  83%|████████▎ | 30/36 [00:17<00:00,  6.62it/s]
+Capturing batches (bs=16 avail_mem=13.25 GB):  86%|████████▌ | 31/36 [00:18<00:00,  6.65it/s]
+Capturing batches (bs=12 avail_mem=13.25 GB):  86%|████████▌ | 31/36 [00:18<00:00,  6.65it/s]
+Capturing batches (bs=12 avail_mem=13.25 GB):  89%|████████▉ | 32/36 [00:18<00:00,  6.77it/s]
+Capturing batches (bs=8 avail_mem=13.24 GB):  89%|████████▉ | 32/36 [00:18<00:00,  6.77it/s] 
+Capturing batches (bs=8 avail_mem=13.24 GB):  92%|█████████▏| 33/36 [00:18<00:00,  6.80it/s]
+Capturing batches (bs=4 avail_mem=13.24 GB):  92%|█████████▏| 33/36 [00:18<00:00,  6.80it/s]
+Capturing batches (bs=4 avail_mem=13.24 GB):  94%|█████████▍| 34/36 [00:18<00:00,  6.83it/s]
+Capturing batches (bs=2 avail_mem=13.24 GB):  94%|█████████▍| 34/36 [00:18<00:00,  6.83it/s]
+Capturing batches (bs=2 avail_mem=13.24 GB):  97%|█████████▋| 35/36 [00:18<00:00,  6.84it/s]
+Capturing batches (bs=1 avail_mem=13.23 GB):  97%|█████████▋| 35/36 [00:18<00:00,  6.84it/s]
+Capturing batches (bs=1 avail_mem=13.23 GB): 100%|██████████| 36/36 [00:19<00:00,  4.65it/s]
+Capturing batches (bs=1 avail_mem=13.23 GB): 100%|██████████| 36/36 [00:19<00:00,  1.89it/s]
+[2026-07-29 10:19:44 TP0] Registering 5796 cuda graph addresses
+[2026-07-29 10:19:44 TP2] Capture cuda graph end. Time elapsed: 19.50 s. mem usage=0.64 GB. avail mem=13.12 GB.
+[2026-07-29 10:19:44 TP2] Capture piecewise CUDA graph begin. avail mem=13.12 GB
+[2026-07-29 10:19:44 TP3] Capture cuda graph end. Time elapsed: 19.52 s. mem usage=0.64 GB. avail mem=13.22 GB.
+[2026-07-29 10:19:44 TP3] Capture piecewise CUDA graph begin. avail mem=13.22 GB
+[2026-07-29 10:19:44 TP1] Capture cuda graph end. Time elapsed: 19.52 s. mem usage=0.64 GB. avail mem=13.12 GB.
+[2026-07-29 10:19:44 TP1] Capture piecewise CUDA graph begin. avail mem=13.12 GB
+[2026-07-29 10:19:44 TP0] Capture cuda graph end. Time elapsed: 19.50 s. mem usage=0.64 GB. avail mem=13.23 GB.
+[2026-07-29 10:19:44 TP0] Capture piecewise CUDA graph begin. avail mem=13.23 GB
+[2026-07-29 10:19:44 TP0] Capture cuda graph num tokens [4, 8, 12, 16, 20, 24, 28, 32, 48, 64, 80, 96, 112, 128, 144, 160, 176, 192, 208, 224, 240, 256, 288, 320, 352, 384, 416, 448, 480, 512, 576, 640, 704, 768, 832, 896, 960, 1024, 1280, 1536, 1792, 2048, 2304, 2560, 2816, 3072, 3328, 3584, 3840, 4096, 4608, 5120, 5632, 6144, 6656, 7168, 7680, 8192]
+
+  0%|          | 0/58 [00:00<?, ?it/s]
+Compiling num tokens (num_tokens=8192):   0%|          | 0/58 [00:00<?, ?it/s][2026-07-29 10:19:54 TP2] Compiling a graph for dynamic shape takes 1.68 s
+[2026-07-29 10:19:54 TP3] Compiling a graph for dynamic shape takes 1.76 s
+[2026-07-29 10:19:54 TP0] Compiling a graph for dynamic shape takes 1.77 s
+[2026-07-29 10:19:54 TP1] Compiling a graph for dynamic shape takes 1.82 s
+
+Compiling num tokens (num_tokens=8192):   2%|▏         | 1/58 [00:11<11:10, 11.76s/it]
+Compiling num tokens (num_tokens=7680):   2%|▏         | 1/58 [00:11<11:10, 11.76s/it]
+Compiling num tokens (num_tokens=7680):   3%|▎         | 2/58 [00:12<04:51,  5.20s/it]
+Compiling num tokens (num_tokens=7168):   3%|▎         | 2/58 [00:12<04:51,  5.20s/it]
+Compiling num tokens (num_tokens=7168):   5%|▌         | 3/58 [00:12<02:50,  3.10s/it]
+Compiling num tokens (num_tokens=6656):   5%|▌         | 3/58 [00:12<02:50,  3.10s/it]
+Compiling num tokens (num_tokens=6656):   7%|▋         | 4/58 [00:13<01:53,  2.10s/it]
+Compiling num tokens (num_tokens=6144):   7%|▋         | 4/58 [00:13<01:53,  2.10s/it]
+Compiling num tokens (num_tokens=6144):   9%|▊         | 5/58 [00:14<01:21,  1.54s/it]
+Compiling num tokens (num_tokens=5632):   9%|▊         | 5/58 [00:14<01:21,  1.54s/it]
+Compiling num tokens (num_tokens=5632):  10%|█         | 6/58 [00:14<01:01,  1.18s/it]
+Compiling num tokens (num_tokens=5120):  10%|█         | 6/58 [00:14<01:01,  1.18s/it]
+Compiling num tokens (num_tokens=5120):  12%|█▏        | 7/58 [00:14<00:47,  1.08it/s]
+Compiling num tokens (num_tokens=4608):  12%|█▏        | 7/58 [00:14<00:47,  1.08it/s]
+Compiling num tokens (num_tokens=4608):  14%|█▍        | 8/58 [00:15<00:37,  1.33it/s]
+Compiling num tokens (num_tokens=4096):  14%|█▍        | 8/58 [00:15<00:37,  1.33it/s]
+Compiling num tokens (num_tokens=4096):  16%|█▌        | 9/58 [00:15<00:30,  1.61it/s]
+Compiling num tokens (num_tokens=3840):  16%|█▌        | 9/58 [00:15<00:30,  1.61it/s]
+Compiling num tokens (num_tokens=3840):  17%|█▋        | 10/58 [00:15<00:24,  1.93it/s]
+Compiling num tokens (num_tokens=3584):  17%|█▋        | 10/58 [00:15<00:24,  1.93it/s]
+Compiling num tokens (num_tokens=3584):  19%|█▉        | 11/58 [00:16<00:21,  2.22it/s]
+Compiling num tokens (num_tokens=3328):  19%|█▉        | 11/58 [00:16<00:21,  2.22it/s]
+Compiling num tokens (num_tokens=3328):  21%|██        | 12/58 [00:16<00:17,  2.58it/s]
+Compiling num tokens (num_tokens=3072):  21%|██        | 12/58 [00:16<00:17,  2.58it/s]
+Compiling num tokens (num_tokens=3072):  22%|██▏       | 13/58 [00:16<00:15,  2.89it/s]
+Compiling num tokens (num_tokens=2816):  22%|██▏       | 13/58 [00:16<00:15,  2.89it/s]
+Compiling num tokens (num_tokens=2816):  24%|██▍       | 14/58 [00:16<00:13,  3.18it/s]
+Compiling num tokens (num_tokens=2560):  24%|██▍       | 14/58 [00:16<00:13,  3.18it/s]
+Compiling num tokens (num_tokens=2560):  26%|██▌       | 15/58 [00:17<00:12,  3.53it/s]
+Compiling num tokens (num_tokens=2304):  26%|██▌       | 15/58 [00:17<00:12,  3.53it/s]
+Compiling num tokens (num_tokens=2304):  28%|██▊       | 16/58 [00:17<00:10,  3.97it/s]
+Compiling num tokens (num_tokens=2048):  28%|██▊       | 16/58 [00:17<00:10,  3.97it/s]
+Compiling num tokens (num_tokens=2048):  29%|██▉       | 17/58 [00:17<00:09,  4.30it/s]
+Compiling num tokens (num_tokens=1792):  29%|██▉       | 17/58 [00:17<00:09,  4.30it/s]
+Compiling num tokens (num_tokens=1792):  31%|███       | 18/58 [00:17<00:08,  4.81it/s]
+Compiling num tokens (num_tokens=1536):  31%|███       | 18/58 [00:17<00:08,  4.81it/s]
+Compiling num tokens (num_tokens=1536):  33%|███▎      | 19/58 [00:17<00:07,  5.37it/s]
+Compiling num tokens (num_tokens=1280):  33%|███▎      | 19/58 [00:17<00:07,  5.37it/s]
+Compiling num tokens (num_tokens=1280):  34%|███▍      | 20/58 [00:17<00:06,  6.00it/s]
+Compiling num tokens (num_tokens=1024):  34%|███▍      | 20/58 [00:17<00:06,  6.00it/s]
+Compiling num tokens (num_tokens=1024):  36%|███▌      | 21/58 [00:18<00:05,  6.74it/s]
+Compiling num tokens (num_tokens=960):  36%|███▌      | 21/58 [00:18<00:05,  6.74it/s] 
+Compiling num tokens (num_tokens=896):  36%|███▌      | 21/58 [00:18<00:05,  6.74it/s]
+Compiling num tokens (num_tokens=896):  40%|███▉      | 23/58 [00:18<00:04,  8.40it/s]
+Compiling num tokens (num_tokens=832):  40%|███▉      | 23/58 [00:18<00:04,  8.40it/s]
+Compiling num tokens (num_tokens=768):  40%|███▉      | 23/58 [00:18<00:04,  8.40it/s]
+Compiling num tokens (num_tokens=768):  43%|████▎     | 25/58 [00:18<00:03,  9.91it/s]
+Compiling num tokens (num_tokens=704):  43%|████▎     | 25/58 [00:18<00:03,  9.91it/s]
+Compiling num tokens (num_tokens=640):  43%|████▎     | 25/58 [00:18<00:03,  9.91it/s]
+Compiling num tokens (num_tokens=640):  47%|████▋     | 27/58 [00:18<00:02, 11.02it/s]
+Compiling num tokens (num_tokens=576):  47%|████▋     | 27/58 [00:18<00:02, 11.02it/s]
+Compiling num tokens (num_tokens=512):  47%|████▋     | 27/58 [00:18<00:02, 11.02it/s][2026-07-29 10:20:11 TP2] Compiling a graph for dynamic shape takes 1.14 s
+[2026-07-29 10:20:11 TP3] Compiling a graph for dynamic shape takes 1.15 s
+[2026-07-29 10:20:11 TP1] Compiling a graph for dynamic shape takes 1.17 s
+[2026-07-29 10:20:11 TP0] Compiling a graph for dynamic shape takes 1.17 s
+
+Compiling num tokens (num_tokens=512):  50%|█████     | 29/58 [00:28<00:49,  1.72s/it]
+Compiling num tokens (num_tokens=480):  50%|█████     | 29/58 [00:28<00:49,  1.72s/it]
+Compiling num tokens (num_tokens=448):  50%|█████     | 29/58 [00:28<00:49,  1.72s/it]
+Compiling num tokens (num_tokens=448):  53%|█████▎    | 31/58 [00:28<00:31,  1.17s/it]
+Compiling num tokens (num_tokens=416):  53%|█████▎    | 31/58 [00:28<00:31,  1.17s/it]
+Compiling num tokens (num_tokens=384):  53%|█████▎    | 31/58 [00:28<00:31,  1.17s/it]
+Compiling num tokens (num_tokens=384):  57%|█████▋    | 33/58 [00:28<00:20,  1.23it/s]
+Compiling num tokens (num_tokens=352):  57%|█████▋    | 33/58 [00:28<00:20,  1.23it/s]
+Compiling num tokens (num_tokens=320):  57%|█████▋    | 33/58 [00:28<00:20,  1.23it/s]
+Compiling num tokens (num_tokens=320):  60%|██████    | 35/58 [00:28<00:13,  1.73it/s]
+Compiling num tokens (num_tokens=288):  60%|██████    | 35/58 [00:28<00:13,  1.73it/s]
+Compiling num tokens (num_tokens=256):  60%|██████    | 35/58 [00:28<00:13,  1.73it/s]
+Compiling num tokens (num_tokens=256):  64%|██████▍   | 37/58 [00:28<00:08,  2.41it/s]
+Compiling num tokens (num_tokens=240):  64%|██████▍   | 37/58 [00:28<00:08,  2.41it/s]
+Compiling num tokens (num_tokens=224):  64%|██████▍   | 37/58 [00:28<00:08,  2.41it/s]
+Compiling num tokens (num_tokens=224):  67%|██████▋   | 39/58 [00:28<00:05,  3.29it/s]
+Compiling num tokens (num_tokens=208):  67%|██████▋   | 39/58 [00:28<00:05,  3.29it/s]
+Compiling num tokens (num_tokens=192):  67%|██████▋   | 39/58 [00:28<00:05,  3.29it/s]
+Compiling num tokens (num_tokens=192):  71%|███████   | 41/58 [00:28<00:03,  4.38it/s]
+Compiling num tokens (num_tokens=176):  71%|███████   | 41/58 [00:28<00:03,  4.38it/s]
+Compiling num tokens (num_tokens=160):  71%|███████   | 41/58 [00:28<00:03,  4.38it/s]
+Compiling num tokens (num_tokens=160):  74%|███████▍  | 43/58 [00:29<00:02,  5.71it/s]
+Compiling num tokens (num_tokens=144):  74%|███████▍  | 43/58 [00:29<00:02,  5.71it/s]
+Compiling num tokens (num_tokens=128):  74%|███████▍  | 43/58 [00:29<00:02,  5.71it/s]
+Compiling num tokens (num_tokens=128):  78%|███████▊  | 45/58 [00:29<00:01,  7.22it/s]
+Compiling num tokens (num_tokens=112):  78%|███████▊  | 45/58 [00:29<00:01,  7.22it/s]
+Compiling num tokens (num_tokens=96):  78%|███████▊  | 45/58 [00:29<00:01,  7.22it/s] 
+Compiling num tokens (num_tokens=96):  81%|████████  | 47/58 [00:29<00:01,  8.85it/s]
+Compiling num tokens (num_tokens=80):  81%|████████  | 47/58 [00:29<00:01,  8.85it/s]
+Compiling num tokens (num_tokens=64):  81%|████████  | 47/58 [00:29<00:01,  8.85it/s]
+Compiling num tokens (num_tokens=64):  84%|████████▍ | 49/58 [00:29<00:00, 10.48it/s]
+Compiling num tokens (num_tokens=48):  84%|████████▍ | 49/58 [00:29<00:00, 10.48it/s]
+Compiling num tokens (num_tokens=32):  84%|████████▍ | 49/58 [00:29<00:00, 10.48it/s]
+Compiling num tokens (num_tokens=32):  88%|████████▊ | 51/58 [00:29<00:00, 12.07it/s]
+Compiling num tokens (num_tokens=28):  88%|████████▊ | 51/58 [00:29<00:00, 12.07it/s]
+Compiling num tokens (num_tokens=24):  88%|████████▊ | 51/58 [00:29<00:00, 12.07it/s]
+Compiling num tokens (num_tokens=24):  91%|█████████▏| 53/58 [00:29<00:00, 13.50it/s]
+Compiling num tokens (num_tokens=20):  91%|█████████▏| 53/58 [00:29<00:00, 13.50it/s]
+Compiling num tokens (num_tokens=16):  91%|█████████▏| 53/58 [00:29<00:00, 13.50it/s]
+Compiling num tokens (num_tokens=16):  95%|█████████▍| 55/58 [00:29<00:00, 14.67it/s]
+Compiling num tokens (num_tokens=12):  95%|█████████▍| 55/58 [00:29<00:00, 14.67it/s]
+Compiling num tokens (num_tokens=8):  95%|█████████▍| 55/58 [00:29<00:00, 14.67it/s] 
+Compiling num tokens (num_tokens=8):  98%|█████████▊| 57/58 [00:29<00:00, 15.70it/s]
+Compiling num tokens (num_tokens=4):  98%|█████████▊| 57/58 [00:29<00:00, 15.70it/s]
+Compiling num tokens (num_tokens=4): 100%|██████████| 58/58 [00:29<00:00,  1.94it/s]
+
+  0%|          | 0/58 [00:00<?, ?it/s]
+Capturing num tokens (num_tokens=8192 avail_mem=11.69 GB):   0%|          | 0/58 [00:00<?, ?it/s]
+Capturing num tokens (num_tokens=8192 avail_mem=11.69 GB):   2%|▏         | 1/58 [00:00<00:46,  1.21it/s]
+Capturing num tokens (num_tokens=7680 avail_mem=11.56 GB):   2%|▏         | 1/58 [00:00<00:46,  1.21it/s]
+Capturing num tokens (num_tokens=7680 avail_mem=11.56 GB):   3%|▎         | 2/58 [00:01<00:48,  1.16it/s]
+Capturing num tokens (num_tokens=7168 avail_mem=11.53 GB):   3%|▎         | 2/58 [00:01<00:48,  1.16it/s]
+Capturing num tokens (num_tokens=7168 avail_mem=11.53 GB):   5%|▌         | 3/58 [00:02<00:45,  1.22it/s]
+Capturing num tokens (num_tokens=6656 avail_mem=11.50 GB):   5%|▌         | 3/58 [00:02<00:45,  1.22it/s]
+Capturing num tokens (num_tokens=6656 avail_mem=11.50 GB):   7%|▋         | 4/58 [00:03<00:41,  1.30it/s]
+Capturing num tokens (num_tokens=6144 avail_mem=11.47 GB):   7%|▋         | 4/58 [00:03<00:41,  1.30it/s]
+Capturing num tokens (num_tokens=6144 avail_mem=11.47 GB):   9%|▊         | 5/58 [00:03<00:38,  1.36it/s]
+Capturing num tokens (num_tokens=5632 avail_mem=11.44 GB):   9%|▊         | 5/58 [00:03<00:38,  1.36it/s]
+Capturing num tokens (num_tokens=5632 avail_mem=11.44 GB):  10%|█         | 6/58 [00:04<00:35,  1.48it/s]
+Capturing num tokens (num_tokens=5120 avail_mem=11.40 GB):  10%|█         | 6/58 [00:04<00:35,  1.48it/s]
+Capturing num tokens (num_tokens=5120 avail_mem=11.40 GB):  12%|█▏        | 7/58 [00:04<00:31,  1.61it/s]
+Capturing num tokens (num_tokens=4608 avail_mem=11.37 GB):  12%|█▏        | 7/58 [00:04<00:31,  1.61it/s]
+Capturing num tokens (num_tokens=4608 avail_mem=11.37 GB):  14%|█▍        | 8/58 [00:05<00:29,  1.71it/s]
+Capturing num tokens (num_tokens=4096 avail_mem=11.34 GB):  14%|█▍        | 8/58 [00:05<00:29,  1.71it/s]
+Capturing num tokens (num_tokens=4096 avail_mem=11.34 GB):  16%|█▌        | 9/58 [00:05<00:25,  1.89it/s]
+Capturing num tokens (num_tokens=3840 avail_mem=11.31 GB):  16%|█▌        | 9/58 [00:05<00:25,  1.89it/s]
+Capturing num tokens (num_tokens=3840 avail_mem=11.31 GB):  17%|█▋        | 10/58 [00:06<00:23,  2.03it/s]
+Capturing num tokens (num_tokens=3584 avail_mem=11.28 GB):  17%|█▋        | 10/58 [00:06<00:23,  2.03it/s]
+Capturing num tokens (num_tokens=3584 avail_mem=11.28 GB):  19%|█▉        | 11/58 [00:06<00:21,  2.20it/s]
+Capturing num tokens (num_tokens=3328 avail_mem=11.24 GB):  19%|█▉        | 11/58 [00:06<00:21,  2.20it/s]
+Capturing num tokens (num_tokens=3328 avail_mem=11.24 GB):  21%|██        | 12/58 [00:06<00:19,  2.34it/s]
+Capturing num tokens (num_tokens=3072 avail_mem=11.21 GB):  21%|██        | 12/58 [00:06<00:19,  2.34it/s]
+Capturing num tokens (num_tokens=3072 avail_mem=11.21 GB):  22%|██▏       | 13/58 [00:07<00:18,  2.49it/s]
+Capturing num tokens (num_tokens=2816 avail_mem=11.18 GB):  22%|██▏       | 13/58 [00:07<00:18,  2.49it/s]
+Capturing num tokens (num_tokens=2816 avail_mem=11.18 GB):  24%|██▍       | 14/58 [00:07<00:16,  2.64it/s]
+Capturing num tokens (num_tokens=2560 avail_mem=11.15 GB):  24%|██▍       | 14/58 [00:07<00:16,  2.64it/s]
+Capturing num tokens (num_tokens=2560 avail_mem=11.15 GB):  26%|██▌       | 15/58 [00:07<00:15,  2.83it/s]
+Capturing num tokens (num_tokens=2304 avail_mem=11.12 GB):  26%|██▌       | 15/58 [00:07<00:15,  2.83it/s]
+Capturing num tokens (num_tokens=2304 avail_mem=11.12 GB):  28%|██▊       | 16/58 [00:08<00:14,  2.96it/s]
+Capturing num tokens (num_tokens=2048 avail_mem=11.08 GB):  28%|██▊       | 16/58 [00:08<00:14,  2.96it/s]
+Capturing num tokens (num_tokens=2048 avail_mem=11.08 GB):  29%|██▉       | 17/58 [00:08<00:12,  3.21it/s]
+Capturing num tokens (num_tokens=1792 avail_mem=11.04 GB):  29%|██▉       | 17/58 [00:08<00:12,  3.21it/s]
+Capturing num tokens (num_tokens=1792 avail_mem=11.04 GB):  31%|███       | 18/58 [00:08<00:11,  3.43it/s]
+Capturing num tokens (num_tokens=1536 avail_mem=11.01 GB):  31%|███       | 18/58 [00:08<00:11,  3.43it/s]
+Capturing num tokens (num_tokens=1536 avail_mem=11.01 GB):  33%|███▎      | 19/58 [00:08<00:10,  3.63it/s]
+Capturing num tokens (num_tokens=1280 avail_mem=10.97 GB):  33%|███▎      | 19/58 [00:08<00:10,  3.63it/s]
+Capturing num tokens (num_tokens=1280 avail_mem=10.97 GB):  34%|███▍      | 20/58 [00:09<00:09,  3.89it/s]
+Capturing num tokens (num_tokens=1024 avail_mem=10.94 GB):  34%|███▍      | 20/58 [00:09<00:09,  3.89it/s]
+Capturing num tokens (num_tokens=1024 avail_mem=10.94 GB):  36%|███▌      | 21/58 [00:09<00:08,  4.19it/s]
+Capturing num tokens (num_tokens=960 avail_mem=10.90 GB):  36%|███▌      | 21/58 [00:09<00:08,  4.19it/s] 
+Capturing num tokens (num_tokens=960 avail_mem=10.90 GB):  38%|███▊      | 22/58 [00:09<00:08,  4.44it/s]
+Capturing num tokens (num_tokens=896 avail_mem=10.86 GB):  38%|███▊      | 22/58 [00:09<00:08,  4.44it/s]
+Capturing num tokens (num_tokens=896 avail_mem=10.86 GB):  40%|███▉      | 23/58 [00:09<00:07,  4.67it/s]
+Capturing num tokens (num_tokens=832 avail_mem=10.82 GB):  40%|███▉      | 23/58 [00:09<00:07,  4.67it/s]
+Capturing num tokens (num_tokens=832 avail_mem=10.82 GB):  41%|████▏     | 24/58 [00:09<00:07,  4.85it/s]
+Capturing num tokens (num_tokens=768 avail_mem=10.75 GB):  41%|████▏     | 24/58 [00:09<00:07,  4.85it/s]
+Capturing num tokens (num_tokens=768 avail_mem=10.75 GB):  43%|████▎     | 25/58 [00:10<00:06,  4.99it/s]
+Capturing num tokens (num_tokens=704 avail_mem=10.73 GB):  43%|████▎     | 25/58 [00:10<00:06,  4.99it/s]
+Capturing num tokens (num_tokens=704 avail_mem=10.73 GB):  45%|████▍     | 26/58 [00:10<00:06,  5.05it/s]
+Capturing num tokens (num_tokens=640 avail_mem=10.69 GB):  45%|████▍     | 26/58 [00:10<00:06,  5.05it/s]
+Capturing num tokens (num_tokens=640 avail_mem=10.69 GB):  47%|████▋     | 27/58 [00:10<00:06,  5.12it/s]
+Capturing num tokens (num_tokens=576 avail_mem=10.67 GB):  47%|████▋     | 27/58 [00:10<00:06,  5.12it/s]
+Capturing num tokens (num_tokens=576 avail_mem=10.67 GB):  48%|████▊     | 28/58 [00:10<00:05,  5.17it/s]
+Capturing num tokens (num_tokens=512 avail_mem=10.64 GB):  48%|████▊     | 28/58 [00:10<00:05,  5.17it/s]
+Capturing num tokens (num_tokens=512 avail_mem=10.64 GB):  50%|█████     | 29/58 [00:10<00:05,  5.44it/s]
+Capturing num tokens (num_tokens=480 avail_mem=10.63 GB):  50%|█████     | 29/58 [00:10<00:05,  5.44it/s]
+Capturing num tokens (num_tokens=480 avail_mem=10.63 GB):  52%|█████▏    | 30/58 [00:11<00:04,  5.69it/s]
+Capturing num tokens (num_tokens=448 avail_mem=10.61 GB):  52%|█████▏    | 30/58 [00:11<00:04,  5.69it/s]
+Capturing num tokens (num_tokens=448 avail_mem=10.61 GB):  53%|█████▎    | 31/58 [00:11<00:04,  5.88it/s]
+Capturing num tokens (num_tokens=416 avail_mem=10.60 GB):  53%|█████▎    | 31/58 [00:11<00:04,  5.88it/s]
+Capturing num tokens (num_tokens=416 avail_mem=10.60 GB):  55%|█████▌    | 32/58 [00:11<00:05,  5.18it/s]
+Capturing num tokens (num_tokens=384 avail_mem=10.59 GB):  55%|█████▌    | 32/58 [00:11<00:05,  5.18it/s]
+Capturing num tokens (num_tokens=384 avail_mem=10.59 GB):  57%|█████▋    | 33/58 [00:11<00:04,  5.49it/s]
+Capturing num tokens (num_tokens=352 avail_mem=10.58 GB):  57%|█████▋    | 33/58 [00:11<00:04,  5.49it/s]
+Capturing num tokens (num_tokens=352 avail_mem=10.58 GB):  59%|█████▊    | 34/58 [00:11<00:04,  5.74it/s]
+Capturing num tokens (num_tokens=320 avail_mem=10.57 GB):  59%|█████▊    | 34/58 [00:11<00:04,  5.74it/s]
+Capturing num tokens (num_tokens=320 avail_mem=10.57 GB):  60%|██████    | 35/58 [00:11<00:03,  5.90it/s]
+Capturing num tokens (num_tokens=288 avail_mem=10.56 GB):  60%|██████    | 35/58 [00:11<00:03,  5.90it/s]
+Capturing num tokens (num_tokens=288 avail_mem=10.56 GB):  62%|██████▏   | 36/58 [00:12<00:03,  6.05it/s]
+Capturing num tokens (num_tokens=256 avail_mem=10.55 GB):  62%|██████▏   | 36/58 [00:12<00:03,  6.05it/s]
+Capturing num tokens (num_tokens=256 avail_mem=10.55 GB):  64%|██████▍   | 37/58 [00:12<00:03,  6.17it/s]
+Capturing num tokens (num_tokens=240 avail_mem=10.56 GB):  64%|██████▍   | 37/58 [00:12<00:03,  6.17it/s]
+Capturing num tokens (num_tokens=240 avail_mem=10.56 GB):  66%|██████▌   | 38/58 [00:12<00:03,  6.27it/s]
+Capturing num tokens (num_tokens=224 avail_mem=10.55 GB):  66%|██████▌   | 38/58 [00:12<00:03,  6.27it/s]
+Capturing num tokens (num_tokens=224 avail_mem=10.55 GB):  67%|██████▋   | 39/58 [00:12<00:03,  6.31it/s]
+Capturing num tokens (num_tokens=208 avail_mem=10.54 GB):  67%|██████▋   | 39/58 [00:12<00:03,  6.31it/s]
+Capturing num tokens (num_tokens=208 avail_mem=10.54 GB):  69%|██████▉   | 40/58 [00:12<00:02,  6.32it/s]
+Capturing num tokens (num_tokens=192 avail_mem=10.53 GB):  69%|██████▉   | 40/58 [00:12<00:02,  6.32it/s]
+Capturing num tokens (num_tokens=192 avail_mem=10.53 GB):  71%|███████   | 41/58 [00:12<00:02,  6.37it/s]
+Capturing num tokens (num_tokens=176 avail_mem=10.51 GB):  71%|███████   | 41/58 [00:12<00:02,  6.37it/s]
+Capturing num tokens (num_tokens=176 avail_mem=10.51 GB):  72%|███████▏  | 42/58 [00:12<00:02,  6.33it/s]
+Capturing num tokens (num_tokens=160 avail_mem=10.50 GB):  72%|███████▏  | 42/58 [00:12<00:02,  6.33it/s]
+Capturing num tokens (num_tokens=160 avail_mem=10.50 GB):  74%|███████▍  | 43/58 [00:13<00:02,  6.33it/s]
+Capturing num tokens (num_tokens=144 avail_mem=10.49 GB):  74%|███████▍  | 43/58 [00:13<00:02,  6.33it/s]
+Capturing num tokens (num_tokens=144 avail_mem=10.49 GB):  76%|███████▌  | 44/58 [00:13<00:02,  6.32it/s]
+Capturing num tokens (num_tokens=128 avail_mem=10.48 GB):  76%|███████▌  | 44/58 [00:13<00:02,  6.32it/s]
+Capturing num tokens (num_tokens=128 avail_mem=10.48 GB):  78%|███████▊  | 45/58 [00:13<00:02,  6.31it/s]
+Capturing num tokens (num_tokens=112 avail_mem=10.47 GB):  78%|███████▊  | 45/58 [00:13<00:02,  6.31it/s]
+Capturing num tokens (num_tokens=112 avail_mem=10.47 GB):  79%|███████▉  | 46/58 [00:13<00:01,  6.33it/s]
+Capturing num tokens (num_tokens=96 avail_mem=10.46 GB):  79%|███████▉  | 46/58 [00:13<00:01,  6.33it/s] 
+Capturing num tokens (num_tokens=96 avail_mem=10.46 GB):  81%|████████  | 47/58 [00:13<00:01,  6.32it/s]
+Capturing num tokens (num_tokens=80 avail_mem=10.45 GB):  81%|████████  | 47/58 [00:13<00:01,  6.32it/s]
+Capturing num tokens (num_tokens=80 avail_mem=10.45 GB):  83%|████████▎ | 48/58 [00:13<00:01,  6.32it/s]
+Capturing num tokens (num_tokens=64 avail_mem=10.44 GB):  83%|████████▎ | 48/58 [00:13<00:01,  6.32it/s]
+Capturing num tokens (num_tokens=64 avail_mem=10.44 GB):  84%|████████▍ | 49/58 [00:14<00:01,  6.27it/s]
+Capturing num tokens (num_tokens=48 avail_mem=10.42 GB):  84%|████████▍ | 49/58 [00:14<00:01,  6.27it/s]
+Capturing num tokens (num_tokens=48 avail_mem=10.42 GB):  86%|████████▌ | 50/58 [00:14<00:01,  6.23it/s]
+Capturing num tokens (num_tokens=32 avail_mem=10.41 GB):  86%|████████▌ | 50/58 [00:14<00:01,  6.23it/s]
+Capturing num tokens (num_tokens=32 avail_mem=10.41 GB):  88%|████████▊ | 51/58 [00:14<00:01,  6.27it/s]
+Capturing num tokens (num_tokens=28 avail_mem=10.40 GB):  88%|████████▊ | 51/58 [00:14<00:01,  6.27it/s]
+Capturing num tokens (num_tokens=28 avail_mem=10.40 GB):  90%|████████▉ | 52/58 [00:14<00:00,  6.26it/s]
+Capturing num tokens (num_tokens=24 avail_mem=10.39 GB):  90%|████████▉ | 52/58 [00:14<00:00,  6.26it/s]
+Capturing num tokens (num_tokens=24 avail_mem=10.39 GB):  91%|█████████▏| 53/58 [00:14<00:00,  6.30it/s]
+Capturing num tokens (num_tokens=20 avail_mem=10.38 GB):  91%|█████████▏| 53/58 [00:14<00:00,  6.30it/s]
+Capturing num tokens (num_tokens=20 avail_mem=10.38 GB):  93%|█████████▎| 54/58 [00:14<00:00,  6.34it/s]
+Capturing num tokens (num_tokens=16 avail_mem=10.37 GB):  93%|█████████▎| 54/58 [00:14<00:00,  6.34it/s]
+Capturing num tokens (num_tokens=16 avail_mem=10.37 GB):  95%|█████████▍| 55/58 [00:15<00:00,  6.29it/s]
+Capturing num tokens (num_tokens=12 avail_mem=10.36 GB):  95%|█████████▍| 55/58 [00:15<00:00,  6.29it/s]
+Capturing num tokens (num_tokens=12 avail_mem=10.36 GB):  97%|█████████▋| 56/58 [00:15<00:00,  6.31it/s]
+Capturing num tokens (num_tokens=8 avail_mem=10.35 GB):  97%|█████████▋| 56/58 [00:15<00:00,  6.31it/s] 
+Capturing num tokens (num_tokens=8 avail_mem=10.35 GB):  98%|█████████▊| 57/58 [00:15<00:00,  6.32it/s]
+Capturing num tokens (num_tokens=4 avail_mem=10.34 GB):  98%|█████████▊| 57/58 [00:15<00:00,  6.32it/s]
+Capturing num tokens (num_tokens=4 avail_mem=10.34 GB): 100%|██████████| 58/58 [00:15<00:00,  6.32it/s]
+Capturing num tokens (num_tokens=4 avail_mem=10.34 GB): 100%|██████████| 58/58 [00:15<00:00,  3.73it/s]
+[2026-07-29 10:20:30 TP0] Registering 4830 cuda graph addresses
+[2026-07-29 10:20:30 TP3] Capture piecewise CUDA graph end. Time elapsed: 46.03 s. mem usage=2.90 GB. avail mem=10.32 GB.
+[2026-07-29 10:20:30 TP0] Capture piecewise CUDA graph end. Time elapsed: 46.03 s. mem usage=2.90 GB. avail mem=10.33 GB.
+[2026-07-29 10:20:30 TP2] Capture piecewise CUDA graph end. Time elapsed: 46.04 s. mem usage=3.00 GB. avail mem=10.12 GB.
+[2026-07-29 10:20:30 TP1] Capture piecewise CUDA graph end. Time elapsed: 46.03 s. mem usage=3.00 GB. avail mem=10.12 GB.
+[2026-07-29 10:20:31 TP0] max_total_num_tokens=605205, chunked_prefill_size=8192, max_prefill_tokens=16384, max_running_requests=256, context_len=32768, available_gpu_mem=10.33 GB
+[2026-07-29 10:20:32] INFO:     Started server process [28521]
+[2026-07-29 10:20:32] INFO:     Waiting for application startup.
+[2026-07-29 10:20:32] Using default chat sampling params from model generation config: {'temperature': 0.6, 'top_p': 0.9}
+[2026-07-29 10:20:32] INFO:     Application startup complete.
+[2026-07-29 10:20:32] INFO:     Uvicorn running on http://0.0.0.0:8080 (Press CTRL+C to quit)
+[2026-07-29 10:20:33] INFO:     127.0.0.1:47832 - "GET /model_info HTTP/1.1" 200 OK
+[2026-07-29 10:20:42 TP0] Prefill batch, #new-seq: 1, #new-token: 7, #cached-token: 0, token usage: 0.00, #running-req: 0, #queue-req: 0, cuda graph: True, input throughput (token/s): 0.00
+[2026-07-29 10:20:42] INFO:     127.0.0.1:47834 - "POST /generate HTTP/1.1" 200 OK
+[2026-07-29 10:20:42] The server is fired up and ready to roll!
+
+[SERVEKIT] Cold-start profile (framework=sglang)
+------------------------------------------------
+phase                         duration_s  source
+------------------------------------------------
+stage                               4.98  wall_clock
+process_startup                    14.68  wall_clock
+tp_worker_spawn                    15.18  wall_clock
+torch_distributed_init              7.35  engine_reported
+unknown                             1.27  wall_clock
+weight_loading                      5.80  engine_reported
+kv_cache_alloc                      0.57  wall_clock
+cuda_graph_capture                 19.52  engine_reported
+piecewise_cuda_graph_capture       46.04  engine_reported
+http_bind                           1.33  wall_clock
+warmup_request(JIT)                10.68  wall_clock
+------------------------------------------------
+total                             126.26  ready
+
+report written to /iopsstor/scratch/cscs/yboughizane/simple-serving-stack/experiments/servekit-fast-weight-load/phase-1-no-overlap/results/llama-3.1-70b/sharded-2922381-nid006119-launch.json
+[SERVEKIT] waiting up to 3000s for http://127.0.0.1:8080 to serve
+[SERVEKIT] benchmarking http://127.0.0.1:8080
+[SERVEKIT] freed 141.1 GB from /dev/shm/servekit/llama70b-tp4-sharded
+/usr/local/lib/python3.12/dist-packages/fastapi/routing.py:120: FastAPIDeprecationWarning: ORJSONResponse is deprecated, FastAPI now serializes data directly to JSON bytes via Pydantic when a return type or response model is set, which is faster and doesn't need a custom response class. Read more in the FastAPI docs: https://fastapi.tiangolo.com/advanced/custom-response/#orjson-or-response-model and https://fastapi.tiangolo.com/tutorial/response-model/
+  response = await f(request)
+[2026-07-29 10:20:43] INFO:     127.0.0.1:38892 - "GET /v1/models HTTP/1.1" 200 OK
+[2026-07-29 10:20:43 TP0] Prefill batch, #new-seq: 1, #new-token: 1, #cached-token: 1, token usage: 0.00, #running-req: 0, #queue-req: 0, cuda graph: True, input throughput (token/s): 14.02
+[2026-07-29 10:20:43] INFO:     127.0.0.1:38902 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:20:43 TP0] Prefill batch, #new-seq: 1, #new-token: 3, #cached-token: 3, token usage: 0.00, #running-req: 0, #queue-req: 0, cuda graph: True, input throughput (token/s): 27.97
+[2026-07-29 10:20:43 TP0] Decode batch, #running-req: 1, #token: 38, token usage: 0.00, cuda graph: True, gen throughput (token/s): 0.43, #queue-req: 0
+[2026-07-29 10:20:44] INFO:     127.0.0.1:38910 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:20:44 TP0] Prefill batch, #new-seq: 1, #new-token: 11, #cached-token: 1, token usage: 0.00, #running-req: 0, #queue-req: 0, cuda graph: True, input throughput (token/s): 3.36
+[2026-07-29 10:20:44 TP0] Decode batch, #running-req: 1, #token: 20, token usage: 0.00, cuda graph: True, gen throughput (token/s): 72.69, #queue-req: 0
+[2026-07-29 10:20:44 TP0] Decode batch, #running-req: 1, #token: 60, token usage: 0.00, cuda graph: True, gen throughput (token/s): 76.12, #queue-req: 0
+[2026-07-29 10:20:45] INFO:     127.0.0.1:38912 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:20:45 TP0] Prefill batch, #new-seq: 1, #new-token: 8, #cached-token: 1, token usage: 0.00, #running-req: 0, #queue-req: 0, cuda graph: True, input throughput (token/s): 12.76
+[2026-07-29 10:20:45 TP0] Decode batch, #running-req: 1, #token: 33, token usage: 0.00, cuda graph: True, gen throughput (token/s): 73.11, #queue-req: 0
+[2026-07-29 10:20:45 TP0] Decode batch, #running-req: 1, #token: 0, token usage: 0.00, cuda graph: True, gen throughput (token/s): 76.07, #queue-req: 0
+[2026-07-29 10:20:45] INFO:     127.0.0.1:38918 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:20:45 TP0] Prefill batch, #new-seq: 1, #new-token: 24, #cached-token: 1, token usage: 0.00, #running-req: 0, #queue-req: 0, cuda graph: True, input throughput (token/s): 9.27
+[2026-07-29 10:20:46 TP0] Decode batch, #running-req: 1, #token: 65, token usage: 0.00, cuda graph: True, gen throughput (token/s): 73.07, #queue-req: 0
+[2026-07-29 10:20:46] INFO:     127.0.0.1:38928 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:20:46 TP0] Prefill batch, #new-seq: 1, #new-token: 4, #cached-token: 1, token usage: 0.00, #running-req: 0, #queue-req: 0, cuda graph: True, input throughput (token/s): 27.86
+[2026-07-29 10:20:46 TP0] Decode batch, #running-req: 1, #token: 21, token usage: 0.00, cuda graph: True, gen throughput (token/s): 73.17, #queue-req: 0
+[2026-07-29 10:20:47 TP0] Decode batch, #running-req: 1, #token: 61, token usage: 0.00, cuda graph: True, gen throughput (token/s): 66.06, #queue-req: 0
+[2026-07-29 10:20:47] INFO:     127.0.0.1:38932 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:20:47 TP0] Prefill batch, #new-seq: 1, #new-token: 7, #cached-token: 2, token usage: 0.00, #running-req: 0, #queue-req: 0, cuda graph: True, input throughput (token/s): 4.25
+[2026-07-29 10:20:48 TP0] Decode batch, #running-req: 1, #token: 41, token usage: 0.00, cuda graph: True, gen throughput (token/s): 73.13, #queue-req: 0
+[2026-07-29 10:20:48] INFO:     127.0.0.1:38948 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:20:48 TP0] Prefill batch, #new-seq: 1, #new-token: 512, #cached-token: 1, token usage: 0.01, #running-req: 0, #queue-req: 0, cuda graph: True, input throughput (token/s): 6.74
+[2026-07-29 10:20:49 TP0] Prefill batch, #new-seq: 12, #new-token: 6144, #cached-token: 12, token usage: 0.01, #running-req: 1, #queue-req: 0, cuda graph: True, input throughput (token/s): 1367.15
+[2026-07-29 10:20:49 TP0] Prefill batch, #new-seq: 3, #new-token: 1536, #cached-token: 3, token usage: 0.01, #running-req: 13, #queue-req: 0, cuda graph: True, input throughput (token/s): 21523.37
+[2026-07-29 10:20:49 TP0] Decode batch, #running-req: 16, #token: 8316, token usage: 0.01, cuda graph: True, gen throughput (token/s): 104.33, #queue-req: 0
+[2026-07-29 10:20:50 TP0] Decode batch, #running-req: 16, #token: 8956, token usage: 0.01, cuda graph: True, gen throughput (token/s): 1042.84, #queue-req: 0
+[2026-07-29 10:20:50 TP0] Decode batch, #running-req: 16, #token: 9596, token usage: 0.02, cuda graph: True, gen throughput (token/s): 1106.40, #queue-req: 0
+[2026-07-29 10:20:51 TP0] Decode batch, #running-req: 16, #token: 0, token usage: 0.00, cuda graph: True, gen throughput (token/s): 1100.30, #queue-req: 0
+[2026-07-29 10:20:51] INFO:     127.0.0.1:58588 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:20:51] INFO:     127.0.0.1:58590 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:20:51] INFO:     127.0.0.1:58592 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:20:51] INFO:     127.0.0.1:58600 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:20:51] INFO:     127.0.0.1:58612 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:20:51] INFO:     127.0.0.1:58618 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:20:51] INFO:     127.0.0.1:58620 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:20:51] INFO:     127.0.0.1:58628 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:20:51] INFO:     127.0.0.1:58630 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:20:51] INFO:     127.0.0.1:58646 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:20:51] INFO:     127.0.0.1:58662 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:20:51] INFO:     127.0.0.1:58668 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:20:51] INFO:     127.0.0.1:58670 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:20:51] INFO:     127.0.0.1:58674 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:20:51] INFO:     127.0.0.1:58690 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:20:51] INFO:     127.0.0.1:58702 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:20:51 TP0] Prefill batch, #new-seq: 1, #new-token: 512, #cached-token: 1, token usage: 0.01, #running-req: 0, #queue-req: 0, cuda graph: True, input throughput (token/s): 720.68
+[2026-07-29 10:20:51 TP0] Prefill batch, #new-seq: 15, #new-token: 7679, #cached-token: 16, token usage: 0.01, #running-req: 1, #queue-req: 0, cuda graph: True, input throughput (token/s): 1288.52
+[2026-07-29 10:20:52 TP0] Decode batch, #running-req: 16, #token: 8832, token usage: 0.01, cuda graph: True, gen throughput (token/s): 525.57, #queue-req: 0
+[2026-07-29 10:20:53 TP0] Decode batch, #running-req: 16, #token: 9472, token usage: 0.02, cuda graph: True, gen throughput (token/s): 1107.41, #queue-req: 0
+[2026-07-29 10:20:53 TP0] Decode batch, #running-req: 16, #token: 10112, token usage: 0.02, cuda graph: True, gen throughput (token/s): 1106.40, #queue-req: 0
+[2026-07-29 10:20:53] INFO:     127.0.0.1:58718 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:20:53] INFO:     127.0.0.1:58750 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:20:53] INFO:     127.0.0.1:58766 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:20:53] INFO:     127.0.0.1:58734 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:20:53] INFO:     127.0.0.1:58780 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:20:53] INFO:     127.0.0.1:58784 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:20:53] INFO:     127.0.0.1:58788 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:20:53] INFO:     127.0.0.1:58790 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:20:53] INFO:     127.0.0.1:58804 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:20:53] INFO:     127.0.0.1:58816 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:20:53] INFO:     127.0.0.1:58826 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:20:53] INFO:     127.0.0.1:58836 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:20:53] INFO:     127.0.0.1:58838 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:20:53] INFO:     127.0.0.1:58850 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:20:53] INFO:     127.0.0.1:58856 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:20:53] INFO:     127.0.0.1:58864 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:20:54 TP0] Prefill batch, #new-seq: 2, #new-token: 1023, #cached-token: 3, token usage: 0.01, #running-req: 0, #queue-req: 0, cuda graph: True, input throughput (token/s): 3634.17
+[2026-07-29 10:20:54 TP0] Prefill batch, #new-seq: 14, #new-token: 7162, #cached-token: 21, token usage: 0.01, #running-req: 2, #queue-req: 0, cuda graph: True, input throughput (token/s): 2668.40
+[2026-07-29 10:20:54 TP0] Decode batch, #running-req: 16, #token: 8704, token usage: 0.01, cuda graph: True, gen throughput (token/s): 522.33, #queue-req: 0
+[2026-07-29 10:20:55 TP0] Decode batch, #running-req: 16, #token: 9344, token usage: 0.02, cuda graph: True, gen throughput (token/s): 1107.51, #queue-req: 0
+[2026-07-29 10:20:56 TP0] Decode batch, #running-req: 16, #token: 9984, token usage: 0.02, cuda graph: True, gen throughput (token/s): 1106.34, #queue-req: 0
+[2026-07-29 10:20:56] INFO:     127.0.0.1:58890 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:20:56] INFO:     127.0.0.1:58868 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:20:56] INFO:     127.0.0.1:58884 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:20:56] INFO:     127.0.0.1:58898 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:20:56] INFO:     127.0.0.1:58930 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:20:56] INFO:     127.0.0.1:58904 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:20:56] INFO:     127.0.0.1:58914 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:20:56] INFO:     127.0.0.1:58928 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:20:56] INFO:     127.0.0.1:58946 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:20:56] INFO:     127.0.0.1:58916 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:20:56] INFO:     127.0.0.1:58948 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:20:56] INFO:     127.0.0.1:58960 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:20:56] INFO:     127.0.0.1:58976 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:20:56] INFO:     127.0.0.1:58990 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:20:56] INFO:     127.0.0.1:59000 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:20:56] INFO:     127.0.0.1:59002 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:20:56 TP0] Prefill batch, #new-seq: 2, #new-token: 1022, #cached-token: 4, token usage: 0.01, #running-req: 0, #queue-req: 0, cuda graph: True, input throughput (token/s): 3388.64
+[2026-07-29 10:20:56 TP0] Prefill batch, #new-seq: 14, #new-token: 7160, #cached-token: 23, token usage: 0.01, #running-req: 2, #queue-req: 0, cuda graph: True, input throughput (token/s): 2672.05
+[2026-07-29 10:20:57 TP0] Decode batch, #running-req: 16, #token: 8576, token usage: 0.01, cuda graph: True, gen throughput (token/s): 522.89, #queue-req: 0
+[2026-07-29 10:20:57 TP0] Decode batch, #running-req: 16, #token: 9216, token usage: 0.02, cuda graph: True, gen throughput (token/s): 1087.29, #queue-req: 0
+[2026-07-29 10:20:58 TP0] Decode batch, #running-req: 16, #token: 9856, token usage: 0.02, cuda graph: True, gen throughput (token/s): 1106.98, #queue-req: 0
+[2026-07-29 10:20:58] INFO:     127.0.0.1:59012 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:20:58] INFO:     127.0.0.1:59014 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:20:58] INFO:     127.0.0.1:59036 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:20:58] INFO:     127.0.0.1:59024 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:20:58] INFO:     127.0.0.1:59042 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:20:58] INFO:     127.0.0.1:59046 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:20:58] INFO:     127.0.0.1:59038 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:20:58] INFO:     127.0.0.1:59062 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:20:58] INFO:     127.0.0.1:59064 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:20:58] INFO:     127.0.0.1:59066 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:20:58] INFO:     127.0.0.1:59068 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:20:58] INFO:     127.0.0.1:59080 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:20:58] INFO:     127.0.0.1:59086 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:20:58] INFO:     127.0.0.1:59094 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:20:58] INFO:     127.0.0.1:59108 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:20:58] INFO:     127.0.0.1:59116 - "POST /v1/completions HTTP/1.1" 200 OK
+
+[SERVEKIT] Benchmark of http://127.0.0.1:8080 (model=meta-llama/Llama-3.1-70B-Instruct)
+----------------------------------------
+ready_wait: 0.135 s (until the server served a request)
+correctness: 6 greedy prompts captured (compare outputs in report JSON)
+  'The capital of France is' -> 'a city of love, art, fashion, and cuisine. Paris is a mu'
+  'Explain in one sentence why the sk' -> 'The sky is blue because of a phenomenon called Rayleigh '
+throughput: 800.1 tok/s  (64/64 reqs, conc=16, in=512 out=128)
+latency_s: mean=2.559 p50=2.504 p99=2.744 max=2.744   errors=0
+
+benchmark merged into /iopsstor/scratch/cscs/yboughizane/simple-serving-stack/experiments/servekit-fast-weight-load/phase-1-no-overlap/results/llama-3.1-70b/sharded-2922381-nid006119-launch.json
+[SERVEKIT] benchmarking http://127.0.0.1:8080
+[2026-07-29 10:21:58] INFO:     127.0.0.1:39868 - "GET /v1/models HTTP/1.1" 200 OK
+[2026-07-29 10:21:58 TP0] Prefill batch, #new-seq: 1, #new-token: 1, #cached-token: 5, token usage: 0.00, #running-req: 0, #queue-req: 0, cuda graph: True, input throughput (token/s): 115.50
+[2026-07-29 10:21:59 TP0] Decode batch, #running-req: 1, #token: 22, token usage: 0.00, cuda graph: True, gen throughput (token/s): 6.84, #queue-req: 0
+[2026-07-29 10:21:59 TP0] Decode batch, #running-req: 1, #token: 62, token usage: 0.00, cuda graph: True, gen throughput (token/s): 76.10, #queue-req: 0
+[2026-07-29 10:21:59] INFO:     127.0.0.1:39872 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:21:59 TP0] Prefill batch, #new-seq: 1, #new-token: 1, #cached-token: 11, token usage: 0.00, #running-req: 0, #queue-req: 0, cuda graph: True, input throughput (token/s): 1.16
+[2026-07-29 10:22:00 TP0] Decode batch, #running-req: 1, #token: 44, token usage: 0.00, cuda graph: True, gen throughput (token/s): 73.22, #queue-req: 0
+[2026-07-29 10:22:00] INFO:     127.0.0.1:39884 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:22:00 TP0] Prefill batch, #new-seq: 1, #new-token: 1, #cached-token: 8, token usage: 0.00, #running-req: 0, #queue-req: 0, cuda graph: True, input throughput (token/s): 1.16
+[2026-07-29 10:22:00 TP0] Decode batch, #running-req: 1, #token: 17, token usage: 0.00, cuda graph: True, gen throughput (token/s): 73.17, #queue-req: 0
+[2026-07-29 10:22:01 TP0] Decode batch, #running-req: 1, #token: 57, token usage: 0.00, cuda graph: True, gen throughput (token/s): 76.13, #queue-req: 0
+[2026-07-29 10:22:01] INFO:     127.0.0.1:39896 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:22:01 TP0] Prefill batch, #new-seq: 1, #new-token: 1, #cached-token: 24, token usage: 0.00, #running-req: 0, #queue-req: 0, cuda graph: True, input throughput (token/s): 1.16
+[2026-07-29 10:22:01 TP0] Decode batch, #running-req: 1, #token: 49, token usage: 0.00, cuda graph: True, gen throughput (token/s): 73.08, #queue-req: 0
+[2026-07-29 10:22:02 TP0] Decode batch, #running-req: 1, #token: 0, token usage: 0.00, cuda graph: True, gen throughput (token/s): 76.03, #queue-req: 0
+[2026-07-29 10:22:02] INFO:     127.0.0.1:39906 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:22:02 TP0] Prefill batch, #new-seq: 1, #new-token: 1, #cached-token: 4, token usage: 0.00, #running-req: 0, #queue-req: 0, cuda graph: True, input throughput (token/s): 1.16
+[2026-07-29 10:22:02 TP0] Decode batch, #running-req: 1, #token: 45, token usage: 0.00, cuda graph: True, gen throughput (token/s): 73.21, #queue-req: 0
+[2026-07-29 10:22:03] INFO:     127.0.0.1:39908 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:22:03 TP0] Prefill batch, #new-seq: 1, #new-token: 1, #cached-token: 8, token usage: 0.00, #running-req: 0, #queue-req: 0, cuda graph: True, input throughput (token/s): 1.16
+[2026-07-29 10:22:03 TP0] Decode batch, #running-req: 1, #token: 25, token usage: 0.00, cuda graph: True, gen throughput (token/s): 73.14, #queue-req: 0
+[2026-07-29 10:22:03 TP0] Decode batch, #running-req: 1, #token: 65, token usage: 0.00, cuda graph: True, gen throughput (token/s): 76.08, #queue-req: 0
+[2026-07-29 10:22:04] INFO:     127.0.0.1:39918 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:22:04 TP0] Prefill batch, #new-seq: 1, #new-token: 1, #cached-token: 512, token usage: 0.01, #running-req: 0, #queue-req: 0, cuda graph: True, input throughput (token/s): 1.13
+[2026-07-29 10:22:04 TP0] Prefill batch, #new-seq: 11, #new-token: 11, #cached-token: 5632, token usage: 0.01, #running-req: 1, #queue-req: 0, cuda graph: True, input throughput (token/s): 39.61
+[2026-07-29 10:22:04 TP0] Prefill batch, #new-seq: 4, #new-token: 4, #cached-token: 2048, token usage: 0.01, #running-req: 12, #queue-req: 0, cuda graph: True, input throughput (token/s): 4104.89
+[2026-07-29 10:22:04 TP0] Decode batch, #running-req: 16, #token: 8700, token usage: 0.01, cuda graph: True, gen throughput (token/s): 791.51, #queue-req: 0
+[2026-07-29 10:22:05 TP0] Decode batch, #running-req: 16, #token: 9340, token usage: 0.02, cuda graph: True, gen throughput (token/s): 1106.76, #queue-req: 0
+[2026-07-29 10:22:05 TP0] Decode batch, #running-req: 16, #token: 9980, token usage: 0.02, cuda graph: True, gen throughput (token/s): 1105.74, #queue-req: 0
+[2026-07-29 10:22:05] INFO:     127.0.0.1:39924 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:22:05] INFO:     127.0.0.1:39934 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:22:05] INFO:     127.0.0.1:39942 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:22:05] INFO:     127.0.0.1:39958 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:22:05] INFO:     127.0.0.1:39966 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:22:05] INFO:     127.0.0.1:39974 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:22:05] INFO:     127.0.0.1:39982 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:22:05] INFO:     127.0.0.1:39998 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:22:05] INFO:     127.0.0.1:40006 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:22:05] INFO:     127.0.0.1:40022 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:22:05] INFO:     127.0.0.1:40030 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:22:05] INFO:     127.0.0.1:40034 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:22:05] INFO:     127.0.0.1:40042 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:22:05] INFO:     127.0.0.1:40044 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:22:05] INFO:     127.0.0.1:40050 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:22:05] INFO:     127.0.0.1:40062 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:22:06 TP0] Prefill batch, #new-seq: 1, #new-token: 1, #cached-token: 512, token usage: 0.01, #running-req: 0, #queue-req: 0, cuda graph: True, input throughput (token/s): 2.11
+[2026-07-29 10:22:06 TP0] Prefill batch, #new-seq: 13, #new-token: 13, #cached-token: 6656, token usage: 0.01, #running-req: 1, #queue-req: 0, cuda graph: True, input throughput (token/s): 38.80
+[2026-07-29 10:22:06 TP0] Prefill batch, #new-seq: 2, #new-token: 2, #cached-token: 1024, token usage: 0.01, #running-req: 14, #queue-req: 0, cuda graph: True, input throughput (token/s): 6033.08
+[2026-07-29 10:22:06 TP0] Decode batch, #running-req: 16, #token: 8576, token usage: 0.01, cuda graph: True, gen throughput (token/s): 982.08, #queue-req: 0
+[2026-07-29 10:22:06 TP0] Decode batch, #running-req: 16, #token: 9216, token usage: 0.02, cuda graph: True, gen throughput (token/s): 1106.83, #queue-req: 0
+[2026-07-29 10:22:07 TP0] Decode batch, #running-req: 16, #token: 9856, token usage: 0.02, cuda graph: True, gen throughput (token/s): 1105.81, #queue-req: 0
+[2026-07-29 10:22:07] INFO:     127.0.0.1:40144 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:22:07] INFO:     127.0.0.1:40128 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:22:07] INFO:     127.0.0.1:40088 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:22:07] INFO:     127.0.0.1:40072 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:22:07] INFO:     127.0.0.1:40102 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:22:07] INFO:     127.0.0.1:40092 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:22:07] INFO:     127.0.0.1:40114 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:22:07] INFO:     127.0.0.1:40160 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:22:07] INFO:     127.0.0.1:40176 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:22:07] INFO:     127.0.0.1:40190 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:22:07] INFO:     127.0.0.1:40196 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:22:07] INFO:     127.0.0.1:40206 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:22:07] INFO:     127.0.0.1:40218 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:22:07] INFO:     127.0.0.1:40224 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:22:07] INFO:     127.0.0.1:40228 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:22:07] INFO:     127.0.0.1:40240 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:22:07 TP0] Prefill batch, #new-seq: 2, #new-token: 2, #cached-token: 1024, token usage: 0.01, #running-req: 0, #queue-req: 0, cuda graph: True, input throughput (token/s): 1.05
+[2026-07-29 10:22:07 TP0] Prefill batch, #new-seq: 13, #new-token: 13, #cached-token: 6657, token usage: 0.01, #running-req: 2, #queue-req: 0, cuda graph: True, input throughput (token/s): 79.26
+[2026-07-29 10:22:07 TP0] Prefill batch, #new-seq: 1, #new-token: 1, #cached-token: 512, token usage: 0.01, #running-req: 15, #queue-req: 0, cuda graph: True, input throughput (token/s): 7018.42
+[2026-07-29 10:22:08 TP0] Decode batch, #running-req: 16, #token: 8448, token usage: 0.01, cuda graph: True, gen throughput (token/s): 982.48, #queue-req: 0
+[2026-07-29 10:22:08 TP0] Decode batch, #running-req: 16, #token: 9088, token usage: 0.02, cuda graph: True, gen throughput (token/s): 1106.91, #queue-req: 0
+[2026-07-29 10:22:09 TP0] Decode batch, #running-req: 16, #token: 9728, token usage: 0.02, cuda graph: True, gen throughput (token/s): 1105.94, #queue-req: 0
+[2026-07-29 10:22:09] INFO:     127.0.0.1:40248 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:22:09] INFO:     127.0.0.1:40316 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:22:09] INFO:     127.0.0.1:40302 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:22:09] INFO:     127.0.0.1:40264 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:22:09] INFO:     127.0.0.1:40280 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:22:09] INFO:     127.0.0.1:40294 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:22:09] INFO:     127.0.0.1:40300 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:22:09] INFO:     127.0.0.1:40330 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:22:09] INFO:     127.0.0.1:40338 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:22:09] INFO:     127.0.0.1:40352 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:22:09] INFO:     127.0.0.1:40364 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:22:09] INFO:     127.0.0.1:40370 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:22:09] INFO:     127.0.0.1:40384 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:22:09] INFO:     127.0.0.1:40390 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:22:09] INFO:     127.0.0.1:40404 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:22:09] INFO:     127.0.0.1:40410 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:22:09 TP0] Prefill batch, #new-seq: 2, #new-token: 2, #cached-token: 1024, token usage: 0.01, #running-req: 0, #queue-req: 0, cuda graph: True, input throughput (token/s): 0.53
+[2026-07-29 10:22:09 TP0] Prefill batch, #new-seq: 13, #new-token: 13, #cached-token: 6657, token usage: 0.01, #running-req: 2, #queue-req: 0, cuda graph: True, input throughput (token/s): 79.18
+[2026-07-29 10:22:09 TP0] Prefill batch, #new-seq: 1, #new-token: 1, #cached-token: 512, token usage: 0.01, #running-req: 15, #queue-req: 0, cuda graph: True, input throughput (token/s): 7138.79
+[2026-07-29 10:22:10 TP0] Decode batch, #running-req: 16, #token: 8320, token usage: 0.01, cuda graph: True, gen throughput (token/s): 980.67, #queue-req: 0
+[2026-07-29 10:22:10 TP0] Decode batch, #running-req: 16, #token: 8960, token usage: 0.01, cuda graph: True, gen throughput (token/s): 1107.24, #queue-req: 0
+[2026-07-29 10:22:11 TP0] Decode batch, #running-req: 16, #token: 9600, token usage: 0.02, cuda graph: True, gen throughput (token/s): 1106.10, #queue-req: 0
+[2026-07-29 10:22:11 TP0] Decode batch, #running-req: 16, #token: 0, token usage: 0.00, cuda graph: True, gen throughput (token/s): 1101.40, #queue-req: 0
+[2026-07-29 10:22:11] INFO:     127.0.0.1:48548 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:22:11] INFO:     127.0.0.1:48550 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:22:11] INFO:     127.0.0.1:48556 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:22:11] INFO:     127.0.0.1:48554 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:22:11] INFO:     127.0.0.1:48564 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:22:11] INFO:     127.0.0.1:48580 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:22:11] INFO:     127.0.0.1:48594 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:22:11] INFO:     127.0.0.1:48610 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:22:11] INFO:     127.0.0.1:48614 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:22:11] INFO:     127.0.0.1:48622 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:22:11] INFO:     127.0.0.1:48632 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:22:11] INFO:     127.0.0.1:48640 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:22:11] INFO:     127.0.0.1:48652 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:22:11] INFO:     127.0.0.1:48666 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:22:11] INFO:     127.0.0.1:48672 - "POST /v1/completions HTTP/1.1" 200 OK
+[2026-07-29 10:22:11] INFO:     127.0.0.1:48676 - "POST /v1/completions HTTP/1.1" 200 OK
+
+[SERVEKIT] Benchmark of http://127.0.0.1:8080 (model=meta-llama/Llama-3.1-70B-Instruct)
+----------------------------------------
+correctness: 6 greedy prompts captured (compare outputs in report JSON)
+  'The capital of France is' -> 'a city of love, art, fashion, and cuisine. Paris is a mu'
+  'Explain in one sentence why the sk' -> 'The sky is blue because of a phenomenon called Rayleigh '
+throughput: 1064.3 tok/s  (64/64 reqs, conc=16, in=512 out=128)
+latency_s: mean=1.923 p50=1.924 p99=1.927 max=1.927   errors=0
+
+bench report written to /iopsstor/scratch/cscs/yboughizane/simple-serving-stack/experiments/servekit-fast-weight-load/phase-1-no-overlap/results/llama-3.1-70b/sharded-2922381-nid006119-bench2.json
+--- staged copies still present ---
+nothing staged under /dev/shm/servekit
+Filesystem      Size  Used Avail Use% Mounted on
+tmpfs           334G  306M  334G   1% /dev/shm
+
+[SERVEKIT] got signal 15, terminating the server
+[2026-07-29 10:22:11] SIGTERM received. signum=None frame=None. Draining requests and shutting down...
+[2026-07-29 10:22:13] Gracefully exiting... Remaining number of requests 0. Remaining requests remaining_rids=[].
+
+=== result (servekit launch, sharded) ===
+  stage              =    4.98 s
+  weight_loading     =    5.80 s
+  TOTAL COLD START   =  126.26 s   (stage included)
+
+  vs clariden-loading-exp: default 586.33 s (wl 466.81), overlapped 127.06 s
+  speedup over default = 4.64x
+  cost of not overlapping = -0.80 s vs the overlapped run
+
+  throughput         = 800.1 tok/s, 64/64 ok, errors=0
+  throughput +60s    = 1064.3 tok/s, 64/64 ok, errors=0   (must not drop: nothing re-read after the free)
+
+  --- did the free return the RAM? (MemAvailable GB / shm used GB) ---
+  before stage   MemAvailable  802.9 GB   /dev/shm used    0.0 GB   (t-0s)
+  at ready       MemAvailable  286.5 GB   /dev/shm used  138.1 GB   (t+126s)
+  ready+60s      MemAvailable  422.1 GB   /dev/shm used    0.3 GB   (t+187s)
+  peak shm used 138.1 GB, min MemAvailable 285.7 GB
+finished=2026-07-29T10:22:14+02:00
