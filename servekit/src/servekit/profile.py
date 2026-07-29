@@ -210,7 +210,12 @@ def _process_stream(
 
     for line in lines:
         if echo:
+            # Flushed per line: our stdout is block-buffered when it is a file,
+            # so without this the engine's log reaches the job output in 8 KB
+            # bursts and is lost entirely if the wrapper is killed -- neither of
+            # which happens when the engine runs unwrapped.
             sys.stdout.write(line)
+            sys.stdout.flush()
         now = clock()
 
         if not phases:
