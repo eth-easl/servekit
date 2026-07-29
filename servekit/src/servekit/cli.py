@@ -8,18 +8,28 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 
 from .bench import BenchConfig, run_benchmark, render_bench
+from .launch import DEFAULT_ROOT, launch
 from .profile import ProfileReport, detect_framework, render_table, run_profile, save_json
+from .stage import DEFAULT_SLICES
 
 USAGE = """usage:
+  servekit launch [--out PATH] [--slices N] -- <command...>
   servekit profile [--out PATH] [--timeout SECONDS] -- <command...>
   servekit bench --url URL (--into PATH | --out PATH) [--wait-ready SECONDS] [...]
 
-`profile` launches a server and measures its cold start (SGLang or vLLM, picked
-from the command itself); `bench` loads any live server over the OpenAI
-protocol, whether or not servekit launched it. To do both, run them side by side
-and join them on the report file:
+`launch` wraps an engine command: it copies the model into /dev/shm, starts the
+engine against the copy, and frees the copy once the server reports ready --
+returning the RAM to the running job while it serves. It behaves like the
+command it wraps, so removing the wrapper gives the baseline back. `profile` is
+`launch` without the staging. `bench` loads any live server over the OpenAI
+protocol, whether or not servekit launched it.
 
-  servekit profile --out run.json -- python -m sglang.launch_server ... &
+  servekit launch -- python -m sglang.launch_server --model-path /store/llama70b-tp4 \\
+      --tensor-parallel-size 4 --load-format sharded_state
+
+To profile and bench one run, put them side by side and join on the report file:
+
+  servekit launch --out run.json -- python -m sglang.launch_server ... &
   PROF=$!
   servekit bench --url http://127.0.0.1:8080 --into run.json --requests 64
   kill $PROF; wait $PROF
@@ -45,7 +55,6 @@ def _profile(argv: List[str]) -> int:
         print("error: no command given after --", file=sys.stderr)
         return 2
 
-    # Fail before spawning anything.
     try:
         spec = detect_framework(command)
     except ValueError as e:
@@ -62,9 +71,8 @@ def _profile(argv: List[str]) -> int:
         save_json(report, out_path)
         print(f"\nreport written to {out_path}", flush=True)
 
-    # Written the moment the server reports ready, not when it exits, so a
-    # concurrent `servekit bench` can see it while the server is still up. A run
-    # that never gets ready never fires the callback, so we emit it ourselves.
+    # Fires the moment ready is detected, not at process exit, so a concurrent
+    # `servekit bench` can see the report while the server is still up.
     emitted = {"done": False}
 
     def emit_once(report: ProfileReport) -> None:
@@ -77,16 +85,39 @@ def _profile(argv: List[str]) -> int:
     return 0 if report.success else 1
 
 
+def _launch(argv: List[str]) -> int:
+    options, command = _split_command(argv)
+
+    parser = argparse.ArgumentParser(prog="servekit launch")
+    parser.add_argument("--out", type=Path, default=None)
+    parser.add_argument("--timeout", type=float, default=1800.0, help="seconds to wait for the ready signal")
+    parser.add_argument("--shm-root", type=Path, default=DEFAULT_ROOT)
+    parser.add_argument("--slices", type=int, default=DEFAULT_SLICES, help="concurrent read slices per file")
+    args = parser.parse_args(options)
+
+    if not command:
+        print("error: no command given after --", file=sys.stderr)
+        return 2
+
+    try:
+        return launch(
+            command,
+            out=args.out,
+            shm_root=args.shm_root,
+            slices=args.slices,
+            timeout=args.timeout,
+        )
+    except ValueError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 2
+
+
 def _wait_for_report(path: Path, timeout_s: float, interval_s: float = 0.5) -> bool:
     """Block until `profile` has written its report, or `timeout_s` elapses.
 
-    Sequences the two subcommands: an engine starts accepting traffic *before*
-    it announces itself, so a bench that probed purely over HTTP could start
-    loading the server while the profiler is still timing the warmup phase,
-    corrupting the cold-start measurement it runs alongside. Profile writes the
-    report the instant it detects ready, so its appearance is the signal that
-    the server is ours. Only used with --into; a standalone bench (a
-    CRIU-restored server, say) has no report to wait on.
+    An engine accepts traffic before it announces ready, so probing over HTTP
+    alone could start benching mid-warmup and corrupt the cold-start
+    measurement. The report's appearance is the ready signal instead.
     """
     t0 = time.time()
     while not path.exists():
@@ -99,10 +130,8 @@ def _wait_for_report(path: Path, timeout_s: float, interval_s: float = 0.5) -> b
 def _merge_into(path: Path, benchmark: dict) -> int:
     """Write `benchmark` into an existing profile report, in place.
 
-    The whole linking mechanism between the two subcommands: the report file is
-    the run identity, no run ids or IPC needed. If it's missing anyway (profile
-    crashed, wrong path), the benchmark is salvaged to a sibling file instead of
-    thrown away.
+    If the report is missing (profile crashed, wrong path), the benchmark is
+    salvaged to a sibling file instead of being thrown away.
     """
     if not path.exists():
         fallback = path.with_suffix(".bench.json")
@@ -183,10 +212,11 @@ def _bench(argv: List[str]) -> int:
 
 def main(argv: Optional[List[str]] = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
-    if not argv or argv[0] not in ("profile", "bench"):
+    commands = {"launch": _launch, "profile": _profile, "bench": _bench}
+    if not argv or argv[0] not in commands:
         print(USAGE, file=sys.stderr)
         return 2
-    return _profile(argv[1:]) if argv[0] == "profile" else _bench(argv[1:])
+    return commands[argv[0]](argv[1:])
 
 
 if __name__ == "__main__":

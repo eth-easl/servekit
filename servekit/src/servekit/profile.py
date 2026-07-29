@@ -33,6 +33,9 @@ class FrameworkSpec:
     # inside it -- otherwise it stays "unknown" rather than assumed.
     gap_hypotheses: List[tuple]
     command_markers: List["re.Pattern"]
+    # Flags whose value is the model directory, most-specific first. Empty means
+    # `servekit launch` cannot rewrite this engine's command (see engine_args).
+    model_flags: List[str] = field(default_factory=list)
 
 
 SGLANG = FrameworkSpec(
@@ -67,6 +70,7 @@ SGLANG = FrameworkSpec(
         ),
     ],
     command_markers=[re.compile(r"\bsglang\b")],
+    model_flags=["--model-path", "--model_path"],
 )
 
 # The ready boundary is NOT the same event as SGLang's: vLLM never self-issues a

@@ -1,7 +1,8 @@
 # servekit
 
 Plug-and-play optimization for LLM inference engines (SGLang, vLLM).
-First target: eliminating cold-start latency. Currently implemented: `profile`, `bench`.
+First target: eliminating cold-start latency. Currently implemented: `launch`,
+`profile`, `bench`.
 
 ## Setup
 
@@ -11,12 +12,62 @@ pip install -e .
 
 ## Usage
 
+### `servekit launch`
+
+```bash
+servekit launch -- python -m sglang.launch_server --model-path <model> ...
+```
+
+Prepend `servekit launch --` to an engine command and the model is copied into
+`/dev/shm` first, the engine is started against the copy, and the copy is freed
+the moment the server reports ready. `launch` behaves like the command it wraps
+— same stdout, SIGTERM/SIGINT forwarded, child's exit code — so removing the
+wrapper is how you get the baseline back.
+
+The free is not tidying up: the weights are on the GPU by then, and the point is
+to hand the RAM back to the job that is now serving, so the node can use it for
+its own work (KV cache offloading and the like). For all but the first couple of
+minutes of a job that may serve for hours, the node looks as if servekit was
+never involved.
+
+- `--out PATH` — JSON report path (default: `servekit-launch-<timestamp>.json`)
+- `--timeout SECONDS` — max wait for ready signal (default: 1800)
+- `--shm-root PATH` — where copies go (default: `/dev/shm/servekit`)
+- `--slices N` — concurrent read slices per file (default: 64)
+
+The report is the `profile` report plus a leading `stage` phase, so the copy is
+visible in the phase table rather than hidden in the total.
+
+Nothing else about the command is rewritten: `--load-format` and every other
+flag pass through untouched. To load a TP-presharded checkpoint, produce it with
+`experiments/clariden-loading-exp/scripts/shared/save_sharded_state_fixed.py`
+and pass `--load-format sharded_state` yourself.
+
+Known limits, all deliberate for now:
+
+- **SGLang only.** vLLM staging is unmeasured, so `launch` refuses it rather
+  than guessing at its argv; use `servekit profile` there.
+- **Not overlapped.** The stage finishes before the engine starts, which costs
+  its wall time (~8.8 s for a 141 GB model on Clariden) but means a
+  partially-written file can never be read.
+- **Freeing is `unlink`**, and tmpfs pages return only once nothing maps them.
+  With `sharded_state` the loader reads into GPU memory and closes the files, so
+  the RAM comes back at once; with the default mmap loader the engine may still
+  hold mappings at ready time.
+- **A server that never reaches ready leaves the copy behind** — no automatic
+  recovery, and `rm -r /dev/shm/servekit/<name>` is the hatch. A server that
+  never got ready is not serving, so there is no workload waiting on that RAM;
+  guessing that the engine has let go of the files would risk pulling them out
+  from under it for no gain.
+
 ### `servekit profile`
 
 ```bash
 servekit profile -- python -m sglang.launch_server --model-path <model> ...
 servekit profile -- vllm serve <model> --tensor-parallel-size 4 ...
 ```
+
+`launch` without the staging: measures the cold start and changes nothing.
 
 - `--out PATH` — JSON report path (default: `servekit-profile-<timestamp>.json`)
 - `--timeout SECONDS` — max wait for ready signal (default: 1800)
