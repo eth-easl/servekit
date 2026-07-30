@@ -1,7 +1,7 @@
-# Servekit
+# Servekit 🧊 → 🔥
 
-Servekit is a kit of optimizations for serving large language models (LLMs) with minimal cold-start latency. It wraps sglang calls and implements some optimizations. 
-Currently, it support fast weight loading. 
+Servekit is a kit of optimizations for serving large language models (LLMs) with minimal cold-start latency 🥶. It wraps sglang calls and implements some optimizations. 
+Currently, it support fast weight loading ⚡. 
 
 
 ## Setup
@@ -42,10 +42,10 @@ servekit bench --url http://127.0.0.1:8080 --out bench.json --wait-ready 300
 Runs a correctness check (greedy completions on fixed prompts) and a fixed
 concurrent throughput workload against `POST /v1/completions`. 
 
-### Roadmap
-[ ] Support Pipleine parallelism
-[ ] Support Multi-Node fast weight loading
-[ ] Support vllm fast weight loading
+### Roadmap 👷‍♂️🚧
+- [ ] Support Pipleine parallelism
+- [ ] Support Multi-Node fast weight loading
+- [ ] Support vllm fast weight loading
 
 ## Tests
 
