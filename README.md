@@ -43,7 +43,7 @@ Runs a correctness check (greedy completions on fixed prompts) and a fixed
 concurrent throughput workload against `POST /v1/completions`. 
 
 ### Roadmap 👷‍♂️🚧
-- [ ] Support Pipleine parallelism
+- [ ] Support Pipeline parallelism
 - [ ] Support Multi-Node fast weight loading
 - [ ] Support vllm fast weight loading
 
