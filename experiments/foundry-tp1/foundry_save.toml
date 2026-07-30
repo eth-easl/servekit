@@ -1,7 +1,0 @@
-# Foundry SAVE config. Differs from foundry_load.toml only in `mode`.
-# Values are the upstream recipe defaults (recipe/sglang/foundry_save.toml).
-mode = "save"
-base_addr = 0x600000000000
-region_size = "256GB"
-workspace_root = "/iopsstor/scratch/cscs/yboughizane/simple-serving-stack/experiments/foundry-tp1/results/foundry_archive_apertus8b_dp4"
-scratch_space_size = "1024MB"

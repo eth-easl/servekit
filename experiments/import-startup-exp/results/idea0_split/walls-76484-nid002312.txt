@@ -1,3 +1,0 @@
-A wall_s=26.207 pyc_after=117
-B wall_s=8.903 pyc_after=117
-C wall_s=8.986 pyc_after=0

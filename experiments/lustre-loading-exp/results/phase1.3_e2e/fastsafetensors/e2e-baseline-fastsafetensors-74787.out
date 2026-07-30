@@ -1,8 +1,0 @@
-job=74787 node=nid002280 tag=fastsafetensors model=/capstor/store/cscs/swissai/infra01/hf_models/models/meta-llama/Llama-3.1-70B-Instruct
-profile_out=/iopsstor/scratch/cscs/yboughizane/simple-serving-stack/lustre-loading-exp/results/phase1.3_e2e/fastsafetensors/phase1_3_e2e-fastsafetensors-74787-nid002280-profile.json
-started=2026-07-14T14:36:27+02:00
-[SERVEKIT] profiling cold start of: python -m sglang.launch_server --model-path /capstor/store/cscs/swissai/infra01/hf_models/models/meta-llama/Llama-3.1-70B-Instruct --host 0.0.0.0 --port 8080 --served-model-name meta-llama/Llama-3.1-70B-Instruct --tensor-parallel-size 4 --trust-remote-code --context-length 32768 --mem-fraction-static 0.85 --max-running-requests 256 --load-format fastsafetensors --enable-metrics
-[SERVEKIT] will benchmark http://127.0.0.1:8080 after ready
-srun: Job step aborted: Waiting up to 32 seconds for job step to finish.
-[2026-07-14T14:36:40.758] error: *** STEP 74787.0 ON nid002280 CANCELLED AT 2026-07-14T14:36:40 DUE to SIGNAL Terminated ***
-[2026-07-14T14:36:40.759] error: *** JOB 74787 ON nid002280 CANCELLED AT 2026-07-14T14:36:40 DUE to SIGNAL Terminated ***

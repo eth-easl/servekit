@@ -2,42 +2,11 @@
 # against the pinned sglang SHA (own .git, not vendored into this repo)
 sglang/
 
-# Local agent / tooling state (logs, session, HUD, metrics)
-.omx/
 
 # Coding-agent harness state (skills, worktrees, session data)
 .agents/
 .claude/
 
-# Personal scratch deployment configs (user-suffixed)
-deploy/*-xzyao/
-
-# Personal scratch / debug-bisect scripts under snapshot/recipe/.
-# NOTE: a blanket `snapshot/recipe/_*` is NOT safe here — the underscore prefix is
-# also the project's convention for recipe *helpers* invoked by the .sbatch entry
-# points (e.g. _vllm_record.sh, _build_cuda_so.sh) and for scripts cited in
-# RESULTS.md. So we ignore only specific orphan scratch files (kept on disk locally).
-snapshot/recipe/_build7.sbatch
-snapshot/recipe/_cg_smoke.py
-snapshot/recipe/_cg_smoke2.py
-snapshot/recipe/_m3i_submit.sh
-snapshot/recipe/_m3k_rerecord_cs124.sh
-snapshot/recipe/_m3k_restore_cs12.sh
-snapshot/recipe/_m3k_restore_diag.sh
-snapshot/recipe/_m3k_restore_pw_ctrl.sh
-snapshot/recipe/_m3k_restore_shimpw.sh
-snapshot/recipe/_measure_coldstart.sh
-snapshot/recipe/_probe/diag_nccl_fatbin.py
-snapshot/recipe/_probe/run_register_fatbin.py
-snapshot/recipe/_probe/scan_nccl_fatbin.py
-snapshot/recipe/_probe/test_nccl_getfuncbySymbol.cpp
-snapshot/recipe/_probe_aot.sh
-snapshot/recipe/_probe_cache.sh
-snapshot/recipe/_probe_envhash.sh
-snapshot/recipe/_probe_inductor.sh
-snapshot/recipe/_redirect_demo.sh
-snapshot/recipe/_snap_parse.py
-snapshot/recipe/_torch_redirect_test.sh
 
 # Python caches
 __pycache__/
@@ -54,12 +23,6 @@ snapshot/build/
 # Compiled shared objects (built artifacts, e.g. libsnapshot_*.so)
 *.so
 
-# Recorder / redirect / measurement output dirs (written on the cluster)
-snapshot/record-synthetic/
-snapshot/record-vllm/
-snapshot/redirect-vllm/
-snapshot/alloc-determinism/
-snapshot/measure-init/
 
 # Logs and Slurm output
 *.log

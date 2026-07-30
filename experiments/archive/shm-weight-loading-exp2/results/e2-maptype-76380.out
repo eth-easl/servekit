@@ -1,7 +1,0 @@
-=== what makes registration slow: page size, or the mapping itself? ===
-maptype/anon_priv readonly=0   reg GB/s 12.21 12.20 12.00 12.18   s  0.70  0.70  0.72  0.71   page=4 kB   (8.6 GB/rank)
-maptype/anon_shared readonly=0 reg GB/s 13.63 13.34 13.54 13.66   s  0.63  0.64  0.63  0.63   page=4 kB   (8.6 GB/rank)
-maptype/memfd readonly=0       reg GB/s 12.72 12.84 12.81 12.48   s  0.68  0.67  0.67  0.69   page=4 kB   (8.6 GB/rank)
-maptype/shm_shared readonly=0  reg GB/s  9.65  9.65  5.58  9.21   s  0.55  0.55  0.95  0.58   page=4 kB   (5.3 GB/rank)
-maptype/shm_priv readonly=0    FAILED: cudaHostRegister rc=1 flags=0
-reference: anon 4K 13.28 GB/s vs /dev/shm 4K 3.57 GB/s (job 76379)

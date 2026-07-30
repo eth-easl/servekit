@@ -1,2 +1,0 @@
-staging(sliced): /capstor/store/cscs/swissai/infra01/cold-start-experiments/llama70b-tp4-sharded -> /dev/shm/llama70b (files=38, slices/file=64, bs=16M, direct read, buffered write)
-staged_files=38 staged_bytes=141124812955 slices=64 read_mode=direct readers=1714 stage_wall_s=11.89 stage_GBps=11.87

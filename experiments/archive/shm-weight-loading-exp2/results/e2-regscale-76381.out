@@ -1,7 +1,0 @@
-=== registration rate vs total bytes registered (4 ranks, real shards) ===
-shards/4k n=1 readonly=0       reg GB/s  3.49  3.58  2.67  3.55   s  1.52  1.48  1.99  1.49   page=-   (5.3 GB/rank)
-shards/4k n=2 readonly=0       reg GB/s  3.45  2.85  3.56  3.59   s  3.03  3.67  2.93  2.91   page=-   (10.4 GB/rank)
-shards/4k n=3 readonly=0       reg GB/s  3.46  3.48  3.37  3.07   s  4.50  4.48  4.62  5.08   page=-   (15.6 GB/rank)
-shards/4k n=4 readonly=0       reg GB/s  3.54  3.55  2.99  3.55   s  5.85  5.83  6.94  5.83   page=-   (20.7 GB/rank)
-shards/4k n=5 readonly=0       reg GB/s  3.18  3.54  3.56  3.56   s  8.13  7.29  7.26  7.27   page=-   (25.8 GB/rank)
-shards/4k n=7 readonly=0       reg GB/s  3.50  3.55  3.54  3.32   s 10.07  9.95  9.96 10.62   page=-   (35.3 GB/rank)
