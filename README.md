@@ -1,7 +1,7 @@
 # Servekit 🧊 → 🔥
 
-Servekit is a kit of optimizations for serving large language models (LLMs) with minimal cold-start latency 🥶. It wraps sglang calls and implements some optimizations. 
-Currently, it support fast weight loading ⚡. 
+Servekit is a kit of optimizations for serving large language models (LLMs) with minimal cold-start latency 🥶. It wraps sglang calls and implements some optimizations.
+Currently, it supports fast weight loading ⚡.
 
 
 ## Setup
