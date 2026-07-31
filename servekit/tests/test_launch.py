@@ -1,4 +1,4 @@
-"""Tests for `servekit launch`: the argv rewrite, the vendored stager, and the free."""
+"""Tests for `servekit launch`: the argv rewrite, the vendored stager, and the free()."""
 import filecmp
 import json
 import os
