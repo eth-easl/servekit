@@ -42,7 +42,18 @@ SRC="${1:?src model dir}"; DEST="${2:?dest dir, e.g. /dev/shm/llama70b}"
 SLICES="${3:-64}"
 BS="${4:-16M}"
 READ_MODE="${5:-${READ_MODE:-direct}}"
-BS_BYTES=$(( $(echo "$BS" | sed 's/M$//') * 1024 * 1024 ))
+# BS_BYTES must agree with the block size dd is actually handed, since the slice
+# tiling below counts in blocks. Accept dd's binary suffixes (K/M/G) and a bare
+# byte count; anything else (KB=1000, block lists, `x` products) would silently
+# tile against the wrong unit, so reject it instead of guessing.
+case "$BS" in
+  *[0-9])   BS_BYTES=$(( BS )) ;;
+  *[kK])    BS_BYTES=$(( ${BS%?} * 1024 )) ;;
+  *[mM])    BS_BYTES=$(( ${BS%?} * 1024 * 1024 )) ;;
+  *[gG])    BS_BYTES=$(( ${BS%?} * 1024 * 1024 * 1024 )) ;;
+  *) echo "bs must be a byte count with an optional K/M/G suffix, got: $BS" >&2; exit 1 ;;
+esac
+(( BS_BYTES > 0 )) || { echo "bs must be positive, got: $BS" >&2; exit 1; }
 
 # Kept as a plain string, not an array: stage_slice runs under `xargs bash -c`
 # and only environment strings survive that boundary.

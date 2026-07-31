@@ -18,8 +18,8 @@ pip install -e .
 servekit launch -- python -m sglang.launch_server --model-path <model> ...
 ```
 
-Prepend `servekit launch --` to an engine command to enable servekit's optimizations. Curenntly, we offer:
-* Fast weight loading: loads the weights in a multiprcessing fashion adapted to networks storage like Lustre drives (e.g CSCS `captstor` and `iopstore`) to RAM (`/dev/shm`) and then to GPU memory.
+Prepend `servekit launch --` to an engine command to enable servekit's optimizations. Currently, we offer:
+* Fast weight loading: loads the weights in a multiprocessing fashion adapted to network storage like Lustre drives (e.g. CSCS `capstor` and `iopsstor`) to RAM (`/dev/shm`) and then to GPU memory.
 
 
 ### `servekit profile`

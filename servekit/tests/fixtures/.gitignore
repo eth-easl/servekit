@@ -1,0 +1,2 @@
+# Fixtures are logs; the repo-wide *.log ignore must not swallow them.
+!*.log
