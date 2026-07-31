@@ -6,6 +6,14 @@ Currently, it supports fast weight loading ⚡.
 
 ## Setup
 
+Install directly from GitHub:
+
+```bash
+pip install "git+https://github.com/eth-easl/servekit.git#subdirectory=servekit"
+```
+
+Or, for local development (editable install, from this directory):
+
 ```bash
 pip install -e .
 ```

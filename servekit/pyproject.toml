@@ -2,7 +2,11 @@
 name = "servekit"
 version = "0.1.0"
 description = "Plug-and-play cold-start profiling and optimization for LLM inference engines"
+readme = "../README.md"
 requires-python = ">=3.9"
+
+[project.urls]
+Repository = "https://github.com/eth-easl/servekit"
 
 [project.scripts]
 servekit = "servekit.cli:main"
