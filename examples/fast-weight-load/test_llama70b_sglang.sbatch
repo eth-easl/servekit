@@ -1,0 +1,74 @@
+#!/bin/bash
+#SBATCH --job-name=fast-weight-load-llama70b
+#SBATCH --partition=debug
+#SBATCH --account=a-infra02
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=1
+#SBATCH --cpus-per-task=288
+#SBATCH --gpus-per-node=4
+#SBATCH --exclusive
+#SBATCH --time=00:30:00
+#SBATCH --output=logs/%x-%j.out
+
+set -euo pipefail
+
+EDF="${SLURM_SUBMIT_DIR}/llama-3.1-70b-sglang.toml"
+SHARDED_SRC="${SHARDED_SRC:-/capstor/store/cscs/swissai/infra01/cold-start-experiments/llama70b-tp4-sharded}"
+SERVED_MODEL_NAME=meta-llama/Llama-3.1-70B-Instruct
+
+SERVEKIT_DIR="${SLURM_SUBMIT_DIR}/../../servekit"
+OUT="${SLURM_SUBMIT_DIR}/logs/${SLURM_JOB_NAME}-${SLURM_JOB_ID}.json"
+
+INNER_CMD=$(cat <<EOF
+set -euo pipefail
+pip install -e "${SERVEKIT_DIR}" --no-build-isolation --no-deps -q
+
+servekit launch --out "${OUT}" --overlap --timeout 3000 \
+  -- \
+  python -m sglang.launch_server \
+    --model-path "${SHARDED_SRC}" \
+    --load-format sharded_state \
+    --host 0.0.0.0 \
+    --port 8080 \
+    --served-model-name "${SERVED_MODEL_NAME}" \
+    --tensor-parallel-size 4 \
+    --trust-remote-code \
+    --context-length 32768 \
+    --mem-fraction-static 0.85 \
+    --max-running-requests 256 \
+    --enable-metrics &
+LAUNCH_PID=\$!
+
+servekit bench --url "http://127.0.0.1:8080" --into "${OUT}" \
+  --wait-ready 3000 --requests 64 --concurrency 16 --input-len 512 --output-len 128
+
+kill \${LAUNCH_PID} 2>/dev/null || true
+wait \${LAUNCH_PID} 2>/dev/null || true
+EOF
+)
+
+srun \
+  --nodes=1 \
+  --ntasks=1 \
+  --ntasks-per-node=1 \
+  --cpus-per-task="${SLURM_CPUS_PER_TASK}" \
+  --gpus-per-task=4 \
+  --environment="${EDF}" \
+  bash -c "${INNER_CMD}"
+
+python3 - "${OUT}" <<'EOF'
+import json, sys
+r = json.load(open(sys.argv[1]))
+weight_loading = next(p["duration_s"] for p in r["phases"] if p["name"] == "weight_loading")
+total = r["total_duration_s"]
+bench = r["benchmark"]
+
+assert r["success"], "server never reported ready"
+assert weight_loading < 30, f"weight_loading {weight_loading}s, expected fast-path < 30s (mmap baseline: ~467s)"
+assert total < 250, f"total {total}s, expected fast-path < 250s (mmap baseline: ~586s)"
+assert not bench["errors"], f"bench-level errors: {bench['errors']}"
+assert bench["throughput"]["errors"] == 0, f"{bench['throughput']['errors']} failed requests"
+assert all(res["output"] for res in bench["correctness"]["results"]), "empty completion in correctness probe"
+
+print(f"PASS: weight_loading={weight_loading}s total={total}s bench_errors={bench['throughput']['errors']}")
+EOF

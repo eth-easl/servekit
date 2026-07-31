@@ -1,0 +1,31 @@
+# SGLang EDF for Apertus-8B-Instruct-2509 on bristen (A100/sm_80).
+# Source image tag matches the sml reference in swiss-ai/model-launch:
+#   examples/bristen/cli/swiss-ai/Apertus-8B-Instruct-2509-sglang.sh
+# Pin by digest before production use:
+#   docker manifest inspect lmsysorg/sglang:v0.5.10 | jq -r '.config.digest'
+image = "lmsysorg/sglang:v0.5.10"
+
+mounts = [
+  "/capstor:/capstor",
+  "/iopsstor:/iopsstor",
+]
+
+workdir = "/iopsstor/scratch/cscs/yboughizane/apertus-8b-sglang"
+
+[env]
+# Container-local HOME: caches (HF/Triton/pip/XDG) fall back under here and
+# live in the container's ephemeral overlay, so every srun is a genuine cold
+# start with no shared-storage cache to wipe between runs.
+HOME = "/root"
+NCCL_DEBUG = "WARN"
+# Isolate from any user venvs on /users that could shadow the image's packages.
+PYTHONPATH = ""
+PYTHONNOUSERSITE = "1"
+HF_HUB_OFFLINE = "1"
+TRANSFORMERS_OFFLINE = "1"
+TOKENIZERS_PARALLELISM = "false"
+
+[annotations]
+com.pyxis.entrypoint_log = "true"
+com.hooks.aws_ofi_nccl.enabled = "true"
+com.hooks.aws_ofi_nccl.variant = "cuda12"

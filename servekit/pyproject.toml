@@ -1,0 +1,18 @@
+[project]
+name = "servekit"
+version = "0.1.0"
+description = "Plug-and-play cold-start profiling and optimization for LLM inference engines"
+requires-python = ">=3.9"
+
+[project.scripts]
+servekit = "servekit.cli:main"
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+servekit = ["_stage/*.sh", "_prepare/*.py"]

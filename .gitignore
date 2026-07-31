@@ -1,0 +1,42 @@
+# Scratch clone used by patch_sglang_in_container.sh to diff/derive patches
+# against the pinned sglang SHA (own .git, not vendored into this repo)
+sglang/
+
+
+# Coding-agent harness state (skills, worktrees, session data)
+.agents/
+.claude/
+
+
+# Python caches
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# C++ build output
+snapshot/build/
+*.o
+*.a
+
+# Compiled shared objects (built artifacts, e.g. libsnapshot_*.so)
+*.so
+
+
+# Logs and Slurm output
+*.log
+slurm-*.out
+logs/
+
+# Secrets / environment
+.env
+.env.*
+
+# Editor / OS
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store

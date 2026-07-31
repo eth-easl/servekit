@@ -1,0 +1,27 @@
+# Alternative image: NVIDIA's own vLLM container, built and validated for
+# Grace-Hopper. Used because the upstream vllm/vllm-openai:v0.25.0 arm64 build
+# cannot complete CUDA graph capture on GH200 -- a bf16 cublasGemmEx returns
+# CUBLAS_STATUS_EXECUTION_FAILED during the pre-capture warmup (jobs 2917848,
+# 2917951). arm64 digest: sha256:1de8e6bfdb4c81c1f
+image = "nvcr.io#nvidia/vllm:26.07-py3"
+
+mounts = [
+  "/capstor:/capstor",
+  "/iopsstor:/iopsstor",
+]
+
+workdir = "/iopsstor/scratch/cscs/yboughizane/simple-serving-stack"
+
+[env]
+HOME = "/root"
+NCCL_DEBUG = "WARN"
+PYTHONPATH = ""
+PYTHONNOUSERSITE = "1"
+HF_HUB_OFFLINE = "1"
+TRANSFORMERS_OFFLINE = "1"
+TOKENIZERS_PARALLELISM = "false"
+
+[annotations]
+com.pyxis.entrypoint_log = "true"
+com.hooks.aws_ofi_nccl.enabled = "true"
+com.hooks.aws_ofi_nccl.variant = "cuda12"
