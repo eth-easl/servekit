@@ -17,7 +17,7 @@ MODEL=/capstor/store/cscs/swissai/infra01/hf_models/models/meta-llama/Llama-3.1-
 SERVED_MODEL_NAME=meta-llama/Llama-3.1-70B-Instruct
 
 # ServerKit directory
-SERVEKIT_DIR="${SLURM_SUBMIT_DIR}/servekit"
+SERVEKIT_DIR="${SLURM_SUBMIT_DIR}/.."
 PROFILE_OUT="${SLURM_SUBMIT_DIR}/logs/${SLURM_JOB_NAME}-${SLURM_JOB_ID}-profile.json"
 
 

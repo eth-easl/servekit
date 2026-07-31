@@ -9,7 +9,7 @@ Currently, it supports fast weight loading ⚡.
 Install directly from GitHub:
 
 ```bash
-pip install "git+https://github.com/eth-easl/servekit.git#subdirectory=servekit"
+pip install git+https://github.com/eth-easl/servekit.git
 ```
 
 Or, for local development (editable install, from this directory):

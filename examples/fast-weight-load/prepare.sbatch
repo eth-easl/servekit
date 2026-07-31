@@ -23,7 +23,7 @@ OUT="${OUT:-/capstor/store/cscs/swissai/infra01/cold-start-experiments/llama70b-
 TP="${TP:-4}"
 
 EDF="${SLURM_SUBMIT_DIR}/llama-3.1-70b-sglang.toml"
-SERVEKIT_DIR="${SLURM_SUBMIT_DIR}/../../servekit"
+SERVEKIT_DIR="${SLURM_SUBMIT_DIR}/../.."
 
 echo "job=${SLURM_JOB_ID} node=$(hostname)"
 echo "model=${MODEL}"

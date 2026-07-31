@@ -16,7 +16,7 @@ EDF="${SLURM_SUBMIT_DIR}/profile/apertus-8b-bristen/apertus-8b-sglang.toml"
 MODEL=/capstor/store/cscs/swissai/infra01/hf_models/models/swiss-ai/Apertus-8B-Instruct-2509
 SERVED_MODEL_NAME=swiss-ai/Apertus-8B-Instruct-2509
 # ServerKit directory
-SERVEKIT_DIR="${SLURM_SUBMIT_DIR}/servekit"
+SERVEKIT_DIR="${SLURM_SUBMIT_DIR}/.."
 PROFILE_OUT="${SLURM_SUBMIT_DIR}/logs/${SLURM_JOB_NAME}-${SLURM_JOB_ID}-profile.json"
 
 INNER_CMD=$(cat <<EOF

@@ -15,7 +15,7 @@ EDF="${VLLM_EDF:-${SLURM_SUBMIT_DIR}/profile/llama-3.1-70b-clariden-vllm/llama-3
 MODEL=/capstor/store/cscs/swissai/infra01/hf_models/models/meta-llama/Llama-3.1-70B-Instruct
 SERVED_MODEL_NAME=meta-llama/Llama-3.1-70B-Instruct
 
-SERVEKIT_DIR="${SLURM_SUBMIT_DIR}/servekit"
+SERVEKIT_DIR="${SLURM_SUBMIT_DIR}/.."
 PROFILE_OUT="${SLURM_SUBMIT_DIR}/logs/${SLURM_JOB_NAME}-${SLURM_JOB_ID}-${NODE}-profile.json"
 
 
