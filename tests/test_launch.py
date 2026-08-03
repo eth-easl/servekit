@@ -164,10 +164,36 @@ open(sys.argv[0] + ".cfg", "w").write(open(cfg).read() if os.path.exists(cfg) el
 # real engine's ~40 s of import/TP-spawn/NCCL init does.
 if "--slow-start" in args:
     time.sleep(float(args[args.index("--slow-start") + 1]))
-print("Init torch distributed ends. elapsed=1.00 s", flush=True)
-print("Load weight end. elapsed=2.00 s", flush=True)
+
+def flag(name, default=None):
+    return args[args.index(name) + 1] if name in args else default
+
+# With --tp-size, every local rank speaks for itself, the way a real TP log
+# does. Ranks 4-7 on node 1 of a TP=8 world, not 0-3.
+tp = int(flag("--tp-size", 0))
+node_rank = int(flag("--node-rank", 0))
+if tp:
+    per = tp // int(flag("--nnodes", 1))
+    ranks = list(range(node_rank * per, node_rank * per + per))
+    open(sys.argv[0] + ".ls%d" % node_rank, "w").write("\\n".join(sorted(os.listdir(model))))
+    for r in ranks:
+        print("[2026-01-01 00:00:00 TP%d] Init torch distributed ends. elapsed=1.00 s" % r, flush=True)
+    for r in ranks:
+        print("[2026-01-01 00:00:00 TP%d] Load weight end. elapsed=%.2f s" % (r, 2.0 + r), flush=True)
+    for r in ranks:
+        print("[2026-01-01 00:00:00 TP%d] Capture cuda graph end. Time elapsed: 5.00 s." % r, flush=True)
+    # SGLang reads the tokenizer out of the model directory here, after capture.
+    time.sleep(1.0)
+    probe = sys.argv[0] + ".late-read%d" % node_rank
+    open(probe, "w").write(str(os.path.exists(os.path.join(model, "config.json"))))
+else:
+    print("Init torch distributed ends. elapsed=1.00 s", flush=True)
+    print("Load weight end. elapsed=2.00 s", flush=True)
 if "--never-ready" not in args:
-    print("The server is fired up and ready to roll!", flush=True)
+    if node_rank == 0:
+        print("The server is fired up and ready to roll!", flush=True)
+    else:
+        print("Dummy health check server started in background thread at 0.0.0.0:8080", flush=True)
 time.sleep(0.3)
 '''
 
@@ -281,3 +307,106 @@ def test_a_run_that_never_reaches_ready_leaves_the_copy_intact(odirect_tmpdir):
     assert rc == 1
     assert dest.is_dir()
     assert not json.loads((odirect_tmpdir / "run.json").read_text())["success"]
+
+
+# --- multi-node ------------------------------------------------------------
+
+def _presharded_model(tmpdir, tp=8):
+    """A TP-presharded checkpoint: one file set per rank, plus shared metadata."""
+    src = tmpdir / "llama70b-tp8"
+    src.mkdir()
+    (src / "config.json").write_text("{}")
+    (src / "tokenizer.json").write_text("{}")
+    for rank in range(tp):
+        (src / f"model-rank-{rank}-part-0.safetensors").write_bytes(os.urandom(50_000))
+    return src
+
+
+def _node_argv(tmpdir, src, node_rank, nnodes=2, tp=8, extra=()):
+    engine = _fake_engine(tmpdir)
+    return [
+        "launch",
+        # One /dev/shm per node: they are different machines.
+        "--shm-root", str(tmpdir / f"shm{node_rank}"), "--slices", "2",
+        "--out", str(tmpdir / "run.json"), *extra,
+        "--", sys.executable, str(engine), "--model-path", str(src),
+        "--tp-size", str(tp), "--load-format", "sharded_state",
+        "--nnodes", str(nnodes), "--node-rank", str(node_rank),
+        "--dist-init-addr", "head:20000",
+    ]
+
+
+def test_each_node_stages_only_the_shards_its_own_ranks_read(odirect_tmpdir):
+    """Two nodes pull disjoint halves off Lustre, not the whole checkpoint twice.
+
+    Run one after the other, which is faithful for a design whose whole claim is
+    that the nodes never interact.
+    """
+    src = _presharded_model(odirect_tmpdir)
+
+    assert main(_node_argv(odirect_tmpdir, src, node_rank=0)) == 0
+    assert main(_node_argv(odirect_tmpdir, src, node_rank=1)) == 0
+
+    # What each node's engine actually saw when it started.
+    node0 = set((odirect_tmpdir / "fake-sglang.py.ls0").read_text().splitlines())
+    node1 = set((odirect_tmpdir / "fake-sglang.py.ls1").read_text().splitlines())
+    assert {f"model-rank-{r}-part-0.safetensors" for r in range(4)} <= node0
+    assert not any(f"model-rank-{r}-part-0.safetensors" in node0 for r in range(4, 8))
+    assert {f"model-rank-{r}-part-0.safetensors" for r in range(4, 8)} <= node1
+    assert not any(f"model-rank-{r}-part-0.safetensors" in node1 for r in range(4))
+    # Metadata is not sharded, so both nodes need their own copy of it.
+    assert {"config.json", "tokenizer.json"} <= node0 & node1
+
+
+def test_a_worker_node_finishes_without_ever_seeing_a_ready_line(odirect_tmpdir):
+    """Node 1 prints no ready line and binds no port -- capture end is all it has."""
+    src = _presharded_model(odirect_tmpdir)
+
+    assert main(_node_argv(odirect_tmpdir, src, node_rank=1)) == 0
+
+    report = json.loads((odirect_tmpdir / "run.node1.json").read_text())
+    assert report["success"]
+    assert report["node_rank"] == 1 and report["nnodes"] == 2
+    # Ranks 4-7, so the slowest of them, not node 0's.
+    phases = {p["name"]: p["duration_s"] for p in report["phases"]}
+    assert phases["weight_loading"] == 9.0
+    # And it let go of its own copy with no cross-node signal to permit it.
+    assert not (odirect_tmpdir / "shm1" / "llama70b-tp8").exists()
+
+
+def test_nodes_write_separate_reports_into_a_shared_directory(odirect_tmpdir):
+    """One --out for every node, and neither overwrites the other."""
+    src = _presharded_model(odirect_tmpdir)
+
+    main(_node_argv(odirect_tmpdir, src, node_rank=0))
+    main(_node_argv(odirect_tmpdir, src, node_rank=1))
+
+    assert (odirect_tmpdir / "run.node0.json").is_file()
+    assert (odirect_tmpdir / "run.node1.json").is_file()
+    assert not (odirect_tmpdir / "run.json").exists()
+
+
+def test_the_copy_survives_the_read_that_follows_graph_capture(odirect_tmpdir):
+    """SGLang reads the tokenizer out of the model directory *after* capturing.
+
+    Job 2990070 freed at capture end and all eight ranks died in
+    TpModelWorker.__init__ -> get_tokenizer.
+    """
+    src = _presharded_model(odirect_tmpdir, tp=2)
+    argv = [
+        "launch", "--shm-root", str(odirect_tmpdir / "shm"), "--slices", "2",
+        "--out", str(odirect_tmpdir / "run.json"),
+        "--", sys.executable, str(_fake_engine(odirect_tmpdir)), "--model-path", str(src),
+        "--tp-size", "2",
+    ]
+    assert main(argv) == 0
+    # Read by the engine 1 s after its last capture line.
+    assert (odirect_tmpdir / "fake-sglang.py.late-read0").read_text() == "True"
+
+
+def test_a_worker_survives_that_read_too(odirect_tmpdir):
+    """The worker frees on its own readiness line, which is also after the read."""
+    src = _presharded_model(odirect_tmpdir)
+    assert main(_node_argv(odirect_tmpdir, src, node_rank=1)) == 0
+    assert (odirect_tmpdir / "fake-sglang.py.late-read1").read_text() == "True"
+    assert not (odirect_tmpdir / "shm1" / "llama70b-tp8").exists()

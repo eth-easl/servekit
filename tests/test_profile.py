@@ -160,3 +160,53 @@ def test_later_phase_is_not_absorbed_into_the_open_one():
     by_name = _replay(lines)
     assert by_name["weight_loading"].duration_s == 5.50
     assert by_name["cuda_graph_capture"].duration_s == 2.75
+
+
+# --- a worker node's log ----------------------------------------------------
+
+WORKER_FIXTURE = FIXTURES / "llama70b-sglang-worker-node.log"
+
+
+def test_a_worker_nodes_log_resolves_without_a_ready_line():
+    """Node 1 of the 2-node TP=8 run: real output, and it never says "ready".
+
+    It says "Dummy health check server started" instead, which SGLang logs once
+    every scheduler on the node is constructed.
+    """
+    lines = WORKER_FIXTURE.read_text().splitlines(keepends=True)
+    stream, clock = _fake_clock_stream(lines)
+
+    report = _process_stream(
+        stream, spawn_time=0.0, ready_timeout=3600.0, spec=SGLANG, clock=clock, echo=False, head=False,
+    )
+
+    assert not SGLANG.ready_pattern.search(WORKER_FIXTURE.read_text())
+    assert report.success and report.ready_at == 92.0
+
+    by_name = {p.name: p for p in report.phases}
+    # Ranks 4-7's own numbers, which node 0's report cannot see.
+    assert by_name["torch_distributed_init"].duration_s == 14.63
+    assert by_name["weight_loading"].duration_s == 3.23
+    assert by_name["cuda_graph_capture"].duration_s == 21.03
+    assert by_name["piecewise_cuda_graph_capture"].duration_s == 39.87
+
+
+def test_the_worker_signal_lands_after_the_read_that_follows_capture():
+    """Job 2990070: freeing at capture end killed all eight ranks in get_tokenizer."""
+    lines = WORKER_FIXTURE.read_text().splitlines(keepends=True)
+    last_capture = max(i for i, line in enumerate(lines) if "Capture piecewise CUDA graph end" in line)
+    worker_ready = next(i for i, line in enumerate(lines) if SGLANG.worker_ready_pattern.search(line))
+    assert worker_ready > last_capture
+
+
+def test_a_worker_pattern_is_not_used_on_the_head():
+    """The head's own ready line is later and stricter; a worker never prints it."""
+    lines = FIXTURE.read_text().splitlines(keepends=True)
+    stream, clock = _fake_clock_stream(lines)
+
+    report = _process_stream(
+        stream, spawn_time=0.0, ready_timeout=3600.0, spec=SGLANG, clock=clock, echo=False, head=True,
+    )
+
+    assert report.success
+    assert SGLANG.ready_pattern.search(FIXTURE.read_text())

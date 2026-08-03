@@ -2,6 +2,12 @@
 
 Fork of experiments/clariden-loading-exp/scripts/shared/save_sharded_state_fixed.py,
 adding --servekit-resolved-out and the stale-index skip.
+
+A TP size larger than one node's GPU count needs one of these per node, with
+--nnodes/--node-rank/--dist-init-addr set. On node_rank>0 SGLang's Engine
+constructor never returns -- it joins its scheduler processes, which is what
+keeps the worker alive to answer the head's RPC. The guard below only matters if
+a future SGLang lets it return.
 """
 
 import dataclasses
@@ -68,8 +74,14 @@ def main(args):
     if not Path(model_path).is_dir():
         raise ValueError("model path must be a local directory")
 
-    llm = Engine(**dataclasses.asdict(engine_args))
+    node_rank = getattr(engine_args, "node_rank", 0)
     Path(args.output).mkdir(parents=True, exist_ok=True)
+
+    llm = Engine(**dataclasses.asdict(engine_args))
+
+    if node_rank != 0:
+        print(f"node_rank={node_rank}: engine constructor returned; nothing to issue here")
+        return
 
     # Flattening these hits a handler that takes one positional `params` dict.
     llm.collective_rpc(

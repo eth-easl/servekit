@@ -53,7 +53,7 @@ concurrent throughput workload against `POST /v1/completions`.
 
 ### Roadmap 👷‍♂️🚧
 - [ ] Support Pipeline parallelism
-- [ ] Support Multi-Node fast weight loading
+- [x] Support Multi-Node fast weight loading
 - [ ] Support vllm fast weight loading
 
 ## Tests

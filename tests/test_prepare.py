@@ -99,8 +99,8 @@ def test_no_manifest_reads_as_none(tmp_path):
 def test_prepare_cli_forwards_extra_engine_args(tmp_path, model, monkeypatch):
     seen = {}
 
-    def fake_prepare(model_arg, out, tp, engine_args=()):
-        seen.update(model=model_arg, out=out, tp=tp, engine_args=list(engine_args))
+    def fake_prepare(model_arg, out, tp, engine_args=(), **kwargs):
+        seen.update(model=model_arg, out=out, tp=tp, engine_args=list(engine_args), **kwargs)
         return 0
 
     monkeypatch.setattr("servekit.cli.prepare", fake_prepare)
@@ -112,6 +112,8 @@ def test_prepare_cli_forwards_extra_engine_args(tmp_path, model, monkeypatch):
     assert rc == 0
     assert seen["tp"] == 4
     assert seen["engine_args"] == ["--trust-remote-code", "--context-length", "32768"]
+    # Single-node unless asked otherwise, so the sharder's argv is unchanged.
+    assert seen["nnodes"] == 1 and seen["node_rank"] == 0 and seen["dist_init_addr"] is None
 
 
 def test_prepare_cli_requires_model_and_out():

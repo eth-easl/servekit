@@ -1,0 +1,26 @@
+image = "lmsysorg/sglang:v0.5.10"
+
+mounts = [
+  "/capstor:/capstor",
+  "/iopsstor:/iopsstor",
+]
+
+workdir = "/iopsstor/scratch/cscs/yboughizane/simple-serving-stack/servekit/examples/multinode-tp"
+
+[env]
+HOME = "/root"
+NCCL_DEBUG = "WARN"
+PYTHONPATH = ""
+PYTHONNOUSERSITE = "1"
+HF_HUB_OFFLINE = "1"
+TRANSFORMERS_OFFLINE = "1"
+TOKENIZERS_PARALLELISM = "false"
+
+# The aws_ofi_nccl hook is what puts NCCL on Slingshot, and it is the only
+# fabric configuration cross-node tensor parallel needs here -- no
+# NCCL_SOCKET_IFNAME, no NCCL_IB_HCA, no GLOO_SOCKET_IFNAME. Without the hook
+# the collectives fall back to sockets and TP=8 across two nodes is unusable.
+[annotations]
+com.pyxis.entrypoint_log = "true"
+com.hooks.aws_ofi_nccl.enabled = "true"
+com.hooks.aws_ofi_nccl.variant = "cuda12"

@@ -38,6 +38,12 @@ class FrameworkSpec:
     model_flags: List[str] = field(default_factory=list)
     # manifest field -> the flags that set it, defaulting to 1 when absent.
     parallel_flags: Dict[str, List[str]] = field(default_factory=dict)
+    # Topology field -> the flags that set it. Empty means servekit cannot tell
+    # a multi-node command from a single-node one, and assumes single-node.
+    dist_flags: Dict[str, List[str]] = field(default_factory=dict)
+    # What a worker node prints instead of ready_pattern, which only the head
+    # ever prints. None means servekit cannot wrap a worker for this engine.
+    worker_ready_pattern: Optional["re.Pattern"] = None
 
 
 SGLANG = FrameworkSpec(
@@ -85,6 +91,14 @@ SGLANG = FrameworkSpec(
         "pp_size": ["--pipeline-parallel-size", "--pp-size", "--pp"],
         "dp_size": ["--data-parallel-size", "--dp-size", "--dp"],
     },
+    dist_flags={
+        "nnodes": ["--nnodes"],
+        "node_rank": ["--node-rank"],
+        "dist_init_addr": ["--dist-init-addr", "--nccl-init-addr"],
+    },
+    # A worker runs no tokenizer process and binds no API server, so it never
+    # prints ready_pattern
+    worker_ready_pattern=re.compile(r"Dummy health check server started"),
 )
 
 # The ready boundary is NOT the same event as SGLang's: vLLM never self-issues a
@@ -164,6 +178,8 @@ class ProfileReport:
     framework: str
     phases: List[Phase] = field(default_factory=list)
     benchmark: Optional[dict] = None  # filled in later by `servekit bench --into <report>`
+    node_rank: Optional[int] = None
+    nnodes: Optional[int] = None
 
     @property
     def total_duration_s(self) -> float:
@@ -181,6 +197,8 @@ class ProfileReport:
             "total_duration_s": self.total_duration_s,
             "phases": [asdict(p) for p in self.phases],
             "benchmark": self.benchmark,
+            "node_rank": self.node_rank,
+            "nnodes": self.nnodes,
         }
 
 
@@ -193,12 +211,16 @@ def _process_stream(
     echo: bool = True,
     stop_at_ready: bool = False,
     on_ready: Optional[Callable[["ProfileReport"], None]] = None,
+    head: bool = True,
 ) -> ProfileReport:
     """Consume `lines`, extracting phase timings until ready (or timeout).
 
     Once ready is detected, matching stops but iteration continues (unless
     `stop_at_ready`) so a live server's output keeps streaming through --
     servekit only stops *measuring*, it never stops the process from serving.
+
+    `head=False` resolves on the worker's own readiness line instead, since a
+    worker never prints the head's.
     """
     seen_phases = set()
     seen_milestones = set()
@@ -212,6 +234,7 @@ def _process_stream(
     timed_out = False
 
     gap_evidence = {name: set() for name, _ in spec.gap_hypotheses}
+    ready_pattern = spec.ready_pattern if head else (spec.worker_ready_pattern or spec.ready_pattern)
 
     def gap_name() -> str:
         for name, markers in spec.gap_hypotheses:
@@ -224,6 +247,24 @@ def _process_stream(
             phases.append(Phase(gap_name(), round(gap, 2), "wall_clock"))
         for evidence in gap_evidence.values():
             evidence.clear()
+
+    def resolve(at: float) -> bool:
+        """Close the report at `at`. True if the caller should stop iterating."""
+        nonlocal pending_phase
+        pending_phase = None
+        record_gap(at - last_marker_time)
+        if on_ready is not None:
+            on_ready(
+                ProfileReport(
+                    command="",
+                    started_at=spawn_time,
+                    ready_at=at,
+                    success=True,
+                    framework=spec.name,
+                    phases=list(phases),
+                )
+            )
+        return stop_at_ready
 
     for line in lines:
         if echo:
@@ -292,22 +333,9 @@ def _process_stream(
             pending_phase = name
             break
 
-        if spec.ready_pattern.search(line):
+        if ready_pattern.search(line):
             ready_at = now
-            pending_phase = None
-            record_gap(now - last_marker_time)
-            if on_ready is not None:
-                on_ready(
-                    ProfileReport(
-                        command="",
-                        started_at=spawn_time,
-                        ready_at=ready_at,
-                        success=True,
-                        framework=spec.name,
-                        phases=list(phases),
-                    )
-                )
-            if stop_at_ready:
+            if resolve(now):
                 break
             continue
 
@@ -329,6 +357,7 @@ def run_profile(
     command: List[str],
     ready_timeout: float = 1800.0,
     on_ready: Optional[Callable[[ProfileReport], None]] = None,
+    head: bool = True,
 ) -> ProfileReport:
     """Run `command`, profiling it until it reports ready.
 
@@ -336,6 +365,9 @@ def run_profile(
     stops, and `on_ready` (if given) fires once so a caller can emit the report
     without waiting for the server to exit. If ready is never seen within
     `ready_timeout`, the process is terminated and the run is marked failed.
+
+    `head=False` says this node is a worker, which never prints the ready line;
+    its own readiness line closes the report instead.
 
     stdout keeps draining for the process's whole life rather than detaching
     once measured: we own the read end of the pipe, so exiting would SIGPIPE the
@@ -357,7 +389,14 @@ def run_profile(
     for sig in (signal.SIGTERM, signal.SIGINT):
         previous[sig] = signal.signal(sig, _forward)
     try:
-        report = _process_stream(proc.stdout, spawn_time, ready_timeout, spec=spec, on_ready=on_ready)
+        report = _process_stream(
+            proc.stdout,
+            spawn_time,
+            ready_timeout,
+            spec=spec,
+            on_ready=on_ready,
+            head=head,
+        )
         if not report.success:
             proc.terminate()
         proc.wait()
