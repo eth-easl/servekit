@@ -79,7 +79,7 @@ SGLANG = FrameworkSpec(
         ),
     ],
     command_markers=[re.compile(r"\bsglang\b")],
-    model_flags=["--model-path", "--model_path"],
+    model_flags=["--model-path", "--model_path", "--model"],
     parallel_flags={
         "tp_size": ["--tensor-parallel-size", "--tp-size", "--tp"],
         "pp_size": ["--pipeline-parallel-size", "--pp-size", "--pp"],
