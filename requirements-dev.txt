@@ -1,1 +1,4 @@
 pytest
+# The stager test writes real .safetensors shards and checks them bitwise.
+numpy
+safetensors
