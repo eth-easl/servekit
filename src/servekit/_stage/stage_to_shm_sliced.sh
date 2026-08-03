@@ -1,51 +1,23 @@
 #!/bin/bash
-# Phase 4 (sliced) - stage a model from Lustre into node-local /dev/shm, with
-# fan-out WITHIN each file as well as across files.
-#
-# Sibling of stage_to_shm.sh, which is left untouched as the control. That one
-# runs `xargs -P 60` over the file list with one `dd` per file. Shards are
-# stripe_count=1, so that is ONE reader per OST -- queue depth 1 everywhere. With
-# O_DIRECT (no readahead) each reader keeps exactly one 16 MiB RPC in flight, so
-# a single high-latency OST caps the whole stage: OST 8 currently answers in
-# ~480 ms/RPC => ~25 MB/s => ~200 s for its one 5 GB shard, and `wall` is a max
-# over the pool. See experiments/lustre-contention-exp/DD_VS_FASTSAFETENSORS.md.
-#
-# Here each file is cut into SLICES contiguous ranges read concurrently
-# (`dd skip=/seek=/count=`), so every OST sees SLICES requests in flight. Raw
-# reads scaled 0.72 -> 18.9 GB/s this way (30x32) on the same node and minute.
-#
-# Read mode is selectable. O_DIRECT (default) bypasses the page cache, so the
-# stage is honestly cold and does not evict the tmpfs copy it is creating.
-# READ_MODE=buffered drops iflag=direct: the client then caches and reads ahead,
-# which may hide OST latency, but every byte is now held TWICE in RAM (page cache
-# + tmpfs) until the kernel reclaims. The page cache is reclaimable so this should
-# not OOM, but it does mean a re-read of the same source on the same node is no
-# longer cold -- see feedback on fresh nodes per cold-start run.
-# tmpfs writes are plain buffered writes either way, as in the control.
-#
-# CONCURRENT WRITERS INTO ONE FILE is the delicate part, so:
-#   * every dest file is pre-created at full size with `truncate` BEFORE any
-#     writer starts -- otherwise N dd's racing to create the same path is a bug
-#   * every writer uses `conv=notrunc` so it cannot shorten the file under its
-#     peers, and `seek=` so it writes only its own range
-#   * slices tile each file exactly (no gaps, no overlap) -- verified by the
-#     caller's checksum gate, not assumed
+# Stage a model from Lustre into node-local /dev/shm, fanning out WITHIN each
+# file as well as across files: each file is cut into SLICES contiguous ranges
+# read concurrently, so every OST sees SLICES requests in flight instead of one.
+# See experiments/lustre-loading-exp/ for the measurements.
 #
 # Usage: stage_to_shm_sliced.sh <src_model_dir> <dest_dir> [slices] [bs] [read_mode]
-#   read_mode: direct (default, O_DIRECT) | buffered (page cache + readahead)
-#   FILE_PATTERN=<glob>  stage only matching files (default '*', i.e. all of them).
-#     Phase 7 uses '*.safetensors' so it can copy the small config/tokenizer files
-#     synchronously first and leave only the big ones in the overlapped window.
+#   read_mode: direct (default, O_DIRECT -- honestly cold, and does not evict the
+#     tmpfs copy it is creating) | buffered (page cache + readahead, which may
+#     hide OST latency but holds every byte TWICE in RAM until reclaim).
+#   FILE_PATTERN=<glob>  stage only matching files (default '*').
 set -euo pipefail
 
 SRC="${1:?src model dir}"; DEST="${2:?dest dir, e.g. /dev/shm/llama70b}"
 SLICES="${3:-64}"
 BS="${4:-16M}"
 READ_MODE="${5:-${READ_MODE:-direct}}"
-# BS_BYTES must agree with the block size dd is actually handed, since the slice
-# tiling below counts in blocks. Accept dd's binary suffixes (K/M/G) and a bare
-# byte count; anything else (KB=1000, block lists, `x` products) would silently
-# tile against the wrong unit, so reject it instead of guessing.
+# The slice tiling counts in blocks, so BS_BYTES must agree with the block size
+# dd is handed. Reject what we cannot convert rather than tile against the wrong
+# unit: KB=1000, block lists and `x` products would all be silently wrong.
 case "$BS" in
   *[0-9])   BS_BYTES=$(( BS )) ;;
   *[kK])    BS_BYTES=$(( ${BS%?} * 1024 )) ;;
@@ -55,8 +27,8 @@ case "$BS" in
 esac
 (( BS_BYTES > 0 )) || { echo "bs must be positive, got: $BS" >&2; exit 1; }
 
-# Kept as a plain string, not an array: stage_slice runs under `xargs bash -c`
-# and only environment strings survive that boundary.
+# A plain string, not an array: stage_slice runs under `xargs bash -c` and only
+# environment strings survive that boundary.
 case "$READ_MODE" in
   direct)   IFLAG="iflag=direct" ;;
   buffered) IFLAG="" ;;
@@ -79,7 +51,9 @@ fi
 
 echo "staging(sliced): $SRC -> $DEST (files=${#FILES[@]}, slices/file=$SLICES, bs=$BS, ${READ_MODE} read, buffered write)"
 
-# Pre-create every dest file at full size. Must complete before any writer runs.
+# Full size up front, before any writer runs: N dd's racing to create the same
+# path would be a bug. Writers then use conv=notrunc so none can shorten the
+# file under its peers, and seek= so each writes only its own range.
 for f in "${FILES[@]}"; do
   truncate -s "$(stat -c%s "$SRC/$f")" "$DEST/$f"
 done
@@ -113,9 +87,9 @@ start="$(date +%s.%N)"
 emit | xargs -P "$NTASK" -n 4 bash -c 'stage_slice "$@"' _
 end="$(date +%s.%N)"
 
-# Size parity, so a partial stage cannot look "done". This is necessary but NOT
-# sufficient with concurrent writers -- truncate already fixed the size, so only
-# a checksum proves the CONTENT. The caller must run that gate.
+# Necessary but not sufficient: truncate already fixed the size, so this catches
+# a partial stage but never wrong content. Only a checksum proves that -- see
+# test_stage_is_bitwise_exact_across_concurrent_writers.
 dst_bytes="$(find "$DEST" -maxdepth 1 -type f -name "$FILE_PATTERN" -printf '%s\n' | awk '{s+=$1} END{print s}')"
 [[ "$src_bytes" == "$dst_bytes" ]] || { echo "SIZE MISMATCH src=$src_bytes dst=$dst_bytes" >&2; exit 2; }
 

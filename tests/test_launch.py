@@ -1,5 +1,6 @@
 """Tests for `servekit launch`: the argv rewrite, the vendored stager, and the free()."""
 import filecmp
+import hashlib
 import json
 import os
 import sys
@@ -7,7 +8,9 @@ import tempfile
 import time
 from pathlib import Path
 
+import numpy as np
 import pytest
+from safetensors.numpy import save_file
 
 from servekit.cli import main
 from servekit.engine_args import find_model_path, replace_model_path
@@ -100,17 +103,40 @@ def odirect_tmpdir():
         yield Path(d)
 
 
-def test_stage_copies_every_file_and_reports_its_own_timing(odirect_tmpdir):
+# The stager's own gate is size parity, and `truncate` already fixed the size
+# before any writer ran -- only a checksum proves the content. One row per rank,
+# one size per part, the way a real sharded checkpoint lands. Sizes straddle the
+# 16 MiB block so parts are tiled across several concurrent dd's, which is the
+# part a size check cannot see.
+PART_BYTES = [
+    [40_000_003, 4_000_000, 999],
+    [33_554_432, 17_000_001, 0],
+    [20_000_001, 1_048_577, 12],
+    [16_777_217, 3_000_000, 7],
+]
+
+
+def _shard(path, nbytes):
+    save_file({"w": np.frombuffer(os.urandom(nbytes), dtype=np.uint8)}, str(path))
+
+
+def _sha256(path):
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def test_stage_is_bitwise_exact_across_concurrent_writers(odirect_tmpdir):
     src, dest = odirect_tmpdir / "src", odirect_tmpdir / "dest"
     src.mkdir()
     (src / "config.json").write_text('{"model_type": "llama"}')
-    (src / "model-rank-0-part-0.safetensors").write_bytes(os.urandom(3_000_000))
+    for rank, parts in enumerate(PART_BYTES):
+        for part, nbytes in enumerate(parts):
+            _shard(src / f"model-rank-{rank}-part-{part}.safetensors", nbytes)
 
-    result = stage(src, dest, slices=4)
+    result = stage(src, dest, slices=64)
 
-    assert sorted(p.name for p in dest.iterdir()) == ["config.json", "model-rank-0-part-0.safetensors"]
+    assert sorted(p.name for p in dest.iterdir()) == sorted(p.name for p in src.iterdir())
     for f in src.iterdir():
-        assert (dest / f.name).read_bytes() == f.read_bytes()
+        assert _sha256(dest / f.name) == _sha256(f), f.name
     assert result.bytes == sum(f.stat().st_size for f in src.iterdir())
     assert result.wall_s > 0 and result.gbps > 0
 
