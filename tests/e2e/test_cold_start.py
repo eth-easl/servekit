@@ -1,0 +1,55 @@
+import json
+import re
+import subprocess
+from pathlib import Path
+
+import pytest
+
+pytestmark = pytest.mark.e2e
+
+EXAMPLES = Path(__file__).resolve().parents[2] / "examples"
+
+
+def _sbatch_wait(script: Path) -> str:
+    proc = subprocess.run(
+        ["sbatch", "--wait", script.name],
+        cwd=script.parent,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return re.search(r"Submitted batch job (\d+)", proc.stdout).group(1)
+
+
+def _assert_fast_cold_start(
+    report: dict, 
+    weight_loading_threshold: float = 10 , 
+    total_duration_threshold: float = 150
+) -> None:
+    phases = {p["name"]: p["duration_s"] for p in report["phases"]}
+    bench = report["benchmark"]
+    assert report["success"], "server never reported ready"
+    # Baselines: ~467-553s weight_loading and ~586-667s total reading the HF
+    # checkpoint off Lustre with mmap (experiments/multinode-tp-exp).
+    assert phases["weight_loading"] < weight_loading_threshold, f"weight_loading {phases['weight_loading']}s"
+    assert report["total_duration_s"] < total_duration_threshold, f"total {report['total_duration_s']}s"
+    assert not bench["errors"], f"bench-level errors: {bench['errors']}"
+    assert bench["throughput"]["errors"] == 0, f"{bench['throughput']['errors']} failed requests"
+    assert all(r["output"] for r in bench["correctness"]["results"]), "empty completion in correctness probe"
+
+
+def test_fast_weight_load_llama70b():
+    script = EXAMPLES / "fast-weight-load" / "run_llama70b_sglang.sbatch"
+    job_id = _sbatch_wait(script)
+    out = script.parent / "logs" / f"fast-weight-load-llama70b-{job_id}.json"
+    report = json.loads(out.read_text())
+    _assert_fast_cold_start(report)
+
+
+def test_multinode_llama70b():
+    script = EXAMPLES / "multinode" / "run_llama70b_sglang.sbatch"
+    job_id = _sbatch_wait(script)
+    rundir = script.parent / "logs" / f"multinode-tp-llama70b-{job_id}"
+    report = json.loads((rundir / "merged.json").read_text())
+    assert report["nodes_reporting"] == "2/2", report["nodes_reporting"]
+    _assert_fast_cold_start(report)

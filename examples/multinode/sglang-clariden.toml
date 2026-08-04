@@ -5,7 +5,7 @@ mounts = [
   "/iopsstor:/iopsstor",
 ]
 
-workdir = "/iopsstor/scratch/cscs/yboughizane/simple-serving-stack/servekit/examples/multinode-tp"
+workdir = "/iopsstor/scratch/cscs/yboughizane/simple-serving-stack/servekit/examples/multinode"
 
 [env]
 HOME = "/root"

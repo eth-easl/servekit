@@ -1,18 +1,5 @@
 #!/bin/bash
 # Llama-3.1-70B at TP=8 across two 4-GPU Clariden nodes, served from /dev/shm.
-#
-# Every node runs the same `servekit launch`. Each stages only the shards its
-# own four ranks read, profiles itself, and frees its own copy -- the nodes
-# never talk to each other, and `servekit report` merges their reports at the
-# end. The only multi-node thing in here is the srun and the engine's own
-# --nnodes/--node-rank/--dist-init-addr.
-#
-#   sbatch run.sbatch
-#
-# Needs the TP=8 checkpoint from prepare.sbatch. debug-qos caps a job at 90
-# node-minutes, so two nodes must ask for 45 minutes or less. Add
-# --exclude=<the last run's nodes> when comparing against a cold baseline: the
-# OS page cache survives container runs and will flatter the second run.
 #SBATCH --job-name=multinode-tp-llama70b
 #SBATCH --partition=debug
 #SBATCH --account=a-infra02
@@ -53,6 +40,7 @@ echo "head node: ${HEAD_NODE}, nodes: ${SLURM_JOB_NODELIST}"
 # substituted on the submit host while this heredoc is built.
 INNER_CMD=$(cat <<EOF
 set -euo pipefail
+ulimit -c 0
 # The image sets BASH_ENV=/etc/bash.bashrc, which makes every one of the
 # stager's ~900 subshells run nvidia-smi first: 0.41 GB/s instead of 16.89.
 unset BASH_ENV
@@ -112,27 +100,4 @@ srun --nodes=1 --ntasks=1 --environment="${EDF}" bash -c "
   servekit report '${RUNDIR}' --out '${MERGED}'
 "
 
-python3 - "${MERGED}" <<'EOF'
-import json, sys
-r = json.load(open(sys.argv[1]))
-phases = {p["name"]: p["duration_s"] for p in r["phases"]}
-total = r["total_duration_s"]
-bench = r["benchmark"]
-
-assert r["success"], "a node never reported ready"
-assert r["nodes_reporting"] == "2/2", f"only {r['nodes_reporting']} nodes reported"
-# Baselines from experiments/multinode-tp-exp, same model and same two nodes:
-# 553.02 s weight_loading and 667.44 s total reading the HF checkpoint off Lustre.
-assert phases["weight_loading"] < 30, f"weight_loading {phases['weight_loading']}s, expected < 30s (mmap baseline: ~553s)"
-assert total < 250, f"total {total}s, expected < 250s (mmap baseline: ~667s)"
-assert not bench["errors"], f"bench-level errors: {bench['errors']}"
-assert bench["throughput"]["errors"] == 0, f"{bench['throughput']['errors']} failed requests"
-assert all(res["output"] for res in bench["correctness"]["results"]), "empty completion in correctness probe"
-
-per_node = {n["node_rank"]: n for n in r["per_node"]}
-print(f"PASS: weight_loading={phases['weight_loading']}s total={total}s "
-      f"nodes={r['nodes_reporting']} bench_errors={bench['throughput']['errors']}")
-for rank, node in sorted(per_node.items()):
-    stage = {p["name"]: p["duration_s"] for p in node["phases"]}.get("stage")
-    print(f"  node {rank}: stage={stage}s")
-EOF
+# Cold-start thresholds are checked in tests/e2e/test_cold_start.py (pytest -m e2e)
