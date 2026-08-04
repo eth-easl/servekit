@@ -1,8 +1,4 @@
 """`servekit prepare`: write a TP-presharded checkpoint plus its manifest.
-
-Offline and one-off (~5.5 min for the 70B, and it needs the GPUs). The sharding
-runs as a subprocess so `sglang` stays out of servekit's import graph: `launch`,
-`profile` and `bench` keep working in a container that has no sglang.
 """
 from __future__ import annotations
 
@@ -30,11 +26,29 @@ def prepare(
     tp: int,
     engine_args: Sequence[str] = (),
     python: Optional[str] = None,
+    nnodes: int = 1,
+    node_rank: int = 0,
+    dist_init_addr: Optional[str] = None,
 ) -> int:
     if not model.is_dir():
         print(f"error: model path {model} is not a directory", file=sys.stderr)
         return 2
+    if nnodes > 1:
+        if dist_init_addr is None:
+            print("error: --nnodes > 1 needs --dist-init-addr so every node rendezvouses", file=sys.stderr)
+            return 2
+        if not 0 <= node_rank < nnodes:
+            print(f"error: --node-rank {node_rank} is outside the {nnodes} nodes asked for", file=sys.stderr)
+            return 2
     out.mkdir(parents=True, exist_ok=True)
+
+    dist_args: List[str] = []
+    if nnodes > 1:
+        dist_args = [
+            "--nnodes", str(nnodes),
+            "--node-rank", str(node_rank),
+            "--dist-init-addr", str(dist_init_addr),
+        ]
 
     with tempfile.TemporaryDirectory() as tmp:
         resolved_path = Path(tmp) / "resolved.json"
@@ -45,10 +59,17 @@ def prepare(
             "--output", str(out),
             "--tensor-parallel-size", str(tp),
             "--servekit-resolved-out", str(resolved_path),
+            *dist_args,
             *engine_args,
         ]
-        print(f"[SERVEKIT] preparing {model} -> {out} (tp={tp})", flush=True)
+        where = f" (node {node_rank} of {nnodes})" if nnodes > 1 else ""
+        print(f"[SERVEKIT] preparing {model} -> {out} (tp={tp}){where}", flush=True)
         rc = subprocess.call(command)
+        if node_rank != 0:
+            # A worker only ends when the job tears its task down, so its exit
+            # code says nothing. The head gates.
+            print(f"[SERVEKIT] node {node_rank}: shards written; the head gates the result", flush=True)
+            return 0
         if rc != 0:
             print(f"error: sharding failed (rc={rc}); {out} is incomplete", file=sys.stderr)
             return 1
@@ -60,6 +81,12 @@ def prepare(
     missing = _missing_ranks(out, tp)
     if missing:
         print(f"error: ranks {missing} produced no shards; {out} is unusable", file=sys.stderr)
+        return 1
+    stale = sorted(p.name for p in out.glob("*.index.json"))
+    if stale:
+        # ShardedStateLoader prefers the index and then looks for files a
+        # presharded checkpoint does not have.
+        print(f"error: stale weight index left in {out}: {', '.join(stale)}", file=sys.stderr)
         return 1
 
     manifest = Manifest(format=FORMAT, source=str(model), **resolved)

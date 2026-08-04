@@ -20,3 +20,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 servekit = ["_stage/*.sh", "_prepare/*.py"]
+
+[tool.pytest.ini_options]
+markers = ["e2e: needs a live SLURM cluster with GPUs; run explicitly with `pytest -m e2e`"]
+addopts = "-m 'not e2e'"

@@ -1,10 +1,5 @@
 #!/bin/bash
-# Build the TP-presharded checkpoint that test_llama70b_sglang.sbatch consumes.
-# Rebuilds from scratch, so run it after an engine upgrade or a TP change.
-#
-#   sbatch prepare.sbatch
-#   MODEL=/store/.../Apertus-8B-Instruct-2509 OUT=/store/.../apertus8b-tp4 TP=4 sbatch prepare.sbatch
-#
+# Build the TP-presharded checkpoint that run_llama70b_sglang.sbatch consumes.
 #SBATCH --job-name=servekit-prepare-llama70b
 #SBATCH --partition=debug
 #SBATCH --account=a-infra02
@@ -25,20 +20,6 @@ TP="${TP:-4}"
 EDF="${SLURM_SUBMIT_DIR}/llama-3.1-70b-sglang.toml"
 SERVEKIT_DIR="${SLURM_SUBMIT_DIR}/../.."
 
-echo "job=${SLURM_JOB_ID} node=$(hostname)"
-echo "model=${MODEL}"
-echo "out=${OUT} tp=${TP}"
-
-if [ -e "${OUT}" ]; then
-  if [ -e "${OUT}/model-rank-0-part-0.safetensors" ] || [ -e "${OUT}/servekit.json" ]; then
-    echo "removing the previous checkpoint at ${OUT}"
-    rm -r "${OUT}"
-  else
-    echo "ERROR: ${OUT} exists but is not a servekit-prepared checkpoint." >&2
-    echo "       Refusing to remove it. Point OUT elsewhere, or delete it by hand." >&2
-    exit 1
-  fi
-fi
 
 INNER_CMD=$(cat <<EOF
 set -euo pipefail

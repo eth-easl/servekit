@@ -21,6 +21,7 @@ OUT="${SLURM_SUBMIT_DIR}/logs/${SLURM_JOB_NAME}-${SLURM_JOB_ID}.json"
 
 INNER_CMD=$(cat <<EOF
 set -euo pipefail
+ulimit -c 0
 pip install -e "${SERVEKIT_DIR}" --no-build-isolation --no-deps -q
 
 servekit launch --out "${OUT}" --overlap --timeout 3000 \
@@ -56,19 +57,4 @@ srun \
   --environment="${EDF}" \
   bash -c "${INNER_CMD}"
 
-python3 - "${OUT}" <<'EOF'
-import json, sys
-r = json.load(open(sys.argv[1]))
-weight_loading = next(p["duration_s"] for p in r["phases"] if p["name"] == "weight_loading")
-total = r["total_duration_s"]
-bench = r["benchmark"]
-
-assert r["success"], "server never reported ready"
-assert weight_loading < 30, f"weight_loading {weight_loading}s, expected fast-path < 30s (mmap baseline: ~467s)"
-assert total < 250, f"total {total}s, expected fast-path < 250s (mmap baseline: ~586s)"
-assert not bench["errors"], f"bench-level errors: {bench['errors']}"
-assert bench["throughput"]["errors"] == 0, f"{bench['throughput']['errors']} failed requests"
-assert all(res["output"] for res in bench["correctness"]["results"]), "empty completion in correctness probe"
-
-print(f"PASS: weight_loading={weight_loading}s total={total}s bench_errors={bench['throughput']['errors']}")
-EOF
+# Cold-start thresholds are checked in tests/e2e/test_cold_start.py (pytest -m e2e)

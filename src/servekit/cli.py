@@ -12,10 +12,12 @@ from .launch import DEFAULT_ROOT, launch
 from .prepare import prepare
 from .profile import ProfileReport, detect_framework, render_table, run_profile, save_json
 from .stage import DEFAULT_SLICES
+from .topology import read_topology
 
 USAGE = """usage:
   servekit launch [--out PATH] [--slices N] [--overlap] -- <command...>
   servekit prepare --model PATH --out PATH [--tp N] [-- <extra engine args>]
+                   [--nnodes N --node-rank N --dist-init-addr HOST:PORT]
   servekit profile [--out PATH] [--timeout SECONDS] -- <command...>
   servekit bench --url URL (--into PATH | --out PATH) [--wait-ready SECONDS] [...]
 
@@ -37,6 +39,15 @@ To profile and bench one run, put them side by side and join on the report file:
   PROF=$!
   servekit bench --url http://127.0.0.1:8080 --into run.json --requests 64
   kill $PROF; wait $PROF
+
+Multi-node is the same command on every node, under an srun of one task per
+node, with the engine's own distributed flags set. Each node stages the shards
+its own ranks read and writes its own run.node<rank>.json:
+
+  srun --ntasks=$NNODES --ntasks-per-node=1 servekit launch --out run.json -- \\
+      python -m sglang.launch_server --model-path /store/llama70b-tp8 --tp-size 8 \\
+      --nnodes $NNODES --node-rank $SLURM_PROCID --dist-init-addr $HEAD:20000 \\
+      --load-format sharded_state
 """
 
 
@@ -61,6 +72,7 @@ def _profile(argv: List[str]) -> int:
 
     try:
         spec = detect_framework(command)
+        topo = read_topology(command, spec)
     except ValueError as e:
         print(f"error: {e}", file=sys.stderr)
         return 2
@@ -69,9 +81,14 @@ def _profile(argv: List[str]) -> int:
 
     def emit(report: ProfileReport) -> None:
         report.command = " ".join(command)
+        if topo.is_multinode:
+            report.node_rank = topo.node_rank
+            report.nnodes = topo.nnodes
         print()
         print(render_table(report))
         out_path = args.out or Path(f"servekit-profile-{int(report.started_at)}.json")
+        if topo.is_multinode:
+            out_path = out_path.with_name(f"{out_path.stem}.node{topo.node_rank}{out_path.suffix}")
         save_json(report, out_path)
         print(f"\nreport written to {out_path}", flush=True)
 
@@ -83,7 +100,12 @@ def _profile(argv: List[str]) -> int:
         emitted["done"] = True
         emit(report)
 
-    report = run_profile(command, ready_timeout=args.timeout, on_ready=emit_once)
+    report = run_profile(
+        command,
+        ready_timeout=args.timeout,
+        on_ready=emit_once,
+        head=topo.is_head,
+    )
     if not emitted["done"]:
         emit(report)
     return 0 if report.success else 1
@@ -129,9 +151,20 @@ def _prepare(argv: List[str]) -> int:
     parser.add_argument("--model", type=Path, required=True, help="source checkpoint (a local directory)")
     parser.add_argument("--out", type=Path, required=True, help="where to write the presharded checkpoint")
     parser.add_argument("--tp", type=int, default=1, help="tensor-parallel size the shards will be locked to")
+    parser.add_argument("--nnodes", type=int, default=1, help="nodes to shard across (TP > GPUs per node)")
+    parser.add_argument("--node-rank", type=int, default=0, help="this node's rank, e.g. $SLURM_PROCID")
+    parser.add_argument("--dist-init-addr", default=None, help="rendezvous address, HOST:PORT on the head")
     args = parser.parse_args(options)
 
-    return prepare(args.model, args.out, args.tp, engine_args=engine_args)
+    return prepare(
+        args.model,
+        args.out,
+        args.tp,
+        engine_args=engine_args,
+        nnodes=args.nnodes,
+        node_rank=args.node_rank,
+        dist_init_addr=args.dist_init_addr,
+    )
 
 
 def _wait_for_report(path: Path, timeout_s: float, interval_s: float = 0.5) -> bool:
@@ -234,7 +267,12 @@ def _bench(argv: List[str]) -> int:
 
 def main(argv: Optional[List[str]] = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
-    commands = {"launch": _launch, "prepare": _prepare, "profile": _profile, "bench": _bench}
+    commands = {
+        "launch": _launch,
+        "prepare": _prepare,
+        "profile": _profile,
+        "bench": _bench,
+    }
     if not argv or argv[0] not in commands:
         print(USAGE, file=sys.stderr)
         return 2
