@@ -18,13 +18,10 @@ SHARDED_SRC="${SHARDED_SRC:-/capstor/store/cscs/swissai/infra01/cold-start-exper
 SERVED_MODEL_NAME=meta-llama/Llama-3.1-70B-Instruct
 
 SERVEKIT_DIR="${SLURM_SUBMIT_DIR}/../.."
-# One directory per run: `servekit report` merges every *.node*.json it finds,
-# so a shared results dir would fold the last run's nodes into this one's.
 RUNDIR="${SLURM_SUBMIT_DIR}/logs/${SLURM_JOB_NAME}-${SLURM_JOB_ID}"
 OUT="${RUNDIR}/run.json"
 # What `servekit launch` writes on the head, once it knows --nnodes > 1.
 OUT_HEAD="${RUNDIR}/run.node0.json"
-MERGED="${RUNDIR}/merged.json"
 mkdir -p "${RUNDIR}"
 
 NNODES=2
@@ -89,15 +86,5 @@ srun \
   --gpus-per-task=4 \
   --environment="${EDF}" \
   bash -c "${INNER_CMD}" || true
-
-# Each node maxed every phase over its own four ranks; the server was ready only
-# when the slowest of all eight was done, so the phases have to be maxed again
-# across nodes. Reading the head's report alone quotes ranks 0-3 as if they were
-# the world.
-srun --nodes=1 --ntasks=1 --environment="${EDF}" bash -c "
-  set -euo pipefail
-  pip install -e '${SERVEKIT_DIR}' --no-build-isolation --no-deps -q
-  servekit report '${RUNDIR}' --out '${MERGED}'
-"
 
 # Cold-start thresholds are checked in tests/e2e/test_cold_start.py (pytest -m e2e)

@@ -11,7 +11,6 @@ from .bench import BenchConfig, run_benchmark, render_bench
 from .launch import DEFAULT_ROOT, launch
 from .prepare import prepare
 from .profile import ProfileReport, detect_framework, render_table, run_profile, save_json
-from .report import run_report
 from .stage import DEFAULT_SLICES
 from .topology import read_topology
 
@@ -21,7 +20,6 @@ USAGE = """usage:
                    [--nnodes N --node-rank N --dist-init-addr HOST:PORT]
   servekit profile [--out PATH] [--timeout SECONDS] -- <command...>
   servekit bench --url URL (--into PATH | --out PATH) [--wait-ready SECONDS] [...]
-  servekit report DIR [--out PATH]
 
 `launch` wraps an engine command: it copies the model into /dev/shm, starts the
 engine against the copy, and frees the copy once the server reports ready --
@@ -44,13 +42,12 @@ To profile and bench one run, put them side by side and join on the report file:
 
 Multi-node is the same command on every node, under an srun of one task per
 node, with the engine's own distributed flags set. Each node stages the shards
-its own ranks read and writes run.node<rank>.json; `report` merges them:
+its own ranks read and writes its own run.node<rank>.json:
 
   srun --ntasks=$NNODES --ntasks-per-node=1 servekit launch --out run.json -- \\
       python -m sglang.launch_server --model-path /store/llama70b-tp8 --tp-size 8 \\
       --nnodes $NNODES --node-rank $SLURM_PROCID --dist-init-addr $HEAD:20000 \\
       --load-format sharded_state
-  servekit report . --out merged.json
 """
 
 
@@ -268,14 +265,6 @@ def _bench(argv: List[str]) -> int:
     return rc
 
 
-def _report(argv: List[str]) -> int:
-    parser = argparse.ArgumentParser(prog="servekit report")
-    parser.add_argument("dir", type=Path, help="directory holding the per-node reports")
-    parser.add_argument("--out", type=Path, default=None, help="write the merged report here")
-    args = parser.parse_args(argv)
-    return run_report(args.dir, args.out)
-
-
 def main(argv: Optional[List[str]] = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     commands = {
@@ -283,7 +272,6 @@ def main(argv: Optional[List[str]] = None) -> int:
         "prepare": _prepare,
         "profile": _profile,
         "bench": _bench,
-        "report": _report,
     }
     if not argv or argv[0] not in commands:
         print(USAGE, file=sys.stderr)

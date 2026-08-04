@@ -50,6 +50,7 @@ def test_multinode_llama70b():
     script = EXAMPLES / "multinode" / "run_llama70b_sglang.sbatch"
     job_id = _sbatch_wait(script)
     rundir = script.parent / "logs" / f"multinode-tp-llama70b-{job_id}"
-    report = json.loads((rundir / "merged.json").read_text())
-    assert report["nodes_reporting"] == "2/2", report["nodes_reporting"]
-    _assert_fast_cold_start(report)
+    for node_rank in (0, 1):
+        report = json.loads((rundir / f"run.node{node_rank}.json").read_text())
+        assert report["success"], f"node {node_rank} never reported ready"
+    _assert_fast_cold_start(json.loads((rundir / "run.node0.json").read_text()))

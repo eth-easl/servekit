@@ -8,8 +8,7 @@ that opens a file too early reads zeros with no error.
 Multi-node is the same command on every node, under one srun task per node, with
 the engine's own `--nnodes / --node-rank / --dist-init-addr` set. Each node
 stages only the shards its own ranks read, profiles itself, and frees its own
-copy; the nodes never talk to each other, and `servekit report` merges their
-reports afterwards.
+copy; the nodes never talk to each other and each writes its own report.
 """
 from __future__ import annotations
 
