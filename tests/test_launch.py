@@ -37,6 +37,7 @@ SGLANG_CMD = [
         (SGLANG_CMD, "/store/llama70b-tp4"),
         (["python", "-m", "sglang.launch_server", "--model-path=/store/m"], "/store/m"),
         (["python", "-m", "sglang.launch_server", "--model_path", "/store/m"], "/store/m"),
+        (["python", "-m", "sglang.launch_server", "--model", "/store/m"], "/store/m"),
     ],
 )
 def test_finds_the_model_path(command, expected):
