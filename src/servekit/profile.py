@@ -412,7 +412,10 @@ def render_table(report: ProfileReport) -> str:
     name_w = max([len(r[0]) for r in rows] + [len("phase")])
     header = f"{'phase':<{name_w}}  {'duration_s':>10}  source"
     sep = "-" * len(header)
-    lines = [f"[SERVEKIT] Cold-start profile (framework={report.framework})", sep, header, sep]
+    title = f"[SERVEKIT] Cold-start profile (framework={report.framework})"
+    if report.node_rank is not None:
+        title += f" (node {report.node_rank}/{report.nnodes})"
+    lines = [title, sep, header, sep]
     for name, dur, source in rows:
         lines.append(f"{name:<{name_w}}  {dur:>10.2f}  {source}")
     lines.append(sep)
