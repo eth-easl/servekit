@@ -80,11 +80,25 @@ def test_launch_rejects_an_unusable_command():
 
 # --- the stager ------------------------------------------------------------
 
-def test_the_vendored_stager_is_byte_identical_to_the_experiment():
-    """The measured code path must stay literally the measured code path."""
+def _hot_path(script: Path) -> str:
+    """The tiling and the dd fan-out: the part the throughput numbers measured."""
+    text = script.read_text()
+    start = text.index("# Full size up front")
+    end = text.index('end="$(date +%s.%N)"')
+    return text[start:end]
+
+
+def test_the_vendored_stagers_hot_path_matches_the_experiment():
+    """The measured code path must stay literally the measured code path.
+
+    Narrowed from a whole-file compare when the vendored copy gained FILE_LIST:
+    a presharded node's file set is a union of its ranks' reads, which no glob
+    describes, so selection had to diverge. Selection is not what 11.9/17.0 GB/s
+    measured -- the slice tiling and the dd fan-out are, and those must not move.
+    """
     if not EXPERIMENT_STAGER.exists():
         pytest.skip("experiments/ not present")
-    assert filecmp.cmp(STAGER, EXPERIMENT_STAGER, shallow=False)
+    assert _hot_path(STAGER) == _hot_path(EXPERIMENT_STAGER)
 
 
 @pytest.fixture
@@ -142,3 +156,38 @@ def test_stage_is_bitwise_exact_across_concurrent_writers(odirect_tmpdir):
 def test_stage_fails_loudly_on_a_missing_source(odirect_tmpdir):
     with pytest.raises(RuntimeError, match="stager failed"):
         stage(odirect_tmpdir / "nope", odirect_tmpdir / "dest")
+
+
+def test_stage_copies_exactly_the_listed_files_and_no_others(odirect_tmpdir):
+    """A presharded node's file set is a union of its ranks' reads, not a glob.
+
+    The names deliberately include a `-common` file and a multi-rank one, which
+    is what a pattern-based stager cannot select without dragging in the rest.
+    """
+    src, dest = odirect_tmpdir / "src", odirect_tmpdir / "dest"
+    src.mkdir()
+    names = [
+        "model-00000-rank-000.safetensor",
+        "model-00001-rank-000,001.safetensor",
+        "model-00003-common.safetensor",
+        "model-00006-rank-001.safetensor",
+        "model-00008-rank-002.safetensor",
+    ]
+    for name, nbytes in zip(names, [40_000_003, 1_048_577, 999, 16_777_217, 20_000_001]):
+        _shard(src / name, nbytes)
+
+    wanted = names[:3]
+    result = stage(src, dest, slices=64, files=wanted)
+
+    assert sorted(p.name for p in dest.iterdir()) == sorted(wanted)
+    for name in wanted:
+        assert _sha256(dest / name) == _sha256(src / name), name
+    assert result.bytes == sum((src / n).stat().st_size for n in wanted)
+
+
+def test_stage_refuses_a_file_list_naming_something_absent(odirect_tmpdir):
+    src, dest = odirect_tmpdir / "src", odirect_tmpdir / "dest"
+    src.mkdir()
+    _shard(src / "model-00000-rank-000.safetensor", 4096)
+    with pytest.raises(RuntimeError, match="stager failed"):
+        stage(src, dest, files=["model-00000-rank-000.safetensor", "gone.safetensor"])

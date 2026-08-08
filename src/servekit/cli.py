@@ -9,7 +9,7 @@ from typing import List, Optional, Tuple
 
 from .bench import BenchConfig, run_benchmark, render_bench
 from .launch import DEFAULT_ROOT, launch
-from .prepare import prepare
+from .prepare import prepare, prepare_presharded
 from .profile import ProfileReport, detect_framework, render_table, run_profile, save_json
 from .stage import DEFAULT_SLICES
 from .topology import read_topology
@@ -19,6 +19,7 @@ USAGE = """usage:
   servekit launch [--out PATH] [--slices N] [--overlap] -- <command...>
   servekit prepare --model PATH --out PATH [--tp N] [-- <extra engine args>]
                    [--nnodes N --node-rank N --dist-init-addr HOST:PORT]
+  servekit prepare --format presharded --out PATH -- <command...>
   servekit profile [--out PATH] [--timeout SECONDS] -- <command...>
   servekit bench --url URL (--into PATH | --out PATH) [--wait-ready SECONDS] [...]
   servekit verify --url URL (--record PATH | --reference PATH) [--wait-ready SECONDS] [...]
@@ -29,13 +30,28 @@ returning the RAM to the running job while it serves. It behaves like the
 command it wraps, so removing the wrapper gives the baseline back. `profile` is
 `launch` without the staging. `bench` loads any live server over the OpenAI
 protocol, whether or not servekit launched it. `prepare` is the one offline
-step: it writes a TP-presharded checkpoint that `launch` stages and loads with
-`--load-format sharded_state`. `verify` checks that a served model produces the
-same per-token logprobs it did before: `--record` captures a reference from a
-trusted server, `--reference` checks a later server against it.
+step: it writes a presharded checkpoint that `launch` stages and loads. `verify`
+checks that a served model produces the same per-token logprobs it did before:
+`--record` captures a reference from a trusted server, `--reference` checks a
+later server against it.
 
   servekit launch -- python -m sglang.launch_server --model-path /store/llama70b-tp4 \\
       --tensor-parallel-size 4 --load-format sharded_state
+
+Two checkpoint formats, because SGLang has two. `sharded_state` names its files
+by TP rank, which is identical on every pipeline stage, so it is TP-only: at
+pp > 1 the stages overwrite each other and the load fails on keys they do not
+own. `presharded` names by world rank and is what pipeline parallelism needs. It
+has no save API -- the dump falls out of one ordinary load -- so preparing it
+means handing `prepare` the serving command itself:
+
+  servekit prepare --format presharded --out /store/k3-tp4pp8 -- \\
+      python -m sglang.launch_server --model-path /store/Kimi-K3 --tp-size 4 --pp-size 8 \\
+      --load-format presharded --model-loader-extra-config '{"presharded_path": "/store/k3-tp4pp8"}'
+
+At launch the dump, not the model directory, is what moves to /dev/shm: each
+node stages only the files its own ranks read, which the dump's checksum.json
+names exactly.
 
 To profile and bench one run, put them side by side and join on the report file:
 
@@ -152,13 +168,36 @@ def _prepare(argv: List[str]) -> int:
     options, engine_args = _split_command(argv)
 
     parser = argparse.ArgumentParser(prog="servekit prepare")
-    parser.add_argument("--model", type=Path, required=True, help="source checkpoint (a local directory)")
+    parser.add_argument(
+        "--format",
+        choices=["sharded_state", "presharded"],
+        default="sharded_state",
+        help="presharded is the one that survives pipeline parallelism",
+    )
+    parser.add_argument("--model", type=Path, default=None, help="source checkpoint (a local directory)")
     parser.add_argument("--out", type=Path, required=True, help="where to write the presharded checkpoint")
     parser.add_argument("--tp", type=int, default=1, help="tensor-parallel size the shards will be locked to")
     parser.add_argument("--nnodes", type=int, default=1, help="nodes to shard across (TP > GPUs per node)")
     parser.add_argument("--node-rank", type=int, default=0, help="this node's rank, e.g. $SLURM_PROCID")
     parser.add_argument("--dist-init-addr", default=None, help="rendezvous address, HOST:PORT on the head")
+    parser.add_argument("--timeout", type=float, default=3600.0, help="seconds to wait for the dump")
     args = parser.parse_args(options)
+
+    if args.format == "presharded":
+        if not engine_args:
+            print(
+                "error: --format presharded needs the full engine command after --, "
+                "because the dump is written by starting it",
+                file=sys.stderr,
+            )
+            return 2
+        return prepare_presharded(
+            args.out, engine_args, timeout=args.timeout, node_rank=args.node_rank
+        )
+
+    if args.model is None:
+        print("error: --model is required for --format sharded_state", file=sys.stderr)
+        return 2
 
     return prepare(
         args.model,

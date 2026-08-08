@@ -73,7 +73,9 @@ SGLANG = FrameworkSpec(
             "tp_worker_spawn",
             [
                 re.compile(r"Using default HuggingFace chat template"),
-                re.compile(r"TP\d+\]"),
+                # At pp > 1 the schedulers tag themselves PP0..PPn, so keying on
+                # TP alone would leave this gap unattributed for every PP run.
+                re.compile(r"(?:TP|PP)\d+\]"),
             ],
         ),
         (
@@ -90,6 +92,7 @@ SGLANG = FrameworkSpec(
         "tp_size": ["--tensor-parallel-size", "--tp-size", "--tp"],
         "pp_size": ["--pipeline-parallel-size", "--pp-size", "--pp"],
         "dp_size": ["--data-parallel-size", "--dp-size", "--dp"],
+        "ep_size": ["--expert-parallel-size", "--ep-size", "--ep"],
     },
     dist_flags={
         "nnodes": ["--nnodes"],
@@ -180,6 +183,7 @@ class ProfileReport:
     benchmark: Optional[dict] = None  # filled in later by `servekit bench --into <report>`
     node_rank: Optional[int] = None
     nnodes: Optional[int] = None
+    overlap_gate: Optional[dict] = None  # presharded only; see launch._overlap_gate
 
     @property
     def total_duration_s(self) -> float:
@@ -199,6 +203,7 @@ class ProfileReport:
             "benchmark": self.benchmark,
             "node_rank": self.node_rank,
             "nnodes": self.nnodes,
+            "overlap_gate": self.overlap_gate,
         }
 
 
@@ -358,6 +363,7 @@ def run_profile(
     ready_timeout: float = 1800.0,
     on_ready: Optional[Callable[[ProfileReport], None]] = None,
     head: bool = True,
+    stop_on_ready: bool = False,
 ) -> ProfileReport:
     """Run `command`, profiling it until it reports ready.
 
@@ -368,6 +374,10 @@ def run_profile(
 
     `head=False` says this node is a worker, which never prints the ready line;
     its own readiness line closes the report instead.
+
+    `stop_on_ready` tears the server down as soon as it is up, for callers that
+    wanted a side effect of starting rather than a server -- `servekit prepare
+    --format presharded`, whose dump is written during startup.
 
     stdout keeps draining for the process's whole life rather than detaching
     once measured: we own the read end of the pipe, so exiting would SIGPIPE the
@@ -388,13 +398,20 @@ def run_profile(
     previous = {}
     for sig in (signal.SIGTERM, signal.SIGINT):
         previous[sig] = signal.signal(sig, _forward)
+    def _ready(report: ProfileReport) -> None:
+        if on_ready is not None:
+            on_ready(report)
+        if stop_on_ready:
+            print("[SERVEKIT] up; tearing the server down", flush=True)
+            proc.terminate()
+
     try:
         report = _process_stream(
             proc.stdout,
             spawn_time,
             ready_timeout,
             spec=spec,
-            on_ready=on_ready,
+            on_ready=_ready,
             head=head,
         )
         if not report.success:

@@ -2,14 +2,18 @@
 """
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
+from pathlib import Path
 from typing import List, Optional
 
 from .engine_args import _find_flag
 from .profile import FrameworkSpec
 
 SHARDED_FORMAT = "sharded_state"
+PRESHARDED_FORMAT = "presharded"
 _LOAD_FORMAT_FLAGS = ["--load-format"]
+LOADER_CONFIG_FLAGS = ["--model-loader-extra-config"]
 
 
 @dataclass(frozen=True)
@@ -121,3 +125,39 @@ def wants_sharded_state(command: List[str]) -> bool:
     """Whether the command loads a presharded checkpoint, i.e. one file set per rank."""
     found = _find_flag(command, _LOAD_FORMAT_FLAGS)
     return found is not None and found[1] == SHARDED_FORMAT
+
+
+def wants_presharded(command: List[str]) -> bool:
+    """Whether the command loads a `presharded` dump, the format that survives PP.
+
+    `sharded_state` keys its filenames on the TP rank, identical on every pipeline
+    stage, so at pp > 1 the stages overwrite each other. `presharded` keys on the
+    world rank instead.
+    """
+    found = _find_flag(command, _LOAD_FORMAT_FLAGS)
+    return found is not None and found[1] == PRESHARDED_FORMAT
+
+
+def loader_config(command: List[str]) -> dict:
+    found = _find_flag(command, LOADER_CONFIG_FLAGS)
+    if found is None:
+        return {}
+    try:
+        config = json.loads(found[1])
+    except ValueError as e:
+        raise ValueError(f"{LOADER_CONFIG_FLAGS[0]} is not valid JSON: {e}")
+    if not isinstance(config, dict):
+        raise ValueError(f"{LOADER_CONFIG_FLAGS[0]} must be a JSON object, got {type(config).__name__}")
+    return config
+
+
+def presharded_root(command: List[str]) -> Path:
+    """Where the command expects the dump to live."""
+    root = loader_config(command).get("presharded_path")
+    if not root:
+        raise ValueError(
+            f"--load-format {PRESHARDED_FORMAT} needs "
+            f"{LOADER_CONFIG_FLAGS[0]} '{{\"presharded_path\": \"...\"}}' so servekit knows "
+            f"which dump to stage"
+        )
+    return Path(root)

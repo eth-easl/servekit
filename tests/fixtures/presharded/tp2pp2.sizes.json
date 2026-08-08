@@ -1,0 +1,14 @@
+{
+ "model-00002-rank-000,001.safetensor": 139768,
+ "model-00009-rank-002,003.safetensor": 142400,
+ "model-00005-rank-000,002.safetensor": 536871024,
+ "model-00001-rank-000,001.safetensor": 139768,
+ "model-00006-rank-001.safetensor": 4026539048,
+ "model-00007-rank-001,003.safetensor": 536871024,
+ "model-00003-common.safetensor": 98,
+ "model-00004-common.safetensor": 98,
+ "model-00010-rank-002,003.safetensor": 145408,
+ "model-00000-rank-000.safetensor": 4026539048,
+ "model-00008-rank-002.safetensor": 3489668024,
+ "model-00011-rank-003.safetensor": 3489668024
+}

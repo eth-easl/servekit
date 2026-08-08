@@ -25,6 +25,8 @@ class Manifest:
     dtype: str
     quantization: Optional[str]
     source: str
+    # Defaulted so manifests written before servekit read this axis still load.
+    ep_size: Optional[int] = None
 
     def write(self, directory: Path) -> Path:
         path = Path(directory) / MANIFEST_NAME

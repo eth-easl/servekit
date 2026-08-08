@@ -66,6 +66,7 @@ def resolved(llm, engine_args) -> dict:
         "tp_size": engine_args.tp_size,
         "pp_size": getattr(engine_args, "pp_size", 1),
         "dp_size": getattr(engine_args, "dp_size", 1),
+        "ep_size": getattr(engine_args, "ep_size", 1),
         "dtype": dtype,
         "quantization": quantization,
     }

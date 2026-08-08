@@ -11,8 +11,10 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Optional, Sequence
 
 STAGER = Path(__file__).parent / "_stage" / "stage_to_shm_sliced.sh"
 
@@ -32,8 +34,17 @@ class StageResult:
     bytes: int
 
 
-def stage(src: Path, dest: Path, slices: int = DEFAULT_SLICES, file_pattern: str = "*") -> StageResult:
+def stage(
+    src: Path,
+    dest: Path,
+    slices: int = DEFAULT_SLICES,
+    file_pattern: str = "*",
+    files: Optional[Sequence[str]] = None,
+) -> StageResult:
     """Copy `src` into `dest`, returning the stager's own timing.
+
+    `files` names an explicit set and overrides `file_pattern`; a presharded
+    node's file set is a union of its ranks' reads, which no glob describes.
 
     Raises on a non-zero exit, which covers the free-space pre-flight and the
     size-parity gate the script already does.
@@ -44,13 +55,18 @@ def stage(src: Path, dest: Path, slices: int = DEFAULT_SLICES, file_pattern: str
     # starved alongside it (clariden-loading-exp, results/vllm/llama-3.1-70b).
     env = {k: v for k, v in os.environ.items() if k != "BASH_ENV"}
     env["FILE_PATTERN"] = file_pattern
-    proc = subprocess.run(
-        ["bash", str(STAGER), str(src), str(dest), str(slices)],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        env=env,
-    )
+    with tempfile.TemporaryDirectory() as tmp:
+        if files is not None:
+            listing = Path(tmp) / "files.txt"
+            listing.write_text("\n".join(files) + "\n")
+            env["FILE_LIST"] = str(listing)
+        proc = subprocess.run(
+            ["bash", str(STAGER), str(src), str(dest), str(slices)],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            env=env,
+        )
     sys.stdout.write(proc.stdout)
     sys.stdout.flush()
     if proc.returncode != 0:

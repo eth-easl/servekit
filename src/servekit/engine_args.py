@@ -5,6 +5,7 @@ Pure: no filesystem, no processes. Everything engine-specific lives in
 """
 from __future__ import annotations
 
+import json
 from typing import List, Optional, Tuple
 
 from .manifest import Manifest
@@ -53,6 +54,34 @@ def replace_model_path(command: List[str], spec: FrameworkSpec, new_path: str) -
     return out
 
 
+def replace_presharded_root(command: List[str], new_root: str) -> List[str]:
+    """`command` with `presharded_path` repointed at the staged copy.
+
+    The model path is deliberately left alone: `presharded` still reads the real
+    checkpoint's config, and only the dump moves to /dev/shm.
+    """
+    from .topology import LOADER_CONFIG_FLAGS, loader_config
+
+    found = _find_flag(command, LOADER_CONFIG_FLAGS)
+    if found is None:
+        raise ValueError(f"no {LOADER_CONFIG_FLAGS[0]} in the command")
+    config = dict(loader_config(command))
+    config["presharded_path"] = new_root
+    idx, old = found
+    out = list(command)
+    out[idx] = json.dumps(config) if out[idx] == old else out[idx].replace(old, json.dumps(config), 1)
+    return out
+
+
+def parallel_sizes(command: List[str], spec: FrameworkSpec) -> dict:
+    """What the command asks for, in `shard_config`'s vocabulary."""
+    sizes = {}
+    for name, flags in spec.parallel_flags.items():
+        found = _find_flag(command, flags)
+        sizes[name.replace("_size", "")] = int(found[1]) if found else 1
+    return sizes
+
+
 def check_manifest(command: List[str], spec: FrameworkSpec, manifest: Manifest) -> List[str]:
     """Ways `command` cannot load `manifest`'s checkpoint, in plain words.
 
@@ -70,8 +99,9 @@ def check_manifest(command: List[str], spec: FrameworkSpec, manifest: Manifest) 
     for name, flags in spec.parallel_flags.items():
         found = _find_flag(command, flags)
         asked = int(found[1]) if found else 1
-        prepared = getattr(manifest, name)
-        if asked != prepared:
+        # A manifest written before servekit knew about this axis cannot speak to it.
+        prepared = getattr(manifest, name, None)
+        if prepared is not None and asked != prepared:
             problems.append(
                 f"{name}: the checkpoint is sharded for {prepared}, the command asks for {asked}"
             )

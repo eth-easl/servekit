@@ -38,10 +38,25 @@ esac
 [[ -d "$SRC" ]] || { echo "src not a dir: $SRC" >&2; exit 1; }
 mkdir -p "$DEST"
 
+# FILE_LIST wins over FILE_PATTERN: a presharded node's file set is the union of
+# its ranks' reads, which no single glob describes.
 FILE_PATTERN="${FILE_PATTERN:-*}"
-mapfile -t FILES < <(find "$SRC" -maxdepth 1 -type f -name "$FILE_PATTERN" -printf '%f\n' | sort)
-(( ${#FILES[@]} > 0 )) || { echo "no files matching '$FILE_PATTERN' in $SRC" >&2; exit 1; }
-src_bytes="$(find "$SRC" -maxdepth 1 -type f -name "$FILE_PATTERN" -printf '%s\n' | awk '{s+=$1} END{print s}')"
+if [[ -n "${FILE_LIST:-}" ]]; then
+  [[ -f "$FILE_LIST" ]] || { echo "FILE_LIST not a file: $FILE_LIST" >&2; exit 1; }
+  mapfile -t FILES < <(grep -v '^[[:space:]]*$' "$FILE_LIST" | sort -u)
+  (( ${#FILES[@]} > 0 )) || { echo "FILE_LIST $FILE_LIST is empty" >&2; exit 1; }
+  for f in "${FILES[@]}"; do
+    [[ "$f" == */* ]] && { echo "FILE_LIST entries must be bare filenames, got: $f" >&2; exit 1; }
+    [[ -f "$SRC/$f" ]] || { echo "listed file missing from $SRC: $f" >&2; exit 1; }
+  done
+  SELECT=(-false)
+  for f in "${FILES[@]}"; do SELECT+=(-o -name "$f"); done
+else
+  mapfile -t FILES < <(find "$SRC" -maxdepth 1 -type f -name "$FILE_PATTERN" -printf '%f\n' | sort)
+  (( ${#FILES[@]} > 0 )) || { echo "no files matching '$FILE_PATTERN' in $SRC" >&2; exit 1; }
+  SELECT=(-name "$FILE_PATTERN")
+fi
+src_bytes="$(find "$SRC" -maxdepth 1 -type f \( "${SELECT[@]}" \) -printf '%s\n' | awk '{s+=$1} END{print s}')"
 avail_bytes="$(df --output=avail -B1 "$(dirname "$DEST")" | tail -1 | tr -d ' ')"
 headroom=$((10*1024**3))
 if (( avail_bytes < src_bytes + headroom )); then
@@ -90,9 +105,12 @@ end="$(date +%s.%N)"
 # Necessary but not sufficient: truncate already fixed the size, so this catches
 # a partial stage but never wrong content. Only a checksum proves that -- see
 # test_stage_is_bitwise_exact_across_concurrent_writers.
-dst_bytes="$(find "$DEST" -maxdepth 1 -type f -name "$FILE_PATTERN" -printf '%s\n' | awk '{s+=$1} END{print s}')"
+dst_bytes="$(find "$DEST" -maxdepth 1 -type f \( "${SELECT[@]}" \) -printf '%s\n' | awk '{s+=$1} END{print s}')"
 [[ "$src_bytes" == "$dst_bytes" ]] || { echo "SIZE MISMATCH src=$src_bytes dst=$dst_bytes" >&2; exit 2; }
+
+staged_files="$(find "$DEST" -maxdepth 1 -type f \( "${SELECT[@]}" \) | wc -l)"
+(( staged_files == ${#FILES[@]} )) || { echo "FILE COUNT MISMATCH want=${#FILES[@]} got=$staged_files" >&2; exit 2; }
 
 wall="$(awk -v s="$start" -v e="$end" 'BEGIN{printf "%.2f", e-s}')"
 gbps="$(awk -v b="$dst_bytes" -v w="$wall" 'BEGIN{printf "%.2f", b/w/1e9}')"
-echo "staged_files=$(find "$DEST" -maxdepth 1 -type f -name "$FILE_PATTERN" | wc -l) staged_bytes=$dst_bytes slices=$SLICES read_mode=$READ_MODE readers=$NTASK stage_wall_s=$wall stage_GBps=$gbps"
+echo "staged_files=$staged_files staged_bytes=$dst_bytes slices=$SLICES read_mode=$READ_MODE readers=$NTASK stage_wall_s=$wall stage_GBps=$gbps"
