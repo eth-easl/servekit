@@ -1,0 +1,36 @@
+# SGLang for the multi-node PP example on clariden (GH200/sm_90a, aarch64).
+#
+# Pinned to a dated, SHA-tagged nightly rather than a release, and not
+# negotiable: PreshardedModelLoader landed in PR #24256 on 2026-07-25 and is in
+# NO release -- absent from v0.5.10 through v0.5.16. Commit 16a52bff is verified
+# to contain LoadFormat.PRESHARDED, and is the image
+# experiments/pp-loading-exp measured PP=4 and TP=2/PP=2 on.
+#
+# Point this at a stock v0.5.x tag and --load-format presharded becomes an
+# invalid choice: there is no silent degradation, but there is no PP either.
+image = "lmsysorg/sglang:nightly-dev-20260729-16a52bff"
+
+mounts = [
+  "/capstor:/capstor",
+  "/iopsstor:/iopsstor",
+]
+
+workdir = "/iopsstor/scratch/cscs/yboughizane/simple-serving-stack/servekit/examples/multinode-pp"
+
+[env]
+HOME = "/root"
+NCCL_DEBUG = "WARN"
+PYTHONPATH = ""
+PYTHONNOUSERSITE = "1"
+HF_HUB_OFFLINE = "1"
+TRANSFORMERS_OFFLINE = "1"
+TOKENIZERS_PARALLELISM = "false"
+
+# The aws_ofi_nccl hook is what puts NCCL on Slingshot, and it is the only
+# fabric configuration this needs. Pipeline parallel sends far less between
+# nodes than tensor parallel does, but the rendezvous and the dump's all-gather
+# of the structural signature still cross it.
+[annotations]
+com.pyxis.entrypoint_log = "true"
+com.hooks.aws_ofi_nccl.enabled = "true"
+com.hooks.aws_ofi_nccl.variant = "cuda12"
