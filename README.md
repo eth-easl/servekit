@@ -62,3 +62,19 @@ concurrent throughput workload against `POST /v1/completions`.
 ```bash
 PYTHONPATH=src python -m pytest tests -q
 ```
+
+The e2e suite needs a live SLURM cluster and runs only when asked for:
+
+```bash
+PYTHONPATH=src python -m pytest tests/e2e -m e2e -q
+```
+
+`test_correctness_e2e.py` checks the half of the claim the timings do not: that
+the fast path serves the *same* model. It compares per-token logprobs against
+`tests/e2e/fixtures/llama70b-tp4-bf16.json`, a frozen capture of Llama-3.1-70B
+loaded the plain way — HF safetensors off Lustre, no staging, no `sharded_state`.
+Wrong weights still produce fluent text, which is why the bench's greedy
+completions cannot catch them and these numbers can.
+
+Regenerate the fixture with `examples/correctness/baseline_llama70b.sbatch`, and
+diff two captures with `probe_logprobs.py --compare a.json b.json`.
