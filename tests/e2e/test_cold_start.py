@@ -40,3 +40,24 @@ def test_multinode_llama70b():
         report = json.loads((rundir / f"run.node{node_rank}.json").read_text())
         assert report["success"], f"node {node_rank} never reported ready"
     _assert_fast_cold_start(json.loads((rundir / "run.node0.json").read_text()))
+
+
+def test_multinode_pp_llama70b():
+    script = EXAMPLES / "multinode-pp" / "run_llama70b_sglang.sbatch"
+    job_id = _sbatch_wait(script)
+    rundir = script.parent / "logs" / f"multinode-pp-llama70b-{job_id}"
+    for node_rank in (0, 1):
+        report = json.loads((rundir / f"run.node{node_rank}.json").read_text())
+        assert report["success"], f"node {node_rank} never reported ready"
+        # PP-specific: each stage stages a DIFFERENT file set, so a stager that
+        # got the per-node set wrong shows up as a cache miss on one node only.
+        # The run job passes --overlap, which makes that miss cheap enough to
+        # hide in the timings -- the gate is what names it. A gate that is
+        # missing entirely means nothing was staged at all.
+        gate = report["overlap_gate"]
+        assert gate is not None, f"node {node_rank} staged nothing"
+        assert gate["valid"], (
+            f"node {node_rank} read the dump {-gate['slack_s']:.2f}s before READY "
+            "existed: cache miss, so its timings are a full source load"
+        )
+    _assert_fast_cold_start(json.loads((rundir / "run.node0.json").read_text()))
