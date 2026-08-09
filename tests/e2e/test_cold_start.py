@@ -1,24 +1,10 @@
 import json
-import re
-import subprocess
-from pathlib import Path
 
 import pytest
 
+from conftest import EXAMPLES, sbatch_wait
+
 pytestmark = pytest.mark.e2e
-
-EXAMPLES = Path(__file__).resolve().parents[2] / "examples"
-
-
-def _sbatch_wait(script: Path) -> str:
-    proc = subprocess.run(
-        ["sbatch", "--wait", script.name],
-        cwd=script.parent,
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-    return re.search(r"Submitted batch job (\d+)", proc.stdout).group(1)
 
 
 def _assert_fast_cold_start(
@@ -40,7 +26,7 @@ def _assert_fast_cold_start(
 
 def test_fast_weight_load_llama70b():
     script = EXAMPLES / "fast-weight-load" / "run_llama70b_sglang.sbatch"
-    job_id = _sbatch_wait(script)
+    job_id = sbatch_wait(script)
     out = script.parent / "logs" / f"fast-weight-load-llama70b-{job_id}.json"
     report = json.loads(out.read_text())
     _assert_fast_cold_start(report)
@@ -48,7 +34,7 @@ def test_fast_weight_load_llama70b():
 
 def test_multinode_llama70b():
     script = EXAMPLES / "multinode" / "run_llama70b_sglang.sbatch"
-    job_id = _sbatch_wait(script)
+    job_id = sbatch_wait(script)
     rundir = script.parent / "logs" / f"multinode-tp-llama70b-{job_id}"
     for node_rank in (0, 1):
         report = json.loads((rundir / f"run.node{node_rank}.json").read_text())
