@@ -1,20 +1,6 @@
-"""Capture what a served model actually computes, so two loads can be compared.
+"""Capture logprobs for a served model over multiple fixed prompts. 
 
-`servekit bench`'s correctness probe captures greedy text and never compares it;
-the e2e suite only asserts it is non-empty. That passes on a model whose weights
-are wrong, because wrong weights still produce fluent text. Per-token logprobs
-do not: they are the model's own numbers, and a silently cast dtype, a zero page,
-or a swapped shard moves them.
-
-Two captures of the same checkpoint agree to within kernel nondeterminism. Two
-captures of *different* weights do not. That gap is the test.
-
-Requests go out one at a time, in a fixed order. SGLang's numerics depend on
-batch composition, so anything concurrent would make two arms differ for reasons
-that have nothing to do with what was loaded.
-
-Standalone and stdlib-only on purpose: it runs inside the engine container next
-to the server, where servekit is pip-installed but nothing else is guaranteed.
+Usage:
 
   python probe_logprobs.py --url http://127.0.0.1:8080 --out capture.json
   python probe_logprobs.py --compare a.json b.json
@@ -29,9 +15,7 @@ import urllib.error
 import urllib.request
 from typing import List, Optional, Tuple
 
-# Distinct first tokens throughout: a shared prefix would let the radix cache
-# serve one prompt's prefill out of another's, which is deterministic within a
-# run but couples prompts we want independent.
+
 PROMPTS: List[Tuple[str, str]] = [
     ("capital_of_france", "The capital of France is"),
     ("fibonacci_code", "def fibonacci(n):\n    if n < 2:\n        return n\n    return"),
@@ -68,17 +52,14 @@ PROMPTS: List[Tuple[str, str]] = [
     ),
 ]
 
-# The first eight also get a greedy continuation. Argmax is a sharper signal than
-# any tolerance -- it either matches or it does not -- but it is coarse, so the
-# logprobs carry the magnitude and this carries the sign.
+
 GREEDY_PROMPTS = 8
 GREEDY_TOKENS = 32
 
 
 # Not 0. SGLang's OpenAI adapter reads meta_info["input_top_logprobs"] whenever
 # echo and logprobs are both set, but only fills it when top_logprobs >= 1, so
-# logprobs=0 is a KeyError 500 (seen on v0.5.10). We ignore the top-1 payload it
-# then returns -- asking for it is what makes the endpoint work.
+# logprobs=0 is a KeyError 500 (seen on v0.5.10).
 TOP_LOGPROBS = 1
 
 
