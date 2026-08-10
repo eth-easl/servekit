@@ -1,6 +1,6 @@
 """
-Compares logs probs between (no servekit) baseline and serveki) fast weight load.
-The logs probs are expected to be equal within a tolerance.
+Compares logprobs between the baseline loader (no servekit) and servekit fast weight load.
+The logprobs are expected to be equal within a tolerance.
 
 Dev workflow:
 (1) MODE=baseline sbatch tests/e2e/scripts/correctness-llama70b.sbatch
