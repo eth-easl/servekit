@@ -3,9 +3,9 @@ Compares logs probs between (no servekit) baseline and serveki) fast weight load
 The logs probs are expected to be equal within a tolerance.
 
 Dev workflow:
-(1) ARM=baseline sbatch tests/e2e/scripts/correctness-llama70b.sbatch
+(1) MODE=baseline sbatch tests/e2e/scripts/correctness-llama70b.sbatch
 (2) cp tests/e2e/scripts/logs/baseline-<id>.json tests/e2e/fixtures/<run-name>.json
-(3) pytest tests/e2e/test_correctness_e2e.py -m e2e (runs ARM=fast, compares logprobs)
+(3) pytest tests/e2e/test_correctness_e2e.py -m e2e (runs MODE=fast, compares logprobs)
 """
 
 import json
@@ -16,7 +16,7 @@ import pytest
 
 from conftest import SCRIPTSDIR, sbatch_wait
 
-os.environ.setdefault("ARM", "fast")
+os.environ.setdefault("MODE", "fast")
 
 pytestmark = pytest.mark.e2e
 
@@ -40,7 +40,7 @@ def _worst(deltas):
 
 def test_fast_weight_load_matches_the_lustre_baseline():
     if not FIXTURE.is_file():
-        pytest.skip(f"no baseline capture at {FIXTURE}; run: ARM=baseline sbatch tests/e2e/scripts/correctness-llama70b.sbatch")
+        pytest.skip(f"no baseline capture at {FIXTURE}; run: MODE=baseline sbatch tests/e2e/scripts/correctness-llama70b.sbatch")
 
     reference = json.loads(FIXTURE.read_text())
     got = _capture(sbatch_wait(SCRIPTSDIR / "correctness-llama70b.sbatch"))

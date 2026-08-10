@@ -1,9 +1,9 @@
 #!/bin/bash
 # Correctness test for weight loading: compares baseline (no servekit) vs fast (servekit staging).
 #
-# Run with ARM=baseline or ARM=fast environment variable:
-#   ARM=baseline sbatch llama70b.sbatch
-#   ARM=fast sbatch llama70b.sbatch
+# Run with MODE=baseline or MODE=fast environment variable:
+#   MODE=baseline sbatch correctness-llama70b.sbatch
+#   MODE=fast sbatch correctness-llama70b.sbatch
 #
 # Baseline: plain sglang reading original HF safetensors.
 # Fast: presharded checkpoint staged into /dev/shm by servekit.
@@ -21,9 +21,9 @@
 
 set -euo pipefail
 
-export ARM="${ARM:-fast}"
+export MODE="${MODE:-fast}"
 
-case "$ARM" in
+case "$MODE" in
   baseline)
     export SLURM_JOB_NAME="correctness-baseline-llama70b"
     export MODEL="${MODEL:-/capstor/store/cscs/swissai/infra01/hf_models/models/meta-llama/Llama-3.1-70B-Instruct}"
@@ -35,7 +35,7 @@ case "$ARM" in
     OUT_PREFIX="fast"
     ;;
   *)
-    echo "ARM must be 'baseline' or 'fast', got: $ARM" >&2
+    echo "MODE must be 'baseline' or 'fast', got: $MODE" >&2
     exit 1
     ;;
 esac
@@ -46,7 +46,7 @@ export SERVEKIT_DIR="${SLURM_SUBMIT_DIR}/../../.."
 export PROBE="${SERVEKIT_DIR}/tests/e2e/probe_logprobs.py"
 export OUT="${SLURM_SUBMIT_DIR}/logs/${OUT_PREFIX}-${SLURM_JOB_ID}.json"
 
-if [ "$ARM" = "fast" ]; then
+if [ "$MODE" = "fast" ]; then
   export REPORT="${SLURM_SUBMIT_DIR}/logs/${OUT_PREFIX}-${SLURM_JOB_ID}.report.json"
 fi
 
@@ -54,7 +54,7 @@ INNER_CMD=$(cat <<'EOF'
 set -euo pipefail
 ulimit -c 0
 
-if [ "$ARM" = "fast" ]; then
+if [ "$MODE" = "fast" ]; then
   pip install -e "${SERVEKIT_DIR}" --no-build-isolation --no-deps -q
   servekit launch --out "${REPORT}" --timeout 3000 \
     -- \
@@ -88,7 +88,7 @@ fi
 
 python "${PROBE}" --url "http://127.0.0.1:8080" --out "${OUT}" --wait-ready 3000
 
-if [ "$ARM" = "fast" ]; then
+if [ "$MODE" = "fast" ]; then
   kill ${LAUNCH_PID} 2>/dev/null || true
   wait ${LAUNCH_PID} 2>/dev/null || true
 else
