@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import time
+import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, field
@@ -81,8 +82,13 @@ def _completions(base_url: str, model: str, prompt: str, params: dict, timeout: 
     req = urllib.request.Request(
         f"{base_url}/v1/completions", data=body, headers={"Content-Type": "application/json"}
     )
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        return json.loads(r.read())
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return json.loads(r.read())
+    except urllib.error.HTTPError as e:
+        # The body carries the engine's own traceback, and losing it costs
+        # another ten-minute weight load to find out what went wrong.
+        raise RuntimeError(f"HTTP {e.code} from {base_url}/v1/completions: {e.read().decode()[:600]}") from e
 
 
 def wait_for_ready(

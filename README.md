@@ -51,10 +51,27 @@ servekit bench --url http://127.0.0.1:8080 --out bench.json --wait-ready 300
 Runs a correctness check (greedy completions on fixed prompts) and a fixed
 concurrent throughput workload against `POST /v1/completions`. 
 
+### `servekit verify`
+
+Checks that a served model produces the same numbers as a trusted reference —
+per-token logprobs, mean NLL, and greedy continuations over a fixed prompt set.
+
+```bash
+# record a reference from a server you trust (e.g. plain sglang, no servekit)
+servekit verify --url http://127.0.0.1:8080 --record gold.json --wait-ready 300
+
+# check a later server (e.g. one started with `servekit launch`) against it
+servekit verify --url http://127.0.0.1:8080 --reference gold.json --wait-ready 300
+```
+
+Exits 0 if every prompt is within tolerance (`--token-tol`, `--nll-tol`), 1
+otherwise. `--out` writes the per-prompt result as JSON. `--compare a.json
+b.json` diffs two references of the same load and suggests tolerances.
+
 ### Roadmap 👷‍♂️🚧
 
 - [x] Support Multi-Node fast weight loading
-- [ ] Support Pipeline parallelism ()
+- [ ] Support Pipeline parallelism
 - [ ] Support vllm fast weight loading
 
 ## Tests

@@ -41,19 +41,20 @@ esac
 EDF="${SLURM_SUBMIT_DIR}/../../../examples/fast-weight-load/llama-3.1-70b-sglang.toml"
 export SERVED_MODEL_NAME=meta-llama/Llama-3.1-70B-Instruct
 export SERVEKIT_DIR="${SLURM_SUBMIT_DIR}/../../.."
-export PROBE="${SERVEKIT_DIR}/tests/e2e/probe_logprobs.py"
 export OUT="${SLURM_SUBMIT_DIR}/logs/${OUT_PREFIX}-${SLURM_JOB_ID}.json"
 
 if [ "$MODE" = "fast" ]; then
   export REPORT="${SLURM_SUBMIT_DIR}/logs/${OUT_PREFIX}-${SLURM_JOB_ID}.report.json"
+  export REFERENCE="${SERVEKIT_DIR}/tests/e2e/fixtures/llama70b-tp4-bf16.json"
 fi
 
 INNER_CMD=$(cat <<'EOF'
 set -euo pipefail
 ulimit -c 0
 
+pip install -e "${SERVEKIT_DIR}" --no-build-isolation --no-deps -q
+
 if [ "$MODE" = "fast" ]; then
-  pip install -e "${SERVEKIT_DIR}" --no-build-isolation --no-deps -q
   servekit launch --out "${REPORT}" --timeout 3000 \
     -- \
     python -m sglang.launch_server \
@@ -84,7 +85,12 @@ else
   SERVER_PID=$!
 fi
 
-python "${PROBE}" --url "http://127.0.0.1:8080" --out "${OUT}" --wait-ready 3000
+VERIFY_RC=0
+if [ "$MODE" = "fast" ]; then
+  servekit verify --url "http://127.0.0.1:8080" --reference "${REFERENCE}" --out "${OUT}" --wait-ready 3000 || VERIFY_RC=$?
+else
+  servekit verify --url "http://127.0.0.1:8080" --record "${OUT}" --wait-ready 3000 || VERIFY_RC=$?
+fi
 
 if [ "$MODE" = "fast" ]; then
   kill ${LAUNCH_PID} 2>/dev/null || true
@@ -93,6 +99,8 @@ else
   kill ${SERVER_PID} 2>/dev/null || true
   wait ${SERVER_PID} 2>/dev/null || true
 fi
+
+exit ${VERIFY_RC}
 EOF
 )
 

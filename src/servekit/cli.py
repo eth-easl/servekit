@@ -13,6 +13,7 @@ from .prepare import prepare
 from .profile import ProfileReport, detect_framework, render_table, run_profile, save_json
 from .stage import DEFAULT_SLICES
 from .topology import read_topology
+from .verify import capture, compare, discover_model, load_prompt_set, render_noise_floor, render_verify, wait_for_ready
 
 USAGE = """usage:
   servekit launch [--out PATH] [--slices N] [--overlap] -- <command...>
@@ -20,6 +21,8 @@ USAGE = """usage:
                    [--nnodes N --node-rank N --dist-init-addr HOST:PORT]
   servekit profile [--out PATH] [--timeout SECONDS] -- <command...>
   servekit bench --url URL (--into PATH | --out PATH) [--wait-ready SECONDS] [...]
+  servekit verify --url URL (--record PATH | --reference PATH) [--wait-ready SECONDS] [...]
+  servekit verify --compare A B
 
 `launch` wraps an engine command: it copies the model into /dev/shm, starts the
 engine against the copy, and frees the copy once the server reports ready --
@@ -28,7 +31,9 @@ command it wraps, so removing the wrapper gives the baseline back. `profile` is
 `launch` without the staging. `bench` loads any live server over the OpenAI
 protocol, whether or not servekit launched it. `prepare` is the one offline
 step: it writes a TP-presharded checkpoint that `launch` stages and loads with
-`--load-format sharded_state`.
+`--load-format sharded_state`. `verify` checks that a served model produces the
+same per-token logprobs it did before: `--record` captures a reference from a
+trusted server, `--reference` checks a later server against it.
 
   servekit launch -- python -m sglang.launch_server --model-path /store/llama70b-tp4 \\
       --tensor-parallel-size 4 --load-format sharded_state
@@ -265,6 +270,79 @@ def _bench(argv: List[str]) -> int:
     return rc
 
 
+def _verify(argv: List[str]) -> int:
+    parser = argparse.ArgumentParser(prog="servekit verify")
+    parser.add_argument("--url", default=None, help="server base URL, e.g. http://127.0.0.1:8080 (unused with --compare)")
+    parser.add_argument("--record", type=Path, default=None, help="capture a reference from this server")
+    parser.add_argument("--reference", type=Path, default=None, help="check this server against a reference")
+    parser.add_argument("--prompts", type=Path, default=None, help="override the built-in prompt set (--record only)")
+    parser.add_argument("--out", type=Path, default=None, help="write the machine-readable check result here")
+    parser.add_argument("--wait-ready", type=float, default=0.0, help="seconds to wait for the server to serve")
+    parser.add_argument("--timeout", type=float, default=600.0, help="per-request timeout")
+    parser.add_argument("--token-tol", type=float, default=1e-6, help="max allowed |delta| per token logprob")
+    parser.add_argument("--nll-tol", type=float, default=1e-6, help="max allowed |delta| in mean NLL")
+    parser.add_argument("--compare", nargs=2, metavar=("A", "B"), default=None, help="diff two captures and suggest tolerances; ignores --url")
+    args = parser.parse_args(argv)
+
+    if args.compare:
+        a = json.loads(Path(args.compare[0]).read_text())
+        b = json.loads(Path(args.compare[1]).read_text())
+        table, shape_problems = render_noise_floor(a, b)
+        print(table)
+        return 1 if shape_problems else 0
+
+    if not args.url:
+        print("error: --url is required unless --compare is given", file=sys.stderr)
+        return 2
+    if bool(args.record) == bool(args.reference):
+        print("error: exactly one of --record or --reference is required", file=sys.stderr)
+        return 2
+    if args.reference and args.prompts:
+        print("error: --prompts only applies to --record; the reference carries its own prompts", file=sys.stderr)
+        return 2
+
+    if args.wait_ready > 0:
+        print(f"[SERVEKIT] waiting up to {args.wait_ready:g}s for {args.url} to serve", flush=True)
+        try:
+            _, model = wait_for_ready(args.url, args.wait_ready)
+        except TimeoutError as e:
+            print(f"error: {e}", file=sys.stderr)
+            return 1
+    else:
+        model = discover_model(args.url)
+
+    if args.record:
+        prompt_set, prompts = load_prompt_set(args.prompts)
+        print(f"[SERVEKIT] recording {len(prompts)} prompts from {args.url}", flush=True)
+        result = capture(args.url, model, prompts, prompt_set, timeout=args.timeout)
+        args.record.write_text(json.dumps(result, indent=1))
+        print(f"[SERVEKIT] reference written to {args.record}", flush=True)
+        return 0
+
+    reference = json.loads(args.reference.read_text())
+    prompt_set, prompts = load_prompt_set(None)
+    ref_prompts = [(p["key"], p["text"]) for p in reference["prompts"]]
+    print(f"[SERVEKIT] checking {len(ref_prompts)} prompts from {args.url} against {args.reference}", flush=True)
+    captured = capture(
+        args.url,
+        model,
+        ref_prompts,
+        reference.get("prompt_set", prompt_set),
+        timeout=args.timeout,
+        greedy_prompts=reference.get("greedy_prompts", 8),
+        greedy_tokens=reference.get("greedy_tokens", 32),
+    )
+    result = compare(reference, captured, token_tol=args.token_tol, nll_tol=args.nll_tol)
+    print()
+    print(render_verify(args.url, result))
+
+    if args.out:
+        args.out.write_text(json.dumps(result.to_dict(), indent=2))
+        print(f"\nresult written to {args.out}", flush=True)
+
+    return 0 if result.passed else 1
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     commands = {
@@ -272,6 +350,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         "prepare": _prepare,
         "profile": _profile,
         "bench": _bench,
+        "verify": _verify,
     }
     if not argv or argv[0] not in commands:
         print(USAGE, file=sys.stderr)

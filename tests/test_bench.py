@@ -10,6 +10,24 @@ from servekit.bench import CORRECTNESS_PROMPTS, BenchConfig, discover_model, run
 STUB_MODEL = "stub/Model-1B"
 
 
+def _logprobs_response(body: dict) -> dict:
+    """Deterministic per-token logprobs keyed off the prompt text, for verify's echo/greedy probes."""
+    prompt = body.get("prompt", "")
+    words = prompt.split() or [prompt]
+    seed = sum(ord(c) for c in prompt)
+    if body.get("echo"):
+        tokens = [None] + [f"tok{i}" for i in range(len(words))] + ["gen"]
+        logprobs = [None] + [-((seed + i) % 1000) / 100.0 - 0.01 for i in range(len(words))] + [-0.5]
+    else:
+        n = int(body.get("max_tokens", 1))
+        tokens = [f"g{(seed + i) % 97}" for i in range(n)]
+        logprobs = [-0.1] * n
+    return {
+        "model": body["model"],
+        "choices": [{"text": "", "logprobs": {"tokens": tokens, "token_logprobs": logprobs}}],
+    }
+
+
 def _make_handler(unready_posts: int):
     """Stub /v1/completions that 503s for its first `unready_posts` requests -- a
     server that's listening but can't serve yet. GET /v1/models advertises the
@@ -44,6 +62,9 @@ def _make_handler(unready_posts: int):
                 self.send_response(503)
                 self.send_header("Content-Length", "0")
                 self.end_headers()
+                return
+            if body.get("logprobs"):
+                self._reply(200, _logprobs_response(body))
                 return
             self._reply(
                 200,
