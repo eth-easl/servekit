@@ -24,7 +24,12 @@ def sbatch_wait(script: Path, timeout: float = 600, poll_interval: float = 5.0) 
     job_id = re.search(r"Submitted batch job (\d+)", submit.stdout).group(1)
 
     deadline = time.monotonic() + timeout
-    while subprocess.run(["squeue", "-h", "-j", job_id], capture_output=True, text=True).stdout.strip():
+    while True:
+        status = subprocess.run(["squeue", "-h", "-j", job_id], capture_output=True, text=True)
+        if status.returncode != 0:
+            raise RuntimeError(f"squeue failed while polling job {job_id}: {status.stderr.strip()}")
+        if not status.stdout.strip():
+            break
         if time.monotonic() >= deadline:
             subprocess.run(["scancel", job_id])
             raise TimeoutError(f"job {job_id} ({script.name}) did not finish within {timeout:g}s; cancelled")

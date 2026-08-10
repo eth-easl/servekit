@@ -124,7 +124,12 @@ def score(base_url: str, model: str, prompt: str, timeout: float) -> Tuple[List[
         )
     # Drop the generated token, then the leading null.
     prompt_len = len(tokens) - 1
-    return [v for v in token_logprobs[:prompt_len] if v is not None], tokens[:prompt_len]
+    logprobs, toks = token_logprobs[:prompt_len], tokens[:prompt_len]
+    if logprobs and logprobs[0] is None:
+        logprobs, toks = logprobs[1:], toks[1:]
+    if any(v is None for v in logprobs):
+        raise RuntimeError(f"unexpected None in token_logprobs beyond the leading entry for prompt {prompt[:40]!r}")
+    return logprobs, toks
 
 
 def greedy(base_url: str, model: str, prompt: str, timeout: float) -> List[str]:

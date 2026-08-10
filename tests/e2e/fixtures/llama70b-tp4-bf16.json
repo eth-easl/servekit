@@ -4,7 +4,7 @@
  "prompts": [
   {
    "key": "capital_of_france",
-   "n_tokens": 6,
+   "n_tokens": 5,
    "token_logprobs": [
     -3.27966,
     -8.186629,
@@ -50,7 +50,7 @@
   },
   {
    "key": "fibonacci_code",
-   "n_tokens": 18,
+   "n_tokens": 17,
    "token_logprobs": [
     -2.77966,
     -8.963274,
@@ -108,7 +108,7 @@
   },
   {
    "key": "arithmetic",
-   "n_tokens": 27,
+   "n_tokens": 26,
    "token_logprobs": [
     -1.71716,
     -1.511769,
@@ -175,7 +175,7 @@
   },
   {
    "key": "primes",
-   "n_tokens": 24,
+   "n_tokens": 23,
    "token_logprobs": [
     -6.15466,
     -3.775454,
@@ -239,7 +239,7 @@
   },
   {
    "key": "thermodynamics",
-   "n_tokens": 15,
+   "n_tokens": 14,
    "token_logprobs": [
     -9.248409,
     -1.974105,
@@ -294,7 +294,7 @@
   },
   {
    "key": "french",
-   "n_tokens": 23,
+   "n_tokens": 22,
    "token_logprobs": [
     -12.912472,
     -3.029592,
@@ -357,7 +357,7 @@
   },
   {
    "key": "german",
-   "n_tokens": 24,
+   "n_tokens": 23,
    "token_logprobs": [
     -6.34216,
     -8.913919,
@@ -421,7 +421,7 @@
   },
   {
    "key": "unicode",
-   "n_tokens": 35,
+   "n_tokens": 34,
    "token_logprobs": [
     -13.365597,
     -8.797855,
@@ -496,7 +496,7 @@
   },
   {
    "key": "json_schema",
-   "n_tokens": 23,
+   "n_tokens": 22,
    "token_logprobs": [
     -9.967159,
     -7.916482,
@@ -525,7 +525,7 @@
   },
   {
    "key": "sql",
-   "n_tokens": 26,
+   "n_tokens": 25,
    "token_logprobs": [
     -10.842159,
     -11.61726,
@@ -557,7 +557,7 @@
   },
   {
    "key": "repetition",
-   "n_tokens": 14,
+   "n_tokens": 13,
    "token_logprobs": [
     -14.484737,
     -4.81734,
@@ -577,7 +577,7 @@
   },
   {
    "key": "rare_tokens",
-   "n_tokens": 28,
+   "n_tokens": 27,
    "token_logprobs": [
     -6.21716,
     -8.773983,
@@ -611,7 +611,7 @@
   },
   {
    "key": "dialogue",
-   "n_tokens": 22,
+   "n_tokens": 21,
    "token_logprobs": [
     -9.904659,
     -5.19322,
@@ -639,7 +639,7 @@
   },
   {
    "key": "chess",
-   "n_tokens": 49,
+   "n_tokens": 48,
    "token_logprobs": [
     -6.15466,
     -2.192111,
@@ -694,7 +694,7 @@
   },
   {
    "key": "numbers",
-   "n_tokens": 51,
+   "n_tokens": 50,
    "token_logprobs": [
     -9.592159,
     -3.20637,
@@ -751,7 +751,7 @@
   },
   {
    "key": "long_prose",
-   "n_tokens": 771,
+   "n_tokens": 770,
    "token_logprobs": [
     -5.90615,
     -5.650778,

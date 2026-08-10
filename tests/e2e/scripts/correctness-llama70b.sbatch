@@ -25,12 +25,10 @@ export MODE="${MODE:-fast}"
 
 case "$MODE" in
   baseline)
-    export SLURM_JOB_NAME="correctness-baseline-llama70b"
     export MODEL="${MODEL:-/capstor/store/cscs/swissai/infra01/hf_models/models/meta-llama/Llama-3.1-70B-Instruct}"
     OUT_PREFIX="baseline"
     ;;
   fast)
-    export SLURM_JOB_NAME="correctness-fast-llama70b"
     export SHARDED_SRC="${SHARDED_SRC:-/capstor/store/cscs/swissai/infra01/cold-start-experiments/llama70b-tp4-sharded}"
     OUT_PREFIX="fast"
     ;;
