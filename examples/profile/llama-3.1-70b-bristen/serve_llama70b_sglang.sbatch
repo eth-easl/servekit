@@ -24,6 +24,7 @@ PROFILE_OUT="${SLURM_SUBMIT_DIR}/logs/${SLURM_JOB_NAME}-${SLURM_JOB_ID}-profile.
 
 INNER_CMD=$(cat <<EOF
 set -euo pipefail
+ulimit -c 0
 pip install -e "${SERVEKIT_DIR}" --no-build-isolation --no-deps -q
 exec servekit profile --out "${PROFILE_OUT}" -- \
   python -m sglang.launch_server \

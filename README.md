@@ -62,3 +62,9 @@ concurrent throughput workload against `POST /v1/completions`.
 ```bash
 PYTHONPATH=src python -m pytest tests -q
 ```
+
+The e2e suite needs a live SLURM cluster and runs only when asked for:
+
+```bash
+PYTHONPATH=src python -m pytest tests/e2e -m e2e -q
+```

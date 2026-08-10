@@ -27,6 +27,7 @@ HEAD_NODE="$(scontrol show hostnames "${SLURM_JOB_NODELIST}" | head -1)"
 INNER_CMD=$(cat <<EOF
 set -euo pipefail
 unset BASH_ENV
+ulimit -c 0
 pip install -e "${SERVEKIT_DIR}" --no-build-isolation --no-deps -q
 
 servekit prepare --model "${MODEL}" --out "${OUT}" --tp "${TP}" \
