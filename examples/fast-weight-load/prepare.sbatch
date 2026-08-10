@@ -23,6 +23,7 @@ SERVEKIT_DIR="${SLURM_SUBMIT_DIR}/../.."
 
 INNER_CMD=$(cat <<EOF
 set -euo pipefail
+ulimit -c 0
 pip install -e "${SERVEKIT_DIR}" --no-build-isolation --no-deps -q
 
 servekit prepare --model "${MODEL}" --out "${OUT}" --tp "${TP}" \
