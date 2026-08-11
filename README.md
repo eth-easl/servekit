@@ -67,6 +67,22 @@ servekit verify --url http://127.0.0.1:8080 --reference gold.json --wait-ready 3
 Exits 0 if every prompt is within tolerance (`--token-tol`, `--nll-tol`), 1
 otherwise. `--out` writes the per-prompt result as JSON.
 
+## Results
+
+Measured with `servekit profile`/`servekit bench` on CSCS Clariden (GH200), SGLang
+v0.5.10.
+
+| Model | Setup | Loader | `weight_loading` | Total cold start |
+| --- | --- | --- | --- | --- |
+| Llama-3.1-70B | TP4, 1 node | default | 466.81s | 586.33s |
+| Llama-3.1-70B | TP4, 1 node | **servekit** | **6.19s** | **127.06s** |
+| Llama-3.1-70B | TP8, 2 nodes | default | 553.02s | 667.44s |
+| Llama-3.1-70B | TP8, 2 nodes | **servekit** | **3.25s** | **123.40s** |
+| Apertus-8B | TP4, 1 node | default | 81.41s | 172.68s |
+| Apertus-8B | TP4, 1 node | **servekit** | **0.90s** | **95.53s** |
+
+Servekit achieves faster weight loading by **75x-170x**, and an overall faster cold start by **1.8x-5.4x**.
+
 ### Roadmap 👷‍♂️🚧
 
 - [x] Support Multi-Node fast weight loading
