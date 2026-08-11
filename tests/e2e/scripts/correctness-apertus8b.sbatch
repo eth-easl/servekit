@@ -38,7 +38,7 @@ case "$MODE" in
     ;;
 esac
 
-EDF="${SLURM_SUBMIT_DIR}/../../../examples/fast-weight-load/apertus-8b-sglang.toml"
+EDF="${SLURM_SUBMIT_DIR}/../../../examples/fast-weight-load/sglang.toml"
 export SERVED_MODEL_NAME=swiss-ai/Apertus-8B-Instruct-2509
 export SERVEKIT_DIR="${SLURM_SUBMIT_DIR}/../../.."
 export OUT="${SLURM_SUBMIT_DIR}/logs/${OUT_PREFIX}-${SLURM_JOB_ID}.json"

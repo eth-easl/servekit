@@ -43,7 +43,7 @@ case "$MODE" in
     ;;
 esac
 
-EDF="${SLURM_SUBMIT_DIR}/../../../examples/fast-weight-load/qwen3-coder-30b-a3b-sglang.toml"
+EDF="${SLURM_SUBMIT_DIR}/../../../examples/fast-weight-load/sglang.toml"
 export SERVED_MODEL_NAME=Qwen/Qwen3-Coder-30B-A3B-Instruct
 export SERVEKIT_DIR="${SLURM_SUBMIT_DIR}/../../.."
 export OUT="${SLURM_SUBMIT_DIR}/logs/${OUT_PREFIX}-${SLURM_JOB_ID}.json"

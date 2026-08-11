@@ -31,10 +31,10 @@ esac
 EDF="${SLURM_SUBMIT_DIR}/../../../examples/multinode/sglang-clariden.toml"
 SERVED_MODEL_NAME=meta-llama/Llama-3.1-70B-Instruct
 SERVEKIT_DIR="${SLURM_SUBMIT_DIR}/../../.."
-OUT="${SLURM_SUBMIT_DIR}/logs/${OUT_PREFIX}-multinode-tp8-${SLURM_JOB_ID}.json"
+OUT="${SLURM_SUBMIT_DIR}/logs/${OUT_PREFIX}-${SLURM_JOB_ID}.json"
 
 if [ "$MODE" = "fast" ]; then
-  REPORT="${SLURM_SUBMIT_DIR}/logs/${OUT_PREFIX}-multinode-tp8-${SLURM_JOB_ID}.report.json"
+  REPORT="${SLURM_SUBMIT_DIR}/logs/${OUT_PREFIX}-${SLURM_JOB_ID}.report.json"
   REFERENCE="${SERVEKIT_DIR}/tests/e2e/fixtures/llama70b-tp8-bf16.json"
 fi
 
