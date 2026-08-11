@@ -23,6 +23,8 @@ pytestmark = pytest.mark.e2e
 
 FIXTURE = Path(__file__).parent / "fixtures" / "llama70b-tp4-bf16.json"
 FIXTURE_TP8 = Path(__file__).parent / "fixtures" / "llama70b-tp8-bf16.json"
+FIXTURE_APERTUS8B_TP4 = Path(__file__).parent / "fixtures" / "apertus8b-tp4-bf16.json"
+FIXTURE_QWEN3_CODER_TP4 = Path(__file__).parent / "fixtures" / "qwen3-coder-30b-a3b-tp4-bf16.json"
 
 
 def _result(job_id: str, prefix: str = "fast") -> dict:
@@ -31,7 +33,7 @@ def _result(job_id: str, prefix: str = "fast") -> dict:
     return json.loads(path.read_text())
 
 
-def test_fast_weight_load_matches_the_lustre_baseline():
+def test_fast_weight_load_matches_the_lustre_baseline_llama70b():
     if not FIXTURE.is_file():
         pytest.skip(f"no baseline capture at {FIXTURE}; run: MODE=baseline sbatch tests/e2e/scripts/correctness-llama70b.sbatch")
 
@@ -39,7 +41,7 @@ def test_fast_weight_load_matches_the_lustre_baseline():
     assert result["passed"], "\n".join(result["failures"])
 
 
-def test_fast_weight_load_matches_the_lustre_baseline_multinode_tp8():
+def test_fast_weight_load_matches_the_lustre_baseline_llama70b_multinode_tp8():
     if not FIXTURE_TP8.is_file():
         pytest.skip(
             f"no baseline capture at {FIXTURE_TP8}; run: "
@@ -49,3 +51,27 @@ def test_fast_weight_load_matches_the_lustre_baseline_multinode_tp8():
     job_id = sbatch_wait(SCRIPTSDIR / "correctness-llama70b-multinode-tp8.sbatch")
     result = _result(job_id, prefix="fast-multinode-tp8")
     assert result["passed"], "\n".join(result["failures"])
+
+# one more test, redundant with the above
+@pytest.mark.skip
+def test_fast_weight_load_matches_the_lustre_baseline_apertus8b_tp4():
+    if not FIXTURE_APERTUS8B_TP4.is_file():
+        pytest.skip(
+            f"no baseline capture at {FIXTURE_APERTUS8B_TP4}; run: "
+            f"MODE=baseline sbatch tests/e2e/scripts/correctness-apertus8b.sbatch"
+        )
+
+    result = _result(sbatch_wait(SCRIPTSDIR / "correctness-apertus8b.sbatch"))
+    assert result["passed"], "\n".join(result["failures"])
+
+# moe, bf16
+def test_fast_weight_load_matches_the_lustre_baseline_qwen3_coder_30b_a3b_tp4():
+    if not FIXTURE_QWEN3_CODER_TP4.is_file():
+        pytest.skip(
+            f"no baseline capture at {FIXTURE_QWEN3_CODER_TP4}; run: "
+            f"MODE=baseline sbatch tests/e2e/scripts/correctness-qwen3coder.sbatch"
+        )
+
+    result = _result(sbatch_wait(SCRIPTSDIR / "correctness-qwen3coder.sbatch"))
+    assert result["passed"], "\n".join(result["failures"])
+
