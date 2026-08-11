@@ -22,10 +22,11 @@ os.environ.setdefault("MODE", "fast")
 pytestmark = pytest.mark.e2e
 
 FIXTURE = Path(__file__).parent / "fixtures" / "llama70b-tp4-bf16.json"
+FIXTURE_TP8 = Path(__file__).parent / "fixtures" / "llama70b-tp8-bf16.json"
 
 
-def _result(job_id: str) -> dict:
-    path = SCRIPTSDIR / "logs" / f"fast-{job_id}.json"
+def _result(job_id: str, prefix: str = "fast") -> dict:
+    path = SCRIPTSDIR / "logs" / f"{prefix}-{job_id}.json"
     assert path.is_file(), f"the fast arm wrote no verify result at {path}"
     return json.loads(path.read_text())
 
@@ -35,4 +36,16 @@ def test_fast_weight_load_matches_the_lustre_baseline():
         pytest.skip(f"no baseline capture at {FIXTURE}; run: MODE=baseline sbatch tests/e2e/scripts/correctness-llama70b.sbatch")
 
     result = _result(sbatch_wait(SCRIPTSDIR / "correctness-llama70b.sbatch"))
+    assert result["passed"], "\n".join(result["failures"])
+
+
+def test_fast_weight_load_matches_the_lustre_baseline_multinode_tp8():
+    if not FIXTURE_TP8.is_file():
+        pytest.skip(
+            f"no baseline capture at {FIXTURE_TP8}; run: "
+            f"MODE=baseline sbatch tests/e2e/scripts/correctness-llama70b-multinode-tp8.sbatch"
+        )
+
+    job_id = sbatch_wait(SCRIPTSDIR / "correctness-llama70b-multinode-tp8.sbatch")
+    result = _result(job_id, prefix="fast-multinode-tp8")
     assert result["passed"], "\n".join(result["failures"])
