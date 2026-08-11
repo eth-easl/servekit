@@ -65,8 +65,7 @@ servekit verify --url http://127.0.0.1:8080 --reference gold.json --wait-ready 3
 ```
 
 Exits 0 if every prompt is within tolerance (`--token-tol`, `--nll-tol`), 1
-otherwise. `--out` writes the per-prompt result as JSON. `--compare a.json
-b.json` diffs two references of the same load and suggests tolerances.
+otherwise. `--out` writes the per-prompt result as JSON.
 
 ### Roadmap 👷‍♂️🚧
 

@@ -13,7 +13,7 @@ from .prepare import prepare
 from .profile import ProfileReport, detect_framework, render_table, run_profile, save_json
 from .stage import DEFAULT_SLICES
 from .topology import read_topology
-from .verify import capture, compare, discover_model, load_prompt_set, render_noise_floor, render_verify, wait_for_ready
+from .verify import capture, compare, discover_model, load_prompt_set, render_verify, wait_for_ready
 
 USAGE = """usage:
   servekit launch [--out PATH] [--slices N] [--overlap] -- <command...>
@@ -22,7 +22,6 @@ USAGE = """usage:
   servekit profile [--out PATH] [--timeout SECONDS] -- <command...>
   servekit bench --url URL (--into PATH | --out PATH) [--wait-ready SECONDS] [...]
   servekit verify --url URL (--record PATH | --reference PATH) [--wait-ready SECONDS] [...]
-  servekit verify --compare A B
 
 `launch` wraps an engine command: it copies the model into /dev/shm, starts the
 engine against the copy, and frees the copy once the server reports ready --
@@ -272,7 +271,7 @@ def _bench(argv: List[str]) -> int:
 
 def _verify(argv: List[str]) -> int:
     parser = argparse.ArgumentParser(prog="servekit verify")
-    parser.add_argument("--url", default=None, help="server base URL, e.g. http://127.0.0.1:8080 (unused with --compare)")
+    parser.add_argument("--url", default=None, help="server base URL, e.g. http://127.0.0.1:8080")
     parser.add_argument("--record", type=Path, default=None, help="capture a reference from this server")
     parser.add_argument("--reference", type=Path, default=None, help="check this server against a reference")
     parser.add_argument("--prompts", type=Path, default=None, help="override the built-in prompt set (--record only)")
@@ -281,18 +280,10 @@ def _verify(argv: List[str]) -> int:
     parser.add_argument("--timeout", type=float, default=600.0, help="per-request timeout")
     parser.add_argument("--token-tol", type=float, default=1e-6, help="max allowed |delta| per token logprob")
     parser.add_argument("--nll-tol", type=float, default=1e-6, help="max allowed |delta| in mean NLL")
-    parser.add_argument("--compare", nargs=2, metavar=("A", "B"), default=None, help="diff two captures and suggest tolerances; ignores --url")
     args = parser.parse_args(argv)
 
-    if args.compare:
-        a = json.loads(Path(args.compare[0]).read_text())
-        b = json.loads(Path(args.compare[1]).read_text())
-        table, shape_problems = render_noise_floor(a, b)
-        print(table)
-        return 1 if shape_problems else 0
-
     if not args.url:
-        print("error: --url is required unless --compare is given", file=sys.stderr)
+        print("error: --url is required", file=sys.stderr)
         return 2
     if bool(args.record) == bool(args.reference):
         print("error: exactly one of --record or --reference is required", file=sys.stderr)

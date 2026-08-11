@@ -249,15 +249,3 @@ def render_verify(url: str, result: VerifyResult) -> str:
     for f in result.failures:
         lines.append(f"! {f}")
     return "\n".join(lines)
-
-
-def render_noise_floor(a: dict, b: dict) -> Tuple[str, bool]:
-    """Diff two captures of the same load; suggest tolerances. Used by `--compare`."""
-    result = compare(a, b, token_tol=0.0, nll_tol=0.0)
-    lines = [render_verify("(comparison)", result)]
-    shape_problems = [f for f in result.failures if "tokenized to" in f or "absent from" in f]
-    if not shape_problems:
-        lines.append("")
-        lines.append(f"suggested --token-tol = {max(result.worst_token_delta * 10, 1e-3):.4f}")
-        lines.append(f"suggested --nll-tol   = {max(result.worst_nll_delta * 10, 1e-4):.5f}")
-    return "\n".join(lines), bool(shape_problems)
