@@ -17,7 +17,7 @@ MODEL="${MODEL:-/capstor/store/cscs/swissai/infra01/hf_models/models/meta-llama/
 OUT="${OUT:-/capstor/store/cscs/swissai/infra01/cold-start-experiments/llama70b-tp4-servekit}"
 TP="${TP:-4}"
 
-EDF="${SLURM_SUBMIT_DIR}/llama-3.1-70b-sglang.toml"
+EDF="${SLURM_SUBMIT_DIR}/sglang.toml"
 SERVEKIT_DIR="${SLURM_SUBMIT_DIR}/../.."
 
 

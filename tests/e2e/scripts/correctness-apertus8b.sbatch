@@ -2,8 +2,8 @@
 # Correctness test for weight loading: compares baseline (no servekit) vs fast (servekit staging).
 #
 # Run with MODE=baseline or MODE=fast environment variable:
-#   MODE=baseline sbatch correctness-llama70b.sbatch
-#   MODE=fast sbatch correctness-llama70b.sbatch
+#   MODE=baseline sbatch correctness-apertus8b.sbatch
+#   MODE=fast sbatch correctness-apertus8b.sbatch
 #
 # Baseline: plain sglang reading original HF safetensors.
 # Fast: presharded checkpoint staged into /dev/shm by servekit.
@@ -25,11 +25,11 @@ export MODE="${MODE:-fast}"
 
 case "$MODE" in
   baseline)
-    export MODEL="${MODEL:-/capstor/store/cscs/swissai/infra01/hf_models/models/meta-llama/Llama-3.1-70B-Instruct}"
+    export MODEL="${MODEL:-/capstor/store/cscs/swissai/infra01/hf_models/models/swiss-ai/Apertus-8B-Instruct-2509}"
     OUT_PREFIX="baseline"
     ;;
   fast)
-    export SHARDED_SRC="${SHARDED_SRC:-/capstor/store/cscs/swissai/infra01/cold-start-experiments/llama70b-tp4-sharded}"
+    export SHARDED_SRC="${SHARDED_SRC:-/capstor/store/cscs/swissai/infra01/cold-start-experiments/apertus8b-tp4-sharded}"
     OUT_PREFIX="fast"
     ;;
   *)
@@ -39,13 +39,13 @@ case "$MODE" in
 esac
 
 EDF="${SLURM_SUBMIT_DIR}/../../../examples/fast-weight-load/sglang.toml"
-export SERVED_MODEL_NAME=meta-llama/Llama-3.1-70B-Instruct
+export SERVED_MODEL_NAME=swiss-ai/Apertus-8B-Instruct-2509
 export SERVEKIT_DIR="${SLURM_SUBMIT_DIR}/../../.."
 export OUT="${SLURM_SUBMIT_DIR}/logs/${OUT_PREFIX}-${SLURM_JOB_ID}.json"
 
 if [ "$MODE" = "fast" ]; then
   export REPORT="${SLURM_SUBMIT_DIR}/logs/${OUT_PREFIX}-${SLURM_JOB_ID}.report.json"
-  export REFERENCE="${SERVEKIT_DIR}/tests/e2e/fixtures/llama70b-tp4-bf16.json"
+  export REFERENCE="${SERVEKIT_DIR}/tests/e2e/fixtures/apertus8b-tp4-bf16.json"
 fi
 
 INNER_CMD=$(cat <<'EOF'

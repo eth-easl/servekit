@@ -2,11 +2,15 @@
 # Correctness test for weight loading: compares baseline (no servekit) vs fast (servekit staging).
 #
 # Run with MODE=baseline or MODE=fast environment variable:
-#   MODE=baseline sbatch correctness-llama70b.sbatch
-#   MODE=fast sbatch correctness-llama70b.sbatch
+#   MODE=baseline sbatch correctness-qwen3coder.sbatch
+#   MODE=fast sbatch correctness-qwen3coder.sbatch
 #
 # Baseline: plain sglang reading original HF safetensors.
 # Fast: presharded checkpoint staged into /dev/shm by servekit.
+#
+# Qwen3-Coder-30B-A3B is a MoE model; its MoE routing kernels are seed-sensitive
+# at temperature=0 (see scratch/fp4-experiment/results.md, Finding 3), so both
+# arms pin --random-seed to the same value to keep the comparison meaningful.
 
 
 #SBATCH --partition=debug
@@ -22,14 +26,15 @@
 set -euo pipefail
 
 export MODE="${MODE:-fast}"
+SEED=12345
 
 case "$MODE" in
   baseline)
-    export MODEL="${MODEL:-/capstor/store/cscs/swissai/infra01/hf_models/models/meta-llama/Llama-3.1-70B-Instruct}"
+    export MODEL="${MODEL:-/capstor/store/cscs/swissai/infra01/hf_models/models/Qwen/Qwen3-Coder-30B-A3B-Instruct}"
     OUT_PREFIX="baseline"
     ;;
   fast)
-    export SHARDED_SRC="${SHARDED_SRC:-/capstor/store/cscs/swissai/infra01/cold-start-experiments/llama70b-tp4-sharded}"
+    export SHARDED_SRC="${SHARDED_SRC:-/capstor/store/cscs/swissai/infra01/cold-start-experiments/qwen3-coder-30b-a3b-tp4-sharded}"
     OUT_PREFIX="fast"
     ;;
   *)
@@ -39,13 +44,14 @@ case "$MODE" in
 esac
 
 EDF="${SLURM_SUBMIT_DIR}/../../../examples/fast-weight-load/sglang.toml"
-export SERVED_MODEL_NAME=meta-llama/Llama-3.1-70B-Instruct
+export SERVED_MODEL_NAME=Qwen/Qwen3-Coder-30B-A3B-Instruct
 export SERVEKIT_DIR="${SLURM_SUBMIT_DIR}/../../.."
 export OUT="${SLURM_SUBMIT_DIR}/logs/${OUT_PREFIX}-${SLURM_JOB_ID}.json"
+export SEED
 
 if [ "$MODE" = "fast" ]; then
   export REPORT="${SLURM_SUBMIT_DIR}/logs/${OUT_PREFIX}-${SLURM_JOB_ID}.report.json"
-  export REFERENCE="${SERVEKIT_DIR}/tests/e2e/fixtures/llama70b-tp4-bf16.json"
+  export REFERENCE="${SERVEKIT_DIR}/tests/e2e/fixtures/qwen3-coder-30b-a3b-tp4-bf16.json"
 fi
 
 INNER_CMD=$(cat <<'EOF'
@@ -68,6 +74,7 @@ if [ "$MODE" = "fast" ]; then
       --context-length 32768 \
       --mem-fraction-static 0.85 \
       --max-running-requests 256 \
+      --random-seed "${SEED}" \
       --enable-metrics &
   LAUNCH_PID=$!
 else
@@ -81,6 +88,7 @@ else
     --context-length 32768 \
     --mem-fraction-static 0.85 \
     --max-running-requests 256 \
+    --random-seed "${SEED}" \
     --enable-metrics &
   SERVER_PID=$!
 fi

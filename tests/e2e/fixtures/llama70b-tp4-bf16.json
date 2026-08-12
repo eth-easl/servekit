@@ -1,9 +1,12 @@
 {
  "model": "meta-llama/Llama-3.1-70B-Instruct",
+ "prompt_set": "builtin-v1",
+ "greedy_prompts": 8,
  "greedy_tokens": 32,
  "prompts": [
   {
    "key": "capital_of_france",
+   "text": "The capital of France is",
    "n_tokens": 5,
    "token_logprobs": [
     -3.27966,
@@ -50,6 +53,7 @@
   },
   {
    "key": "fibonacci_code",
+   "text": "def fibonacci(n):\n    if n < 2:\n        return n\n    return",
    "n_tokens": 17,
    "token_logprobs": [
     -2.77966,
@@ -108,6 +112,7 @@
   },
   {
    "key": "arithmetic",
+   "text": "Question: A train travels 60 km in 1.5 hours. What is its average speed in km/h? Answer:",
    "n_tokens": 26,
    "token_logprobs": [
     -1.71716,
@@ -175,6 +180,7 @@
   },
   {
    "key": "primes",
+   "text": "Here are the first ten prime numbers, in order: 2, 3, 5, 7,",
    "n_tokens": 23,
    "token_logprobs": [
     -6.15466,
@@ -239,6 +245,7 @@
   },
   {
    "key": "thermodynamics",
+   "text": "Summary of the three laws of thermodynamics. The first law states that",
    "n_tokens": 14,
    "token_logprobs": [
     -9.248409,
@@ -294,6 +301,7 @@
   },
   {
    "key": "french",
+   "text": "Bonjour, je m'appelle Marie et je travaille comme ing\u00e9nieure logicielle \u00e0 Paris depuis",
    "n_tokens": 22,
    "token_logprobs": [
     -12.912472,
@@ -357,6 +365,7 @@
   },
   {
    "key": "german",
+   "text": "Guten Tag. Die Bundesrepublik Deutschland besteht aus sechzehn Bundesl\u00e4ndern, darunter",
    "n_tokens": 23,
    "token_logprobs": [
     -6.34216,
@@ -421,6 +430,7 @@
   },
   {
    "key": "unicode",
+   "text": "\u6570\u5b66\u306b\u304a\u3051\u308b\u7d20\u6570\u3068\u306f\u30011 \u3068\u81ea\u5206\u81ea\u8eab\u4ee5\u5916\u306b\u6b63\u306e\u7d04\u6570\u3092\u6301\u305f\u306a\u3044\u30011 \u3088\u308a\u5927\u304d\u306a\u81ea\u7136\u6570\u306e\u3053\u3068\u3067\u3042\u308b\u3002\u4f8b\u3048\u3070",
    "n_tokens": 34,
    "token_logprobs": [
     -13.365597,
@@ -496,6 +506,7 @@
   },
   {
    "key": "json_schema",
+   "text": "{\"model\": \"llama\", \"parameters\": {\"temperature\": 0.0, \"max_tokens\":",
    "n_tokens": 22,
    "token_logprobs": [
     -9.967159,
@@ -525,6 +536,7 @@
   },
   {
    "key": "sql",
+   "text": "SELECT customer_id, SUM(amount) AS total FROM orders WHERE created_at >= '2024-01-01' GROUP BY",
    "n_tokens": 25,
    "token_logprobs": [
     -10.842159,
@@ -557,6 +569,7 @@
   },
   {
    "key": "repetition",
+   "text": "buffalo buffalo buffalo buffalo buffalo buffalo buffalo buffalo buffalo buffalo buffalo buffalo",
    "n_tokens": 13,
    "token_logprobs": [
     -14.484737,
@@ -577,6 +590,7 @@
   },
   {
    "key": "rare_tokens",
+   "text": "Pneumonoultramicroscopicsilicovolcanoconiosis and floccinaucinihilipilification are both",
    "n_tokens": 27,
    "token_logprobs": [
     -6.21716,
@@ -611,6 +625,7 @@
   },
   {
    "key": "dialogue",
+   "text": "Alice: Did you finish the report?\nBob: Almost. I still need to check the numbers in section",
    "n_tokens": 21,
    "token_logprobs": [
     -9.904659,
@@ -639,6 +654,7 @@
   },
   {
    "key": "chess",
+   "text": "1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Ba4 Nf6 5. O-O Be7 6. Re1 b5 7.",
    "n_tokens": 48,
    "token_logprobs": [
     -6.15466,
@@ -694,6 +710,7 @@
   },
   {
    "key": "numbers",
+   "text": "Counting by sevens from zero: 0, 7, 14, 21, 28, 35, 42, 49, 56, 63, 70, 77, 84, 91,",
    "n_tokens": 50,
    "token_logprobs": [
     -9.592159,
@@ -751,6 +768,7 @@
   },
   {
    "key": "long_prose",
+   "text": "Distributed inference systems face a tension between memory locality and parallel throughput that has no clean resolution. A tensor-parallel rank holds only a slice of every weight matrix, so each forward pass requires an all-reduce across the group, and the latency of that collective sets a floor on how small a batch can profitably be. Pipeline parallelism trades that collective for a point-to-point handoff between stages, which is cheaper per token but introduces bubbles whenever the stages are unevenly balanced. Practitioners therefore tune the split empirically, measuring throughput at several configurations rather than deriving one from first principles, because the interaction between kernel launch overhead, collective bandwidth, and memory bandwidth is not separable in any useful analytic form. A tensor-parallel rank holds only a slice of every weight matrix, so each forward pass requires an all-reduce across the group, and the latency of that collective sets a floor on how small a batch can profitably be. Pipeline parallelism trades that collective for a point-to-point handoff between stages, which is cheaper per token but introduces bubbles whenever the stages are unevenly balanced. Practitioners therefore tune the split empirically, measuring throughput at several configurations rather than deriving one from first principles, because the interaction between kernel launch overhead, collective bandwidth, and memory bandwidth is not separable in any useful analytic form. A tensor-parallel rank holds only a slice of every weight matrix, so each forward pass requires an all-reduce across the group, and the latency of that collective sets a floor on how small a batch can profitably be. Pipeline parallelism trades that collective for a point-to-point handoff between stages, which is cheaper per token but introduces bubbles whenever the stages are unevenly balanced. Practitioners therefore tune the split empirically, measuring throughput at several configurations rather than deriving one from first principles, because the interaction between kernel launch overhead, collective bandwidth, and memory bandwidth is not separable in any useful analytic form. A tensor-parallel rank holds only a slice of every weight matrix, so each forward pass requires an all-reduce across the group, and the latency of that collective sets a floor on how small a batch can profitably be. Pipeline parallelism trades that collective for a point-to-point handoff between stages, which is cheaper per token but introduces bubbles whenever the stages are unevenly balanced. Practitioners therefore tune the split empirically, measuring throughput at several configurations rather than deriving one from first principles, because the interaction between kernel launch overhead, collective bandwidth, and memory bandwidth is not separable in any useful analytic form. A tensor-parallel rank holds only a slice of every weight matrix, so each forward pass requires an all-reduce across the group, and the latency of that collective sets a floor on how small a batch can profitably be. Pipeline parallelism trades that collective for a point-to-point handoff between stages, which is cheaper per token but introduces bubbles whenever the stages are unevenly balanced. Practitioners therefore tune the split empirically, measuring throughput at several configurations rather than deriving one from first principles, because the interaction between kernel launch overhead, collective bandwidth, and memory bandwidth is not separable in any useful analytic form. A tensor-parallel rank holds only a slice of every weight matrix, so each forward pass requires an all-reduce across the group, and the latency of that collective sets a floor on how small a batch can profitably be. Pipeline parallelism trades that collective for a point-to-point handoff between stages, which is cheaper per token but introduces bubbles whenever the stages are unevenly balanced. Practitioners therefore tune the split empirically, measuring throughput at several configurations rather than deriving one from first principles, because the interaction between kernel launch overhead, collective bandwidth, and memory bandwidth is not separable in any useful analytic form. ",
    "n_tokens": 770,
    "token_logprobs": [
     -5.90615,
