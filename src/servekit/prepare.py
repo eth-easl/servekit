@@ -64,7 +64,14 @@ def prepare_presharded(
     engine_command = replace_presharded_root(command, str(out))
     print(f"[SERVEKIT] dumping to {out} (tp={sizes['tp']} pp={sizes['pp']} ep={sizes['ep']})", flush=True)
 
-    report = run_profile(engine_command, ready_timeout=timeout, head=node_rank == 0, stop_on_ready=True)
+    # Only the head tears its engine down on ready. A worker's readiness line is
+    # its dummy health server, which comes up well before the head's -- killing
+    # the worker there closes the pipeline-parallel p2p pairs under the head,
+    # whose schedulers then die and never report ready. The worker instead rides
+    # along until the head's teardown takes its engine down with it.
+    report = run_profile(
+        engine_command, ready_timeout=timeout, head=node_rank == 0, stop_on_ready=node_rank == 0
+    )
     if node_rank != 0:
         # Checked before success on purpose: every rank writes its own manifest,
         # but only the head builds the plan, and a worker's engine goes down with

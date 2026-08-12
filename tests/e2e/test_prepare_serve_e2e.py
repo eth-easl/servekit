@@ -22,6 +22,9 @@ FIXTURE = Path(__file__).parent / "fixtures" / "apertus8b-tp4-bf16.json"
 MODEL = "/capstor/store/cscs/swissai/infra01/hf_models/models/swiss-ai/Apertus-8B-Instruct-2509"
 TP = 4
 
+TP_PP = 4
+PP_PP = 2
+
 # A dump plus a cold start plus the probe, and the queue on top of that.
 JOB_TIMEOUT = 3600
 
@@ -47,6 +50,26 @@ def test_freshly_prepared_apertus8b_serves_the_lustre_baseline():
     assert manifest["source"] == MODEL
 
     assert _log(job_id, ".report.json")["success"], "the server never reported ready"
+
+    result = _log(job_id, ".json")
+    assert result["passed"], "\n".join(result["failures"])
+
+
+def test_freshly_prepared_apertus8b_pp_serves_the_lustre_baseline():
+    # `presharded`, unlike `sharded_state`, is the format that survives PP: it
+    # keys files on the world rank instead of the TP rank, so pipeline stages
+    # holding different layers don't overwrite each other's dump. The job
+    # records its own TP4/PP2 baseline (a plain HF load) before checking the
+    # fast arm against it, so there is no fixture to go stale.
+    job_id = sbatch_wait(SCRIPTSDIR / "prepare-serve-apertus8b-pp.sbatch", timeout=JOB_TIMEOUT)
+
+    manifest = _log(job_id, ".manifest.json")
+    assert manifest["format"] == "presharded"
+    assert manifest["tp_size"] == TP_PP, f"prepared for tp={manifest['tp_size']}, asked for {TP_PP}"
+    assert manifest["pp_size"] == PP_PP, f"prepared for pp={manifest['pp_size']}, asked for {PP_PP}"
+    assert manifest["source"] == MODEL
+
+    assert _log(job_id, ".report.node0.json")["success"], "node 0 never reported ready"
 
     result = _log(job_id, ".json")
     assert result["passed"], "\n".join(result["failures"])
