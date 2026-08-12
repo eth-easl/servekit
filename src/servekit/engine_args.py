@@ -15,6 +15,13 @@ from .profile import FrameworkSpec
 # from the checkpoint's own config, which is what prepare recorded.
 _CONFIG_FLAGS = {"dtype": "--dtype", "quantization": "--quantization"}
 
+# Here rather than in topology, which reads these but must not own them: it
+# imports `_find_flag` from this module, so the dependency only runs one way.
+LOAD_FORMAT_FLAGS = ["--load-format"]
+LOADER_CONFIG_FLAGS = ["--model-loader-extra-config"]
+SHARDED_FORMAT = "sharded_state"
+PRESHARDED_FORMAT = "presharded"
+
 
 def _find_flag(command: List[str], flags: List[str]) -> Optional[Tuple[int, str]]:
     for i, arg in enumerate(command):
@@ -54,23 +61,33 @@ def replace_model_path(command: List[str], spec: FrameworkSpec, new_path: str) -
     return out
 
 
-def replace_presharded_root(command: List[str], new_root: str) -> List[str]:
-    """`command` with `presharded_path` repointed at the staged copy.
-
-    The model path is deliberately left alone: `presharded` still reads the real
-    checkpoint's config, and only the dump moves to /dev/shm.
-    """
-    from .topology import LOADER_CONFIG_FLAGS, loader_config
-
-    found = _find_flag(command, LOADER_CONFIG_FLAGS)
-    if found is None:
-        raise ValueError(f"no {LOADER_CONFIG_FLAGS[0]} in the command")
-    config = dict(loader_config(command))
-    config["presharded_path"] = new_root
-    idx, old = found
-    out = list(command)
-    out[idx] = json.dumps(config) if out[idx] == old else out[idx].replace(old, json.dumps(config), 1)
+def _without_flags(command: List[str], flags: List[str]) -> List[str]:
+    """`command` with `flags` and their values dropped, both `--f v` and `--f=v`."""
+    out: List[str] = []
+    skip = False
+    for arg in command:
+        if skip:
+            skip = False
+        elif arg in flags:
+            skip = True
+        elif not any(arg.startswith(f + "=") for f in flags):
+            out.append(arg)
     return out
+
+
+def with_presharded_loader(command: List[str], root: str) -> List[str]:
+    """`command` loading the dump at `root`, with servekit's own loader flags.
+
+    servekit writes both flags rather than reading them, so any the caller wrote
+    are dropped first. The dump always lives under the model path, so a
+    hand-written `presharded_path` could only disagree with where it actually is.
+    """
+    return _without_flags(command, LOAD_FORMAT_FLAGS + LOADER_CONFIG_FLAGS) + [
+        LOAD_FORMAT_FLAGS[0],
+        PRESHARDED_FORMAT,
+        LOADER_CONFIG_FLAGS[0],
+        json.dumps({"presharded_path": root}),
+    ]
 
 
 def parallel_sizes(command: List[str], spec: FrameworkSpec) -> dict:

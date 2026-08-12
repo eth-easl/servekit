@@ -9,6 +9,9 @@
 # ones, and TP-replicated tensors content dedup stored once) have to land on
 # both.
 #
+# Nothing here names a load format: --pipeline-parallel-size is what selects
+# `presharded`, and servekit writes --load-format and the loader config itself.
+#
 # --overlap is safe here in a way it is not for sharded_state: the loader will
 # not touch a dump without its READY sentinel, and servekit writes that last and
 # only on a clean stage. An engine that looks too early does not read zeros, it
@@ -31,7 +34,9 @@ set -euo pipefail
 # submit dir must be resolved before it crosses into one.
 SLURM_SUBMIT_DIR="$(cd "${SLURM_SUBMIT_DIR}" && pwd -P)"
 
-MODEL="${MODEL:-/capstor/store/cscs/swissai/infra01/hf_models/models/meta-llama/Llama-3.1-70B-Instruct}"
+# prepare.sbatch's --out, and the model path here: it holds the dump plus the
+# config and tokenizer prepare copied in beside it. The source checkpoint is not
+# needed at serve time.
 PRESHARDED_ROOT="${PRESHARDED_ROOT:-/capstor/store/cscs/swissai/infra01/cold-start-experiments/llama70b-pp-presharded-tp4pp2}"
 SERVED_MODEL_NAME=meta-llama/Llama-3.1-70B-Instruct
 
@@ -73,9 +78,7 @@ pip install -e "${SERVEKIT_DIR}" --no-build-isolation --no-deps -q
 servekit launch --out "${OUT}" --timeout 3000 --overlap \
   -- \
   python -m sglang.launch_server \
-    --model-path "${MODEL}" \
-    --load-format presharded \
-    --model-loader-extra-config '{"presharded_path": "${PRESHARDED_ROOT}"}' \
+    --model-path "${PRESHARDED_ROOT}" \
     --tensor-parallel-size ${TP_SIZE} \
     --pipeline-parallel-size ${PP_SIZE} \
     --nnodes ${NNODES} \

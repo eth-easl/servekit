@@ -10,11 +10,12 @@ the engine's own `--nnodes / --node-rank / --dist-init-addr` set. Each node
 stages only the shards its own ranks read, profiles itself, and frees its own
 copy; the nodes never talk to each other and each writes its own report.
 
-`--load-format presharded` takes a different route: the dump, not the model
-directory, is what moves to /dev/shm, so `presharded_path` is rewritten and
-`--model-path` is left alone. Which files a node needs comes from the dump's own
-`checksum.json` rather than a glob, which is what lets pipeline stages -- whose
-ranks hold different layers -- each stage only their own.
+Pipeline parallelism takes a different route, chosen here rather than named by
+the caller: at pp > 1 the model path is the dump `prepare` wrote, so servekit
+stages the dump's own subdirectory alongside the config and tokenizer, and writes
+`--load-format presharded` and `presharded_path` itself. Which files a node needs
+comes from the dump's `checksum.json` rather than a glob, which is what lets
+pipeline stages -- whose ranks hold different layers -- each stage only their own.
 """
 from __future__ import annotations
 
@@ -24,26 +25,26 @@ import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional, Sequence, Tuple
+from typing import List, Optional, Sequence
 
 from . import manifest as manifest_mod
 from . import presharded as presharded_mod
 from . import quant_guard
 from .engine_args import (
+    PRESHARDED_FORMAT,
     check_manifest,
     find_model_path,
     parallel_sizes,
     replace_model_path,
-    replace_presharded_root,
+    with_presharded_loader,
 )
 from .profile import Phase, ProfileReport, detect_framework, render_table, run_profile, save_json
-from .stage import DEFAULT_SLICES, stage
+from .stage import DEFAULT_SLICES, copy_metadata, stage
 from .topology import (
     Topology,
-    presharded_root,
+    load_format,
     read_topology,
     shard_glob,
-    wants_presharded,
     wants_sharded_state,
 )
 
@@ -82,14 +83,6 @@ def free(path: Path) -> int:
     return freed
 
 
-def _copy_metadata(src: Path, dest: Path) -> int:
-    dest.mkdir(parents=True, exist_ok=True)
-    files = [f for f in sorted(src.iterdir()) if f.is_file() and f.suffix != ".safetensors"]
-    for f in files:
-        shutil.copy2(f, dest / f.name)
-    return len(files)
-
-
 @dataclass
 class _Staging:
     """What this node copies, and the order it must happen in."""
@@ -105,37 +98,66 @@ class _Staging:
     ready_marker: Optional[Path] = None
 
 
-def _presharded_staging(
-    command: List[str], spec, topo: Topology, shm_root: Path
-) -> Tuple[_Staging, presharded_mod.ShardPlan]:
-    root = presharded_root(command)
-    wanted = parallel_sizes(command, spec)
-    plan = presharded_mod.select_dump(root, wanted)
+def _presharded_dump(
+    command: List[str], spec, topo: Topology, model_path: Path
+) -> Optional[presharded_mod.ShardPlan]:
+    """The dump this command should load, or None to stage the checkpoint whole.
 
+    servekit picks the format rather than making the caller name it: pipeline
+    parallelism needs `presharded`, and the dump `prepare` wrote *is* the model
+    path, so there is nothing left to point at. An explicit --load-format wins.
+    """
+    asked = load_format(command)
+    if asked is not None and asked != PRESHARDED_FORMAT:
+        return None
+    if asked is None and topo.pp_size <= 1:
+        return None
+
+    if not presharded_mod.find_dumps(model_path):
+        if asked is not None:
+            raise ValueError(
+                f"no completed presharded dump under {model_path}; run `servekit prepare` first"
+            )
+        # Asked for pipeline parallelism without preparing one. The plain path
+        # still serves, just off the source checkpoint.
+        print(
+            f"[SERVEKIT] pp={topo.pp_size} but no presharded dump under {model_path}; staging the "
+            f"checkpoint whole. `servekit prepare` writes one, which loads far faster.",
+            flush=True,
+        )
+        return None
+
+    if presharded_mod.loader_available() is False:
+        raise ValueError(presharded_mod.MISSING_LOADER)
+    return presharded_mod.select_dump(model_path, parallel_sizes(command, spec))
+
+
+def _presharded_staging(dump: presharded_mod.ShardPlan, topo: Topology, dest: Path) -> _Staging:
+    """What this node copies out of `dump`, into the staged model directory.
+
+    The dump keeps its own subdirectory under `dest`, because that is the layout
+    the loader globs for and `dest` is also the model path now.
+    """
     lo, hi = topo.local_rank_range
     if hi < lo:
         # tp*pp < nnodes floors ranks_per_node to zero, and an empty file list
         # stages cleanly -- the node would just have no weights.
         raise ValueError(
-            f"tp*pp = {wanted['tp'] * wanted['pp']} leaves no ranks for node {topo.node_rank} "
+            f"tp*pp = {topo.tp_size * topo.pp_size} leaves no ranks for node {topo.node_rank} "
             f"of {topo.nnodes}"
         )
-    if hi >= plan.world_size:
+    if hi >= dump.world_size:
         raise ValueError(
-            f"this node expects ranks {lo}-{hi} but {plan.directory.name} was dumped for "
-            f"{plan.world_size} ranks"
+            f"this node expects ranks {lo}-{hi} but {dump.directory.name} was dumped for "
+            f"{dump.world_size} ranks"
         )
-    files = plan.files_for_ranks(lo, hi)
-    dest = shm_root / plan.directory.name
-    return (
-        _Staging(
-            src=plan.directory,
-            dest=dest,
-            files=files,
-            presync=(presharded_mod.CHECKSUM_NAME,),
-            ready_marker=dest / presharded_mod.READY_NAME,
-        ),
-        plan,
+    staged_dump = dest / dump.directory.name
+    return _Staging(
+        src=dump.directory,
+        dest=staged_dump,
+        files=dump.files_for_ranks(lo, hi),
+        presync=(presharded_mod.CHECKSUM_NAME,),
+        ready_marker=staged_dump / presharded_mod.READY_NAME,
     )
 
 
@@ -193,28 +215,33 @@ def launch(
             print(quant_guard.refusal(unsupported, src), file=sys.stderr)
             return 2
 
-    presharded = wants_presharded(command)
-    if presharded:
-        if presharded_mod.loader_available() is False:
-            print(f"error: {presharded_mod.MISSING_LOADER}", file=sys.stderr)
-            return 2
+    try:
+        dump = _presharded_dump(command, spec, topo, src_path)
+    except ValueError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 2
+
+    dest = shm_root / src_path.name
+    if dump is not None:
         try:
-            plan, shard_plan = _presharded_staging(command, spec, topo, shm_root)
+            plan = _presharded_staging(dump, topo, dest)
         except ValueError as e:
             print(f"error: {e}", file=sys.stderr)
             return 2
-        dest = plan.dest
-        engine_command = replace_presharded_root(command, str(shm_root))
-        replicate_metadata = False
+        # The staged copy is the model directory too, so it needs the config and
+        # tokenizer beside the dump, and the command points at it wholesale.
+        engine_command = with_presharded_loader(
+            replace_model_path(command, spec, str(dest)), str(dest)
+        )
+        replicate_metadata = True
         sliced = topo.is_multinode
         lo, hi = topo.local_rank_range
         print(
-            f"[SERVEKIT] {shard_plan.directory.name}: ranks {lo}-{hi} of {shard_plan.world_size} "
-            f"read {len(plan.files or [])} files, {shard_plan.bytes_for_ranks(lo, hi) / 1e9:.1f} GB",
+            f"[SERVEKIT] {dump.directory.name}: ranks {lo}-{hi} of {dump.world_size} read "
+            f"{len(plan.files or [])} files, {dump.bytes_for_ranks(lo, hi) / 1e9:.1f} GB",
             flush=True,
         )
     else:
-        dest = shm_root / src_path.name
         engine_command = replace_model_path(command, spec, str(dest))
         # A presharded checkpoint gives each rank its own files, so a node stages
         # only its own ranks' -- two nodes pull disjoint halves off Lustre at once
@@ -269,7 +296,7 @@ def launch(
             flush=True,
         )
 
-    if sliced and not presharded:
+    if sliced and dump is None:
         lo, hi = topo.local_rank_range
         print(
             f"[SERVEKIT] node {topo.node_rank} of {topo.nnodes}: staging ranks {lo}-{hi} ({plan.pattern})",
@@ -280,10 +307,14 @@ def launch(
     # than leaving its ~1700 `dd` processes running on the node.
     thread: Optional[threading.Thread] = None
     if replicate_metadata:
-        n = _copy_metadata(src_path, dest)
+        n = copy_metadata(src_path, dest)
         print(f"[SERVEKIT] copied {n} metadata files up front", flush=True)
     if overlap:
-        print(PRESHARDED_OVERLAP_NOTE if presharded else OVERLAP_WARNING, file=sys.stderr, flush=True)
+        print(
+            PRESHARDED_OVERLAP_NOTE if dump is not None else OVERLAP_WARNING,
+            file=sys.stderr,
+            flush=True,
+        )
         print(f"[SERVEKIT] staging {plan.src} -> {dest} (overlapped)", flush=True)
         thread = threading.Thread(target=do_stage)
         thread.start()

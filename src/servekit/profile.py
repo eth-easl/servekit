@@ -374,8 +374,8 @@ def run_profile(
     its own readiness line closes the report instead.
 
     `stop_on_ready` tears the server down as soon as it is up, for callers that
-    wanted a side effect of starting rather than a server -- `servekit prepare
-    --format presharded`, whose dump is written during startup.
+    wanted a side effect of starting rather than a server -- `servekit prepare`
+    for a presharded dump, which is written during startup.
 
     stdout keeps draining for the process's whole life rather than detaching
     once measured: we own the read end of the pipe, so exiting would SIGPIPE the

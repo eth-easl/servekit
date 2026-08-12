@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 
 from .bench import BenchConfig, run_benchmark, render_bench
+from .engine_args import parallel_sizes
 from .launch import DEFAULT_ROOT, launch
 from .prepare import prepare, prepare_presharded
 from .profile import ProfileReport, detect_framework, render_table, run_profile, save_json
@@ -19,7 +20,7 @@ USAGE = """usage:
   servekit launch [--out PATH] [--slices N] [--overlap] -- <command...>
   servekit prepare --model PATH --out PATH [--tp N] [-- <extra engine args>]
                    [--nnodes N --node-rank N --dist-init-addr HOST:PORT]
-  servekit prepare --format presharded --out PATH -- <command...>
+  servekit prepare --out PATH -- <command...>          (pipeline parallel)
   servekit profile [--out PATH] [--timeout SECONDS] -- <command...>
   servekit bench --url URL (--into PATH | --out PATH) [--wait-ready SECONDS] [...]
   servekit verify --url URL (--record PATH | --reference PATH) [--wait-ready SECONDS] [...]
@@ -38,18 +39,24 @@ later server against it.
   servekit launch -- python -m sglang.launch_server --model-path /store/llama70b-tp4 \\
       --tensor-parallel-size 4 --load-format sharded_state
 
-Two checkpoint formats, because SGLang has two. `sharded_state` names its files
-by TP rank, which is identical on every pipeline stage, so it is TP-only: at
-pp > 1 the stages overwrite each other and the load fails on keys they do not
-own. `presharded` names by world rank and is what pipeline parallelism needs. It
-has no save API -- the dump falls out of one ordinary load -- so preparing it
-means handing `prepare` the serving command itself:
+Two checkpoint formats, because SGLang has two, and servekit picks between them
+rather than making you name one. `sharded_state` names its files by TP rank,
+which is identical on every pipeline stage, so it is TP-only: at pp > 1 the
+stages overwrite each other and the load fails on keys they do not own.
+`presharded` names by world rank, so pipeline parallelism selects it. It has no
+save API -- the dump falls out of one ordinary load -- so preparing it means
+handing `prepare` the serving command itself:
 
-  servekit prepare --format presharded --out /store/k3-tp4pp8 -- \\
-      python -m sglang.launch_server --model-path /store/Kimi-K3 --tp-size 4 --pp-size 8 \\
-      --load-format presharded --model-loader-extra-config '{"presharded_path": "/store/k3-tp4pp8"}'
+  servekit prepare --out /store/k3-tp4pp8 -- \\
+      python -m sglang.launch_server --model-path /store/Kimi-K3 --tp-size 4 --pp-size 8
 
-At launch the dump, not the model directory, is what moves to /dev/shm: each
+What `prepare` writes is the model path you serve from, so nothing else has to
+be passed along:
+
+  servekit launch -- python -m sglang.launch_server --model-path /store/k3-tp4pp8 \\
+      --tp-size 4 --pp-size 8
+
+servekit writes `--load-format` and `--model-loader-extra-config` itself. Each
 node stages only the files its own ranks read, which the dump's checksum.json
 names exactly.
 
@@ -171,8 +178,9 @@ def _prepare(argv: List[str]) -> int:
     parser.add_argument(
         "--format",
         choices=["sharded_state", "presharded"],
-        default="sharded_state",
-        help="presharded is the one that survives pipeline parallelism",
+        default=None,
+        help="default: presharded when the command after -- asks for pipeline parallelism, "
+             "since sharded_state cannot do it; sharded_state otherwise",
     )
     parser.add_argument("--model", type=Path, default=None, help="source checkpoint (a local directory)")
     parser.add_argument("--out", type=Path, required=True, help="where to write the presharded checkpoint")
@@ -183,7 +191,21 @@ def _prepare(argv: List[str]) -> int:
     parser.add_argument("--timeout", type=float, default=3600.0, help="seconds to wait for the dump")
     args = parser.parse_args(options)
 
-    if args.format == "presharded":
+    fmt = args.format
+    if fmt is None:
+        # `--model` marks the sharded_state calling convention, where what follows
+        # -- is extra flags rather than a command to read a topology out of.
+        fmt = "sharded_state"
+        if args.model is None and engine_args:
+            try:
+                spec = detect_framework(engine_args)
+            except ValueError as e:
+                print(f"error: {e}", file=sys.stderr)
+                return 2
+            if parallel_sizes(engine_args, spec)["pp"] > 1:
+                fmt = "presharded"
+
+    if fmt == "presharded":
         if not engine_args:
             print(
                 "error: --format presharded needs the full engine command after --, "
@@ -197,6 +219,16 @@ def _prepare(argv: List[str]) -> int:
 
     if args.model is None:
         print("error: --model is required for --format sharded_state", file=sys.stderr)
+        if engine_args:
+            # They passed a whole serving command, which is the presharded form.
+            # Without pipeline parallelism there is nothing to infer that from.
+            print(
+                "       the command after -- asks for pp=1, so servekit read it as a "
+                "sharded_state dump;\n"
+                "       pass --model/--tp for that, or --format presharded to dump this "
+                "command's own layout",
+                file=sys.stderr,
+            )
         return 2
 
     return prepare(

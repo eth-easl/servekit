@@ -3,12 +3,17 @@
 #
 # There is no save API for this format: the dump falls out of one ordinary load,
 # so this job is the serving command itself, torn down as soon as it is up.
+# --pipeline-parallel-size is what selects the format; servekit writes
+# --load-format and --model-loader-extra-config itself.
 #
 # The dump is keyed by the FULL parallel and quantization config -- the cache
 # subdirectory is TP-{tp}-sig-{hash over tp/dp/ep/pp/quant/dtype/...}. A dump
 # made at TP=4 PP=2 will not be picked up by a TP=4 PP=4 run; the engine calls
 # that a cache miss and silently re-dumps. Keep the flags here and in the run
 # job identical.
+#
+# OUT is what the run job serves from: prepare copies the config and tokenizer in
+# beside the dump, so it is a model path in its own right.
 #
 # OUT must be on a shared filesystem: every rank writes its own manifest into it
 # and the head builds the plan from all of them. A node-local path fails with
@@ -54,13 +59,11 @@ set -euo pipefail
 unset BASH_ENV
 pip install -e "${SERVEKIT_DIR}" --no-build-isolation --no-deps -q
 
-servekit prepare --format presharded --out "${OUT}" \
+servekit prepare --out "${OUT}" \
   --node-rank \${SLURM_PROCID} --timeout 3000 \
   -- \
   python -m sglang.launch_server \
     --model-path "${MODEL}" \
-    --load-format presharded \
-    --model-loader-extra-config '{"presharded_path": "${OUT}"}' \
     --tensor-parallel-size ${TP_SIZE} \
     --pipeline-parallel-size ${PP_SIZE} \
     --nnodes ${NNODES} \

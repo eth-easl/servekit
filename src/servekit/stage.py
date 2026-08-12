@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -32,6 +33,20 @@ class StageResult:
     wall_s: float
     gbps: float
     bytes: int
+
+
+def copy_metadata(src: Path, dest: Path) -> int:
+    """Copy everything but the weights -- config, tokenizer -- returning the count.
+
+    Kilobytes, and the engine reads them within seconds of starting, so they are
+    never left to a stage running underneath an overlapped engine. Directories are
+    skipped, which is what keeps a presharded dump's own subdirectory out of it.
+    """
+    dest.mkdir(parents=True, exist_ok=True)
+    files = [f for f in sorted(src.iterdir()) if f.is_file() and f.suffix != ".safetensors"]
+    for f in files:
+        shutil.copy2(f, dest / f.name)
+    return len(files)
 
 
 def stage(

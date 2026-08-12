@@ -86,27 +86,34 @@ otherwise. `--out` writes the per-prompt result as JSON.
 ### `servekit prepare`
 
 Writes the presharded checkpoint that `launch` stages. Two formats, because
-SGLang has two:
+SGLang has two — servekit picks between them, you do not have to:
 
 ```bash
 # tensor parallel only
 servekit prepare --model <model> --out <dir> --tp 8
 
-# tensor + pipeline parallel
-servekit prepare --format presharded --out <dir> -- python -m sglang.launch_server ...
+# tensor + pipeline parallel: the whole serving command after --
+servekit prepare --out <dir> -- python -m sglang.launch_server --pp-size 2 ...
 ```
 
 `sharded_state` names its files by TP rank, which is identical on every pipeline
 stage, so at `--pp-size > 1` the stages overwrite each other's files and the load
 then fails on keys they do not own — silently, since nothing rejects the
-combination. `presharded` names by world rank and is what pipeline parallelism
-needs. It has no save API — the dump falls out of one ordinary load — so
-preparing it means handing `prepare` the serving command itself.
+combination. `presharded` names by world rank, so asking for pipeline
+parallelism selects it. It has no save API — the dump falls out of one ordinary
+load — so preparing it means handing `prepare` the serving command itself.
 
-At launch the dump, not the model directory, is what moves to `/dev/shm`. Each
-node stages only the files its own ranks read, taken from the dump's own
-`checksum.json`: a glob cannot express that set, because files read from both
-sides of the world have to land on both nodes.
+What `prepare` writes is the model path you serve from:
+
+```bash
+servekit launch -- python -m sglang.launch_server --model-path <dir> --pp-size 2 ...
+```
+
+servekit writes `--load-format` and `--model-loader-extra-config` itself, so the
+dump root is never something to keep in sync by hand. Each node stages only the
+files its own ranks read, taken from the dump's own `checksum.json`: a glob
+cannot express that set, because files read from both sides of the world have to
+land on both nodes.
 
 `presharded` needs a build with `PreshardedModelLoader`, which reached no release
 — it is absent from v0.5.10 through v0.5.16. See `examples/multinode-pp/`.

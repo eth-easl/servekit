@@ -41,15 +41,12 @@ def prepare_presharded(
     out is locked to the command that made it -- a different tp/pp/ep will not
     pick it up, it will silently miss and re-dump.
     """
-    from .engine_args import parallel_sizes, replace_presharded_root
+    from .engine_args import find_model_path, parallel_sizes, with_presharded_loader
     from .profile import detect_framework, run_profile
-    from .topology import wants_presharded
+    from .stage import copy_metadata
 
     if presharded.loader_available() is False:
         print(f"error: {presharded.MISSING_LOADER}", file=sys.stderr)
-        return 2
-    if not wants_presharded(command):
-        print("error: the command must pass --load-format presharded", file=sys.stderr)
         return 2
 
     existing = presharded.find_dumps(out)
@@ -61,7 +58,10 @@ def prepare_presharded(
 
     spec = detect_framework(command)
     sizes = parallel_sizes(command, spec)
-    engine_command = replace_presharded_root(command, str(out))
+    _, source = find_model_path(command, spec)
+    # The model path stays on the source checkpoint: that is where the weights are
+    # read from. Only the dump is written to `out`.
+    engine_command = with_presharded_loader(command, str(out))
     print(f"[SERVEKIT] dumping to {out} (tp={sizes['tp']} pp={sizes['pp']} ep={sizes['ep']})", flush=True)
 
     # Only the head tears its engine down on ready. A worker's readiness line is
@@ -98,10 +98,22 @@ def prepare_presharded(
             print(f"  {problem}", file=sys.stderr)
         return 1
 
+    # `out` becomes the model path at serve time, so it needs the config and
+    # tokenizer beside the dump: the loader still reads them, and only this
+    # directory moves to /dev/shm.
+    copied = copy_metadata(Path(source), out)
+
     total = sum(f.stat().st_size for f in plan.directory.glob("*.safetensor"))
     print(
         f"[SERVEKIT] verified {dumps[0].name}: {plan.world_size} ranks, "
-        f"{sizes['pp']} pipeline stages tiling the layers, {total / 1e9:.1f} GB",
+        f"{sizes['pp']} pipeline stages tiling the layers, {total / 1e9:.1f} GB "
+        f"(+{copied} metadata files)",
+        flush=True,
+    )
+    print(
+        f"[SERVEKIT] launch it with: servekit launch -- python -m sglang.launch_server "
+        f"--model-path {out} --tensor-parallel-size {sizes['tp']} "
+        f"--pipeline-parallel-size {sizes['pp']}",
         flush=True,
     )
     return 0

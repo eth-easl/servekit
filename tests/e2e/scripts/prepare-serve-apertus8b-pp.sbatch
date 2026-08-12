@@ -9,8 +9,9 @@
 #   (3) servekit verify    -- check (2)'s logprobs against (0)'s
 #
 # Small model, real PP topology: cheap enough to run every time, while still
-# exercising exactly the path that broke for llama70b/TP4PP2 (the presharded
-# loader's --model-path is the source checkpoint, not the dump).
+# exercising exactly the path that broke for llama70b/TP4PP2. It is also what
+# proves prepare's output stands alone as a model path: (2) serves from it
+# without the source checkpoint in the command at all.
 #
 #   sbatch prepare-serve-apertus8b-pp.sbatch
 #   KEEP_PREPARED=1 sbatch prepare-serve-apertus8b-pp.sbatch   # keep (1) for inspection
@@ -95,9 +96,10 @@ if [ "${SLURM_PROCID}" = "0" ]; then
 fi
 wait ${BASELINE_PID} 2>/dev/null || true
 
+# No --model-path and no --load-format: prepare reads from the source checkpoint
+# and launch reads from prepare's output, and servekit picks the format off
+# --pipeline-parallel-size either way.
 ENGINE_ARGS=(
-  --model-path "${MODEL}"
-  --load-format presharded
   --tensor-parallel-size "${TP}"
   --pipeline-parallel-size "${PP}"
   --nnodes "${NNODES}"
@@ -113,13 +115,13 @@ ENGINE_ARGS=(
   --max-running-requests 256
 )
 
-# (1) prepare: dump a fresh presharded checkpoint.
-servekit prepare --format presharded --out "${PREPARED}" \
+# (1) prepare: dump a fresh presharded checkpoint off the source checkpoint.
+servekit prepare --out "${PREPARED}" \
   --node-rank "${SLURM_PROCID}" --timeout 3000 \
   -- \
   python -m sglang.launch_server \
-    "${ENGINE_ARGS[@]}" \
-    --model-loader-extra-config "{\"presharded_path\": \"${PREPARED}\"}"
+    --model-path "${MODEL}" \
+    "${ENGINE_ARGS[@]}"
 
 if [ "${SLURM_PROCID}" = "0" ]; then
   python3 - "${PREPARED}" "${MODEL}" "${MANIFEST_OUT}" <<'PY'
@@ -140,12 +142,12 @@ json.dump({
 PY
 fi
 
-# (2) launch: stage and serve the fresh dump.
+# (2) launch: stage and serve the fresh dump, which is now the model path.
 servekit launch --out "${REPORT}" --timeout 3000 \
   -- \
   python -m sglang.launch_server \
+    --model-path "${PREPARED}" \
     "${ENGINE_ARGS[@]}" \
-    --model-loader-extra-config "{\"presharded_path\": \"${PREPARED}\"}" \
     --enable-metrics &
 LAUNCH_PID=$!
 

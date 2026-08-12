@@ -68,9 +68,7 @@ if [ "\${MODE}" = "fast" ]; then
   servekit launch --out "${REPORT:-}" --timeout 3000 \
     -- \
     python -m sglang.launch_server \
-      --model-path "${MODEL:-}" \
-      --load-format presharded \
-      --model-loader-extra-config '{"presharded_path": "${PRESHARDED_ROOT:-}"}' \
+      --model-path "${PRESHARDED_ROOT:-}" \
       --tensor-parallel-size ${TP_SIZE} \
       --pipeline-parallel-size ${PP_SIZE} \
       --nnodes ${NNODES} \

@@ -121,6 +121,56 @@ def test_prepare_cli_requires_model_and_out():
         main(["prepare", "--model", "/store/m"])
 
 
+def _prepare_cli_format(monkeypatch, tmp_path, *argv):
+    """Which format the CLI picks, without running either preparer."""
+    picked = {}
+
+    def record(name):
+        def fake(*args, **kwargs):
+            picked["format"] = name
+            return 0
+        return fake
+
+    monkeypatch.setattr("servekit.cli.prepare_presharded", record("presharded"))
+    monkeypatch.setattr("servekit.cli.prepare", record("sharded_state"))
+    assert main(["prepare", "--out", str(tmp_path / "o"), *argv]) == 0
+    return picked["format"]
+
+
+def test_pipeline_parallelism_selects_presharded_without_being_told(tmp_path, monkeypatch):
+    """sharded_state cannot do PP at all, so asking for pp > 1 is the whole signal."""
+    assert _prepare_cli_format(
+        monkeypatch, tmp_path,
+        "--", "python", "-m", "sglang.launch_server", "--model-path", "/store/m",
+        "--tp-size", "4", "--pp-size", "2",
+    ) == "presharded"
+
+
+def test_a_serving_command_without_pp_says_which_form_it_was_read_as(tmp_path, capsys):
+    """The confusing case: --model-path is there, but inside the command, not as --model."""
+    rc = main([
+        "prepare", "--out", str(tmp_path / "o"),
+        "--", "python", "-m", "sglang.launch_server", "--model-path", "/store/m", "--tp-size", "4",
+    ])
+    assert rc == 2
+    err = capsys.readouterr().err
+    assert "--model" in err and "pp=1" in err and "--format presharded" in err
+
+
+def test_an_explicit_format_still_wins(tmp_path, monkeypatch):
+    assert _prepare_cli_format(
+        monkeypatch, tmp_path, "--format", "presharded",
+        "--", "python", "-m", "sglang.launch_server", "--model-path", "/store/m",
+    ) == "presharded"
+
+
+def test_the_model_flag_means_the_sharded_state_convention(tmp_path, monkeypatch):
+    """There the args after -- are extra flags, not a command with a topology."""
+    assert _prepare_cli_format(
+        monkeypatch, tmp_path, "--model", "/store/m", "--tp", "4", "--", "--pp-size", "2"
+    ) == "sharded_state"
+
+
 PREPARED = Manifest(format="sharded_state", source="/store/m", **RESOLVED)
 
 
