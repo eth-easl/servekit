@@ -109,11 +109,34 @@ def test_no_matching_dump_says_what_is_there_rather_than_re_dumping(tmp_path):
     assert "TP-2-sig-a78ef1f60dd6a013" in str(e.value)
 
 
-def test_check_shard_config_catches_a_mismatch(tmp_path):
-    plan = presharded.read_plan(build_dump(tmp_path, "tp2pp2"))
-    assert presharded.check_shard_config(plan, {"tp": 2, "pp": 2, "ep": 1, "dp": 1}) == []
-    problems = presharded.check_shard_config(plan, {"tp": 2, "pp": 2, "ep": 4, "dp": 1})
-    assert any(p.startswith("ep:") for p in problems)
+def test_a_dump_matching_on_tp_and_pp_but_not_ep_is_not_a_match(tmp_path):
+    """tp/pp agreeing is not enough: the dump is keyed by the whole config.
+
+    Every axis is matched in one pass, so an ep the dump was not written for is a
+    miss like any other -- and the error names the dumps that do exist.
+    """
+    build_dump(tmp_path, "tp2pp2")
+    assert presharded.select_dump(tmp_path, {"tp": 2, "pp": 2, "ep": 1, "dp": 1}).world_size == 4
+    with pytest.raises(ValueError, match="re-dump"):
+        presharded.select_dump(tmp_path, {"tp": 2, "pp": 2, "ep": 4, "dp": 1})
+
+
+def test_an_axis_the_dump_does_not_record_cannot_disagree(tmp_path):
+    """So a dump written before servekit read an axis stays usable."""
+    dump = build_dump(tmp_path, "tp2pp2")
+    raw = json.loads((dump / presharded.CHECKSUM_NAME).read_text())
+    del raw["shard_config"]["ep"]
+    (dump / presharded.CHECKSUM_NAME).write_text(json.dumps(raw))
+    assert presharded.select_dump(tmp_path, {"tp": 2, "pp": 2, "ep": 4}).world_size == 4
+
+
+def test_a_dump_whose_world_size_contradicts_its_config_is_refused(tmp_path):
+    dump = build_dump(tmp_path, "tp2pp2")
+    raw = json.loads((dump / presharded.CHECKSUM_NAME).read_text())
+    raw["world_size"] = 7
+    (dump / presharded.CHECKSUM_NAME).write_text(json.dumps(raw))
+    with pytest.raises(ValueError, match="corrupt"):
+        presharded.read_plan(dump)
 
 
 # --- the command -----------------------------------------------------------

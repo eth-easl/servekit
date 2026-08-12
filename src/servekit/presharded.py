@@ -19,15 +19,11 @@ import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional
 
 READY_NAME = "READY"
 CHECKSUM_NAME = "checksum.json"
 DUMP_GLOB = "TP-*-sig-*"
-
-# What servekit can read off a launch command; shard_config carries more (eplb,
-# moe_dense_tp_size, ...) that only the engine knows.
-COMPARABLE = ("tp", "pp", "ep", "dp")
 
 _LAYER = re.compile(r"model\.layers\.(\d+)\.")
 
@@ -40,18 +36,17 @@ class ShardPlan:
     rank_to_files: Dict[int, List[str]]
 
     def files_for_ranks(self, lo: int, hi: int) -> List[str]:
-        """Every file the ranks `lo..hi` read, deduplicated, in dump order."""
+        """Every file the ranks `lo..hi` read, deduplicated and sorted."""
         missing = [r for r in range(lo, hi + 1) if r not in self.rank_to_files]
         if missing:
             raise ValueError(
                 f"{self.directory.name} was dumped for {self.world_size} ranks and has "
                 f"no file list for rank(s) {missing}; this node expects ranks {lo}-{hi}"
             )
-        seen: Dict[str, None] = {}
+        files: set = set()
         for rank in range(lo, hi + 1):
-            for name in self.rank_to_files[rank]:
-                seen.setdefault(name, None)
-        return sorted(seen)
+            files.update(self.rank_to_files[rank])
+        return sorted(files)
 
     def bytes_for_ranks(self, lo: int, hi: int) -> int:
         return sum((self.directory / f).stat().st_size for f in self.files_for_ranks(lo, hi))
@@ -83,7 +78,7 @@ MISSING_LOADER = (
 
 
 def find_dumps(root: Path) -> List[Path]:
-    """Completed dumps under `root`, newest first by nothing in particular.
+    """Completed dumps under `root`, sorted by name.
 
     Several may coexist: the subdirectory is keyed by the full parallel and quant
     config, so one root can hold a tp4/pp8 dump beside a tp8/pp4 one.
@@ -102,40 +97,49 @@ def read_plan(dump: Path) -> ShardPlan:
             f"loading it would silently miss and re-dump"
         )
     raw = json.loads((dump / CHECKSUM_NAME).read_text())
-    rank_to_files: Dict[int, List[str]] = {}
-    for rank, reads in raw["rank_to_reads"].items():
-        names: Dict[str, None] = {}
-        for entry in reads:
-            names.setdefault(entry["filename"], None)
-        rank_to_files[int(rank)] = sorted(names)
+    world_size = int(raw["world_size"])
+    config = raw.get("shard_config") or {}
+    # An internal inconsistency rather than a mismatch with what was asked for:
+    # whether the dump suits *this* command is `select_dump`'s question.
+    if "tp" in config and "pp" in config and config["tp"] * config["pp"] != world_size:
+        raise ValueError(
+            f"{dump.name} is corrupt: it holds {world_size} ranks but its shard_config "
+            f"says tp*pp = {config['tp'] * config['pp']}"
+        )
     return ShardPlan(
         directory=dump,
-        world_size=int(raw["world_size"]),
-        shard_config=raw.get("shard_config") or {},
-        rank_to_files=rank_to_files,
+        world_size=world_size,
+        shard_config=config,
+        rank_to_files={
+            int(rank): sorted({entry["filename"] for entry in reads})
+            for rank, reads in raw["rank_to_reads"].items()
+        },
     )
 
 
 def select_dump(root: Path, wanted: Dict[str, int]) -> ShardPlan:
-    """The dump under `root` matching `wanted`, or raise saying what is there.
+    """The dump under `root` matching every axis of `wanted`, or raise.
 
     Raising is the point. The loader's own response to a config it has no dump for
     is to warn and re-dump -- a full HF load plus a rewrite of the whole checkpoint,
     which on a big model is not something to discover from a log line afterwards.
+
+    An axis the dump does not record cannot disagree, so it matches: dumps written
+    before servekit read that axis stay usable.
     """
     dumps = find_dumps(root)
     if not dumps:
         raise ValueError(f"no completed presharded dump under {root}; run `servekit prepare` first")
 
     plans = [read_plan(d) for d in dumps]
-    matches = [p for p in plans if all(p.shard_config.get(k) == v for k, v in wanted.items())]
+    matches = [p for p in plans if all(p.shard_config.get(k) in (None, v) for k, v in wanted.items())]
     if len(matches) == 1:
         return matches[0]
 
     asked = ", ".join(f"{k}={v}" for k, v in wanted.items())
     if not matches:
         have = "; ".join(
-            f"{p.directory.name} ({', '.join(f'{k}={p.shard_config.get(k)}' for k in COMPARABLE)})"
+            f"{p.directory.name} ({', '.join(f'{k}={p.shard_config.get(k)}' for k in wanted)})"
             for p in plans
         )
         raise ValueError(
@@ -148,25 +152,7 @@ def select_dump(root: Path, wanted: Dict[str, int]) -> ShardPlan:
     )
 
 
-def check_shard_config(plan: ShardPlan, wanted: Dict[str, int]) -> List[str]:
-    problems = []
-    for key, value in wanted.items():
-        stored = plan.shard_config.get(key)
-        if stored is not None and stored != value:
-            problems.append(
-                f"{key}: {plan.directory.name} was dumped for {key}={stored}, "
-                f"the command asks for {value}"
-            )
-    world = wanted.get("tp", 1) * wanted.get("pp", 1)
-    if plan.world_size != world:
-        problems.append(
-            f"world_size: {plan.directory.name} holds {plan.world_size} ranks, "
-            f"the command asks for tp*pp = {world}"
-        )
-    return problems
-
-
-def verify(plan: ShardPlan, tp: int, pp: int, reads: Optional[Dict[int, Sequence[str]]] = None) -> List[str]:
+def verify(plan: ShardPlan, tp: int, pp: int) -> List[str]:
     """Ways the dump is not a valid `tp` x `pp` split, in plain words.
 
     NOTE the obvious check -- no two ranks share a tensor -- is wrong as soon as
@@ -177,9 +163,10 @@ def verify(plan: ShardPlan, tp: int, pp: int, reads: Optional[Dict[int, Sequence
     tiling 0..L-1. Derived from the data, so it assumes nothing about how SGLang
     maps a world rank to (pp_rank, tp_rank).
     """
-    if reads is None:
-        raw = json.loads((plan.directory / CHECKSUM_NAME).read_text())
-        reads = {int(r): [e["name"] for e in entries] for r, entries in raw["rank_to_reads"].items()}
+    # Re-read rather than carry it on the plan: this needs the tensor names, which
+    # only `prepare` ever looks at, and `launch` should not pay to parse them.
+    raw = json.loads((plan.directory / CHECKSUM_NAME).read_text())
+    reads = {int(r): [e["name"] for e in entries] for r, entries in raw["rank_to_reads"].items()}
 
     problems = []
     world = tp * pp

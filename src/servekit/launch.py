@@ -110,15 +110,7 @@ def _presharded_staging(
 ) -> Tuple[_Staging, presharded_mod.ShardPlan]:
     root = presharded_root(command)
     wanted = parallel_sizes(command, spec)
-    plan = presharded_mod.select_dump(root, {k: wanted[k] for k in ("tp", "pp")})
-
-    problems = presharded_mod.check_shard_config(plan, wanted)
-    if problems:
-        raise ValueError(
-            "the dump does not match this command:\n  "
-            + "\n  ".join(problems)
-            + "\n       the engine would call this a cache miss and re-dump the whole checkpoint"
-        )
+    plan = presharded_mod.select_dump(root, wanted)
 
     lo, hi = topo.local_rank_range
     if hi < lo:
