@@ -14,10 +14,13 @@ import dataclasses
 import json
 import os
 import shutil
+import sys
 from argparse import ArgumentParser
 from pathlib import Path
 
 from sglang import Engine, ServerArgs
+
+from servekit import quant_guard
 
 parser = ArgumentParser()
 ServerArgs.add_cli_args(parser)
@@ -75,6 +78,19 @@ def main(args):
         raise ValueError("model path must be a local directory")
 
     node_rank = getattr(engine_args, "node_rank", 0)
+
+    # Before the Engine, so an unsupported checkpoint costs a second rather than
+    # a full load followed by a dump nobody can trust.
+    unsupported = quant_guard.check_dir(
+        Path(model_path),
+        quantization=engine_args.quantization,
+        moe_runner_backend=getattr(engine_args, "moe_runner_backend", None),
+        moe_a2a_backend=getattr(engine_args, "moe_a2a_backend", None),
+    )
+    if unsupported:
+        print(quant_guard.refusal(unsupported, model_path), file=sys.stderr)
+        raise SystemExit(2)
+
     Path(args.output).mkdir(parents=True, exist_ok=True)
 
     llm = Engine(**dataclasses.asdict(engine_args))
