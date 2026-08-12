@@ -319,6 +319,11 @@ def _verify(argv: List[str]) -> int:
     parser.add_argument("--timeout", type=float, default=600.0, help="per-request timeout")
     parser.add_argument("--token-tol", type=float, default=1e-6, help="max allowed |delta| per token logprob")
     parser.add_argument("--nll-tol", type=float, default=1e-6, help="max allowed |delta| in mean NLL")
+    parser.add_argument(
+        "--seed", type=int, default=None,
+        help="engine sampling seed to pin (record: stored in the reference; reference: defaults to the "
+             "reference's own seed, override to test a different one)",
+    )
     args = parser.parse_args(argv)
 
     if not args.url:
@@ -343,8 +348,9 @@ def _verify(argv: List[str]) -> int:
 
     if args.record:
         prompt_set, prompts = load_prompt_set(args.prompts)
-        print(f"[SERVEKIT] recording {len(prompts)} prompts from {args.url}", flush=True)
-        result = capture(args.url, model, prompts, prompt_set, timeout=args.timeout)
+        print(f"[SERVEKIT] recording {len(prompts)} prompts from {args.url}" +
+              (f" (seed={args.seed})" if args.seed is not None else ""), flush=True)
+        result = capture(args.url, model, prompts, prompt_set, timeout=args.timeout, seed=args.seed)
         args.record.write_text(json.dumps(result, indent=1))
         print(f"[SERVEKIT] reference written to {args.record}", flush=True)
         return 0
@@ -352,7 +358,11 @@ def _verify(argv: List[str]) -> int:
     reference = json.loads(args.reference.read_text())
     prompt_set, prompts = load_prompt_set(None)
     ref_prompts = [(p["key"], p["text"]) for p in reference["prompts"]]
-    print(f"[SERVEKIT] checking {len(ref_prompts)} prompts from {args.url} against {args.reference}", flush=True)
+    # Default to the seed the reference was recorded with, so a bare `--reference`
+    # run reproduces the same routing/tie-break conditions; --seed overrides it.
+    seed = args.seed if args.seed is not None else reference.get("seed")
+    print(f"[SERVEKIT] checking {len(ref_prompts)} prompts from {args.url} against {args.reference}" +
+          (f" (seed={seed})" if seed is not None else ""), flush=True)
     captured = capture(
         args.url,
         model,
@@ -361,6 +371,7 @@ def _verify(argv: List[str]) -> int:
         timeout=args.timeout,
         greedy_prompts=reference.get("greedy_prompts", 8),
         greedy_tokens=reference.get("greedy_tokens", 32),
+        seed=seed,
     )
     result = compare(reference, captured, token_tol=args.token_tol, nll_tol=args.nll_tol)
     print()

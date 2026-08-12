@@ -34,20 +34,23 @@ def load_prompt_set(path: Optional[Path]) -> Tuple[str, List[Tuple[str, str]]]:
     return data.get("prompt_set", "custom"), prompts
 
 
-def score(base_url: str, model: str, text: str, timeout: float) -> Tuple[List[float], List[str]]:
+def score(
+    base_url: str, model: str, text: str, timeout: float, seed: Optional[int] = None
+) -> Tuple[List[float], List[str]]:
     """Per-token logprobs of `text` itself, under the model that is serving it.
 
     `max_tokens: 1` rather than 0 because some SGLang builds reject 0; the
     generated token is sliced back off, so the choice does not reach the capture.
     The leading entry is null (nothing predicts the first token) and goes too.
+
+    `seed` pins whatever the engine's `seed` sampling param controls (e.g. MoE
+    routing tie-breaks); at temperature=0.0 it does not affect which token is
+    picked, only how ties/kernel nondeterminism resolve.
     """
-    resp = _completions(
-        base_url,
-        model,
-        text,
-        {"max_tokens": 1, "echo": True, "logprobs": TOP_LOGPROBS, "temperature": 0.0},
-        timeout,
-    )
+    params = {"max_tokens": 1, "echo": True, "logprobs": TOP_LOGPROBS, "temperature": 0.0}
+    if seed is not None:
+        params["seed"] = seed
+    resp = _completions(base_url, model, text, params, timeout)
     lp = (resp.get("choices") or [{}])[0].get("logprobs") or {}
     token_logprobs = lp.get("token_logprobs")
     tokens = lp.get("tokens")
@@ -66,14 +69,13 @@ def score(base_url: str, model: str, text: str, timeout: float) -> Tuple[List[fl
     return logprobs, toks
 
 
-def greedy(base_url: str, model: str, text: str, timeout: float, n_tokens: int) -> List[str]:
-    resp = _completions(
-        base_url,
-        model,
-        text,
-        {"max_tokens": n_tokens, "temperature": 0.0, "logprobs": TOP_LOGPROBS},
-        timeout,
-    )
+def greedy(
+    base_url: str, model: str, text: str, timeout: float, n_tokens: int, seed: Optional[int] = None
+) -> List[str]:
+    params = {"max_tokens": n_tokens, "temperature": 0.0, "logprobs": TOP_LOGPROBS}
+    if seed is not None:
+        params["seed"] = seed
+    resp = _completions(base_url, model, text, params, timeout)
     choice = (resp.get("choices") or [{}])[0]
     tokens = ((choice.get("logprobs") or {}).get("tokens")) or []
     if not tokens:
@@ -89,10 +91,11 @@ def capture(
     timeout: float = 600.0,
     greedy_prompts: int = 8,
     greedy_tokens: int = 32,
+    seed: Optional[int] = None,
 ) -> dict:
     out = []
     for i, (key, text) in enumerate(prompts):
-        logprobs, tokens = score(base_url, model, text, timeout)
+        logprobs, tokens = score(base_url, model, text, timeout, seed=seed)
         entry = {
             "key": key,
             "text": text,
@@ -101,13 +104,14 @@ def capture(
             "mean_nll": round(-sum(logprobs) / len(logprobs), 6) if logprobs else 0.0,
         }
         if i < greedy_prompts:
-            entry["greedy_tokens"] = greedy(base_url, model, text, timeout, greedy_tokens)
+            entry["greedy_tokens"] = greedy(base_url, model, text, timeout, greedy_tokens, seed=seed)
         out.append(entry)
     return {
         "model": model,
         "prompt_set": prompt_set,
         "greedy_prompts": greedy_prompts,
         "greedy_tokens": greedy_tokens,
+        "seed": seed,
         "prompts": out,
     }
 
