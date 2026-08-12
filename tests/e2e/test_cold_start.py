@@ -44,7 +44,7 @@ def test_multinode_llama70b():
 
 def test_multinode_pp_llama70b():
     script = EXAMPLES / "multinode-pp" / "run_llama70b_sglang.sbatch"
-    job_id = _sbatch_wait(script)
+    job_id = sbatch_wait(script)
     rundir = script.parent / "logs" / f"multinode-pp-llama70b-{job_id}"
     for node_rank in (0, 1):
         report = json.loads((rundir / f"run.node{node_rank}.json").read_text())

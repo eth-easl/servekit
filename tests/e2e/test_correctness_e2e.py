@@ -50,6 +50,12 @@ CASES = [
         fixture="llama70b-tp8-bf16.json",
         id="llama70b_multinode_tp8",
     ),
+    # PP
+    Case(
+        script="llama70b-pp.sbatch",
+        fixture="llama70b-tp4pp2-bf16.json",
+        id="llama70b_multinode_pp",
+    ),
     # redundant
     Case(
         script="apertus8b.sbatch",
