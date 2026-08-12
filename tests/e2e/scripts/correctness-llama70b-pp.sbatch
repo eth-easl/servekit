@@ -1,7 +1,10 @@
 #!/bin/bash
 # Correctness test for weight loading under pipeline parallelism: compares
-# baseline (plain sglang, TP=8, no PP, reading the HF checkpoint) vs fast
-# (servekit staging the presharded TP=4/PP=2 dump into /dev/shm).
+# baseline (plain sglang, TP=4/PP=2, reading the HF checkpoint directly) vs
+# fast (servekit staging the presharded TP=4/PP=2 dump into /dev/shm). Both
+# arms use the same parallel topology and the same nightly image, so the only
+# variable is the loading path -- a TP=8 baseline would also differ in
+# reduction order and make logprob deltas meaningless.
 #
 # Run with MODE=baseline or MODE=fast environment variable:
 #   MODE=baseline sbatch correctness-llama70b-pp.sbatch
@@ -20,22 +23,16 @@
 set -euo pipefail
 
 export MODE="${MODE:-fast}"
+export MODEL="${MODEL:-/capstor/store/cscs/swissai/infra01/hf_models/models/meta-llama/Llama-3.1-70B-Instruct}"
+EDF="${SLURM_SUBMIT_DIR}/../../../examples/multinode-pp/sglang-nightly-clariden.toml"
 
 case "$MODE" in
   baseline)
-    export MODEL="${MODEL:-/capstor/store/cscs/swissai/infra01/hf_models/models/meta-llama/Llama-3.1-70B-Instruct}"
     OUT_PREFIX="baseline"
-    # Plain TP=8 needs none of PreshardedModelLoader; run it on the release
-    # image already proven stable for cross-node TP=8 (correctness-llama70b-
-    # multinode-tp8.sbatch). The PP nightly build (16a52bff) hangs under TP=8
-    # with a CUDA event-sync stall -- reproduced twice, different requests
-    # each time, watchdog-killed both at 300s -- so it is not fit for this arm.
-    EDF="${SLURM_SUBMIT_DIR}/../../../examples/multinode/sglang-clariden.toml"
     ;;
   fast)
     export PRESHARDED_ROOT="${PRESHARDED_ROOT:-/capstor/store/cscs/swissai/infra01/cold-start-experiments/llama70b-pp-presharded-tp4pp2}"
     OUT_PREFIX="fast"
-    EDF="${SLURM_SUBMIT_DIR}/../../../examples/multinode-pp/sglang-nightly-clariden.toml"
     ;;
   *)
     echo "MODE must be 'baseline' or 'fast', got: $MODE" >&2
@@ -71,7 +68,7 @@ if [ "\${MODE}" = "fast" ]; then
   servekit launch --out "${REPORT:-}" --timeout 3000 \
     -- \
     python -m sglang.launch_server \
-      --model-path "${PRESHARDED_ROOT:-}" \
+      --model-path "${MODEL:-}" \
       --load-format presharded \
       --model-loader-extra-config '{"presharded_path": "${PRESHARDED_ROOT:-}"}' \
       --tensor-parallel-size ${TP_SIZE} \
@@ -92,10 +89,12 @@ if [ "\${MODE}" = "fast" ]; then
 else
   python -m sglang.launch_server \
     --model-path "${MODEL:-}" \
-    --tensor-parallel-size 8 \
+    --tensor-parallel-size ${TP_SIZE} \
+    --pipeline-parallel-size ${PP_SIZE} \
     --nnodes ${NNODES} \
     --node-rank \${SLURM_PROCID} \
     --dist-init-addr ${HEAD_NODE}:${DIST_PORT} \
+    --attention-backend flashinfer \
     --host 0.0.0.0 \
     --port 8080 \
     --served-model-name "${SERVED_MODEL_NAME}" \
