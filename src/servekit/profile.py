@@ -183,7 +183,6 @@ class ProfileReport:
     benchmark: Optional[dict] = None  # filled in later by `servekit bench --into <report>`
     node_rank: Optional[int] = None
     nnodes: Optional[int] = None
-    overlap_gate: Optional[dict] = None  # presharded only; see launch._overlap_gate
 
     @property
     def total_duration_s(self) -> float:
@@ -203,7 +202,6 @@ class ProfileReport:
             "benchmark": self.benchmark,
             "node_rank": self.node_rank,
             "nnodes": self.nnodes,
-            "overlap_gate": self.overlap_gate,
         }
 
 

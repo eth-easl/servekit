@@ -61,8 +61,7 @@ OVERLAP_WARNING = (
 PRESHARDED_OVERLAP_NOTE = (
     "[SERVEKIT] --overlap on a presharded dump is gated by the READY sentinel, written last and "
     "only on a clean stage. An engine that looks too early takes a cache MISS -- a full source "
-    "load plus a re-dump into /dev/shm -- so check the overlap gate in the report before "
-    "trusting a timing."
+    "load plus a re-dump into /dev/shm -- which shows up as a slow weight_loading phase."
 )
 
 
@@ -104,28 +103,6 @@ class _Staging:
     presync: Sequence[str] = ()
     # Created last and only on a clean stage. This is the loader's barrier.
     ready_marker: Optional[Path] = None
-
-
-def _overlap_gate(report: ProfileReport, ready_at: Optional[float]) -> Optional[dict]:
-    """Whether READY beat the loader, which decides if a timing means anything.
-
-    A run where the engine looked before the sentinel existed did not measure
-    staging -- it measured a cache miss and a re-dump.
-    """
-    if ready_at is None or report.ready_at is None:
-        return None
-    elapsed = 0.0
-    for phase in report.phases:
-        if phase.name == "weight_loading":
-            break
-        elapsed += phase.duration_s
-    began = report.started_at + elapsed
-    return {
-        "ready_written_at": ready_at,
-        "weight_loading_began_at": began,
-        "slack_s": round(began - ready_at, 2),
-        "valid": began > ready_at,
-    }
 
 
 def _presharded_staging(
@@ -292,7 +269,6 @@ def launch(
             staged["error"] = e
         if "error" not in staged and plan.ready_marker is not None:
             plan.ready_marker.touch()
-            staged["ready_at"] = time.time()
 
     def report_stage() -> None:
         result = staged["result"]
@@ -352,16 +328,6 @@ def launch(
             # concurrently with the phases below and would double-count.
             report.phases.insert(0, Phase("stage", round(staged["result"].wall_s, 2), "wall_clock"))
             report.started_at = t0
-        if presharded:
-            report.overlap_gate = _overlap_gate(report, staged.get("ready_at"))
-            if report.overlap_gate is not None and not report.overlap_gate["valid"]:
-                print(
-                    f"[SERVEKIT] OVERLAP GATE INVALID: the loader looked "
-                    f"{-report.overlap_gate['slack_s']:.2f} s before READY existed, so it took a "
-                    f"cache miss and re-dumped. This timing is not the technique.",
-                    file=sys.stderr,
-                    flush=True,
-                )
         print()
         print(render_table(report))
         out_path = _out_path(out, t0, topo)

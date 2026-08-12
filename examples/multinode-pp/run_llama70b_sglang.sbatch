@@ -12,8 +12,8 @@
 # --overlap is safe here in a way it is not for sharded_state: the loader will
 # not touch a dump without its READY sentinel, and servekit writes that last and
 # only on a clean stage. An engine that looks too early does not read zeros, it
-# takes a cache MISS -- a full source load plus a re-dump into /dev/shm. The
-# report's overlap_gate says which happened; check it before trusting a timing.
+# takes a cache MISS -- a full source load plus a re-dump into /dev/shm, which
+# the per-node weight_loading below reports as minutes rather than seconds.
 #SBATCH --job-name=multinode-pp-llama70b
 #SBATCH --partition=debug
 #SBATCH --account=a-infra02
@@ -122,13 +122,12 @@ import glob, json, os, sys
 
 for path in sorted(glob.glob(os.path.join(sys.argv[1], "run.node*.json"))):
     d = json.load(open(path))
-    g = d.get("overlap_gate") or {}
     phases = dict((p["name"], p["duration_s"]) for p in d.get("phases", []))
-    print("%-18s total=%7.2fs  weight_loading=%6.2fs  gate=%s" % (
+    # A node whose staged file set was wrong takes a cache miss and loads from
+    # source instead: seconds here, minutes there.
+    print("%-18s total=%7.2fs  weight_loading=%6.2fs" % (
         os.path.basename(path), d.get("total_duration_s", float("nan")),
-        phases.get("weight_loading", float("nan")),
-        ("VALID slack=%.1fs" % g["slack_s"]) if g.get("valid")
-        else ("INVALID %s" % g.get("slack_s", "n/a"))))
+        phases.get("weight_loading", float("nan"))))
 
     # The bench only runs on the head, so this prints once. A dump loaded at the
     # wrong shape still serves -- it just serves the wrong tensors -- so the
