@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import List, Optional
 
 from . import manifest as manifest_mod
+from . import quant_guard
 from .engine_args import check_manifest, find_model_path, replace_model_path
 from .profile import Phase, ProfileReport, detect_framework, render_table, run_profile, save_json
 from .stage import DEFAULT_SLICES, stage
@@ -102,6 +103,15 @@ def launch(
             for problem in problems:
                 print(f"  {problem}", file=sys.stderr)
             print("       re-run `servekit prepare` for these settings, or fix the command", file=sys.stderr)
+            return 2
+
+    # A checkpoint written before this check existed is still unusable, and so
+    # is one whose serve-time flags reach a path the dump did not. Either way it
+    # looks like a healthy server answering from dead weights.
+    if prepared is not None or wants_sharded_state(command):
+        unsupported = quant_guard.check_command(src_path, command)
+        if unsupported:
+            print(quant_guard.refusal(unsupported, src), file=sys.stderr)
             return 2
 
     dest = shm_root / src_path.name
