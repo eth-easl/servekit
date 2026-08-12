@@ -73,26 +73,12 @@ for f in "${FILES[@]}"; do
   truncate -s "$(stat -c%s "$SRC/$f")" "$DEST/$f"
 done
 
-# A tmpfs page is allocated on the NUMA node of the thread that writes it, and
-# the fan-out below places them very unevenly: staging a ~190 GB shard set on a
-# GH200 node left one Grace domain with 4 GiB free while another still held 99.
-# That starves whichever engine rank is pinned to the exhausted domain -- it is
-# OOM-killed while the node as a whole still reports hundreds of GiB free.
-# Interleaving the writes spreads the staged bytes evenly instead.
-#
-# Only over nodes that have CPUs: on GH200 each GPU's HBM is exposed as a
-# memory-only NUMA node, so `--interleave=all` would stage into device memory.
-NUMA=""
-if command -v numactl >/dev/null 2>&1 && [[ -r /sys/devices/system/node/has_cpu ]]; then
-  NUMA="numactl --interleave=$(< /sys/devices/system/node/has_cpu)"
-fi
-
 stage_slice() { # <src> <dst> <skip_blocks> <count_blocks>
-  $NUMA dd if="$1" of="$2" bs="$BS" skip="$3" seek="$3" count="$4" \
+  dd if="$1" of="$2" bs="$BS" skip="$3" seek="$3" count="$4" \
      $IFLAG conv=notrunc status=none
 }
 export -f stage_slice
-export BS IFLAG NUMA
+export BS IFLAG
 
 # "<src> <dst> <skip> <count>" per slice, tiling each file exactly. A file
 # smaller than one block yields a single slice, so small config files just work.
