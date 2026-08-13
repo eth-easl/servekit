@@ -11,6 +11,7 @@ a future SGLang lets it return.
 """
 
 import dataclasses
+import inspect
 import json
 import os
 import shutil
@@ -21,6 +22,7 @@ from pathlib import Path
 from sglang import Engine, ServerArgs
 
 from servekit import quant_guard
+from servekit._shim import wait_for_writes
 
 parser = ArgumentParser()
 ServerArgs.add_cli_args(parser)
@@ -99,15 +101,25 @@ def main(args):
         print(f"node_rank={node_rank}: engine constructor returned; nothing to issue here")
         return
 
-    # Flattening these hits a handler that takes one positional `params` dict.
-    llm.collective_rpc(
-        "save_sharded_model",
-        params={
-            "path": args.output,
-            "pattern": args.file_pattern,
-            "max_size": args.max_file_size,
-        },
-    )
+    payload = {
+        "path": args.output,
+        "pattern": args.file_pattern,
+        "max_size": args.max_file_size,
+    }
+    # The handler took one `params` dict up to v0.5.12 and flat kwargs from
+    # v0.5.13, where the dict moved a layer down into WeightUpdater. Sending the
+    # wrong shape surfaces as KeyError 'path' after a full model load.
+    from sglang.srt.managers.scheduler import Scheduler
+
+    if "params" in inspect.signature(Scheduler.save_sharded_model).parameters:
+        payload = {"params": payload}
+    llm.collective_rpc("save_sharded_model", **payload)
+
+    pp_size = getattr(engine_args, "pp_size", 1)
+    if pp_size > 1:
+        # The rpc reply comes from pp0/tp0 before later stages have even received
+        # the request, so without this the copy below exits out from under them.
+        wait_for_writes(args.output, pp_size, engine_args.tp_size)
 
     for file in os.listdir(model_path):
         src = os.path.join(model_path, file)

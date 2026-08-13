@@ -1,4 +1,12 @@
 #!/bin/bash
+# Serve-only, multinode: two nodes at TP=4/PP=2, one pipeline stage a node.
+#
+# Shards are keyed on (pp_rank, tp_rank), so this is the arm that proves a node
+# stages its own stage's files and no others. Build the checkpoint first with
+# examples/multinode/pipeline-parallel/prepare.sbatch.
+#
+# Needs sglang >= 0.5.11: the loader shim rides on the plugin framework, hence a
+# different EDF from the TP-only scripts.
 #SBATCH --partition=debug
 #SBATCH --account=a-infra02
 #SBATCH --nodes=2
@@ -15,11 +23,11 @@ export MODE="${MODE:-fast}"
 
 case "$MODE" in
   baseline)
-    export MODEL="${MODEL:-/capstor/store/cscs/swissai/infra01/hf_models/models/meta-llama/Llama-3.1-70B-Instruct}"
+    export MODEL="${MODEL:-/capstor/store/cscs/swissai/infra01/hf_models/models/swiss-ai/Apertus-8B-Instruct-2509}"
     OUT_PREFIX="baseline"
     ;;
   fast)
-    export SHARDED_SRC="${SHARDED_SRC:-/capstor/store/cscs/swissai/infra01/cold-start-experiments/llama70b-tp8-sharded}"
+    export SHARDED_SRC="${SHARDED_SRC:-/capstor/store/cscs/swissai/infra01/cold-start-experiments/apertus8b-tp4pp2-sharded}"
     OUT_PREFIX="fast"
     ;;
   *)
@@ -28,18 +36,19 @@ case "$MODE" in
     ;;
 esac
 
-EDF="${SLURM_SUBMIT_DIR}/../../../examples/multinode/tensor-parallel/sglang-clariden.toml"
-SERVED_MODEL_NAME=meta-llama/Llama-3.1-70B-Instruct
+EDF="${SLURM_SUBMIT_DIR}/../../../examples/multinode/pipeline-parallel/sglang-clariden.toml"
+SERVED_MODEL_NAME=swiss-ai/Apertus-8B-Instruct-2509
 SERVEKIT_DIR="${SLURM_SUBMIT_DIR}/../../.."
 OUT="${SLURM_SUBMIT_DIR}/logs/${OUT_PREFIX}-${SLURM_JOB_ID}.json"
 
 if [ "$MODE" = "fast" ]; then
   REPORT="${SLURM_SUBMIT_DIR}/logs/${OUT_PREFIX}-${SLURM_JOB_ID}.report.json"
-  REFERENCE="${SERVEKIT_DIR}/tests/e2e/fixtures/llama70b-tp8-bf16.json"
+  REFERENCE="${SERVEKIT_DIR}/tests/e2e/fixtures/apertus8b-tp4pp2-bf16.json"
 fi
 
 NNODES=2
-TP_SIZE=8
+TP_SIZE=4
+PP_SIZE=2
 DIST_PORT=20000
 HEAD_NODE="$(scontrol show hostnames "${SLURM_JOB_NODELIST}" | head -1)"
 
@@ -59,9 +68,11 @@ if [ "\${MODE}" = "fast" ]; then
       --model-path "${SHARDED_SRC:-}" \
       --load-format sharded_state \
       --tensor-parallel-size ${TP_SIZE} \
+      --pipeline-parallel-size ${PP_SIZE} \
       --nnodes ${NNODES} \
       --node-rank \${SLURM_PROCID} \
       --dist-init-addr ${HEAD_NODE}:${DIST_PORT} \
+      --attention-backend flashinfer \
       --host 0.0.0.0 \
       --port 8080 \
       --served-model-name "${SERVED_MODEL_NAME}" \
@@ -75,9 +86,11 @@ else
   python -m sglang.launch_server \
     --model-path "${MODEL:-}" \
     --tensor-parallel-size ${TP_SIZE} \
+    --pipeline-parallel-size ${PP_SIZE} \
     --nnodes ${NNODES} \
     --node-rank \${SLURM_PROCID} \
     --dist-init-addr ${HEAD_NODE}:${DIST_PORT} \
+    --attention-backend flashinfer \
     --host 0.0.0.0 \
     --port 8080 \
     --served-model-name "${SERVED_MODEL_NAME}" \

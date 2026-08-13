@@ -63,6 +63,12 @@ CASES = [
         fixture="qwen3-coder-30b-a3b-tp4-bf16.json",
         id="qwen3_coder_30b_a3b_tp4",
     ),
+    # pp multinode, bf16
+    Case(
+        script="apertus8b-multinode-pp.sbatch",
+        fixture="apertus8b-tp4pp2-bf16.json",
+        id="apertus8b_tp4pp2_multinode",
+    ),
 ]
 
 

@@ -1,0 +1,27 @@
+# Same as sglang-clariden.toml but on v0.5.11+, which pipeline parallel needs:
+# servekit keeps pipeline stages from overwriting each other's shards through an
+# SGLang plugin, and the plugin framework landed 15 days after v0.5.10. On an
+# older image the entry point is never discovered and every stage writes the same
+# filenames.
+image = "lmsysorg/sglang:v0.5.16"
+
+mounts = [
+  "/capstor:/capstor",
+  "/iopsstor:/iopsstor",
+]
+
+workdir = "/iopsstor/scratch/cscs/yboughizane/cold-start-elimination/servekit-pp-shim/examples/multinode/pipeline-parallel"
+
+[env]
+HOME = "/root"
+NCCL_DEBUG = "WARN"
+PYTHONPATH = ""
+PYTHONNOUSERSITE = "1"
+HF_HUB_OFFLINE = "1"
+TRANSFORMERS_OFFLINE = "1"
+TOKENIZERS_PARALLELISM = "false"
+
+[annotations]
+com.pyxis.entrypoint_log = "true"
+com.hooks.aws_ofi_nccl.enabled = "true"
+com.hooks.aws_ofi_nccl.variant = "cuda12"

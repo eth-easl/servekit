@@ -20,7 +20,7 @@ NNODES=2
 DIST_PORT=20000
 
 EDF="${SLURM_SUBMIT_DIR}/sglang-clariden.toml"
-SERVEKIT_DIR="${SLURM_SUBMIT_DIR}/../.."
+SERVEKIT_DIR="${SLURM_SUBMIT_DIR}/../../.."
 HEAD_NODE="$(scontrol show hostnames "${SLURM_JOB_NODELIST}" | head -1)"
 
 

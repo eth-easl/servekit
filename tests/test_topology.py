@@ -80,6 +80,33 @@ def test_a_two_digit_rank_range_is_refused_rather_than_mismatched():
         shard_glob(Topology(nnodes=2, node_rank=1, tp_size=16))
 
 
+def test_shard_glob_slices_pipeline_stages_by_stage_not_by_tp_rank():
+    """Shards are keyed on (pp_rank, tp_rank), so a tp-only glob matches nothing."""
+    whole_stage = dict(nnodes=2, tp_size=4, pp_size=2)
+    assert shard_glob(Topology(node_rank=0, **whole_stage)) == "model-pp-0-rank-[0-3]-part-*.safetensors"
+    assert shard_glob(Topology(node_rank=1, **whole_stage)) == "model-pp-1-rank-[0-3]-part-*.safetensors"
+
+    # Two ranks a node, so each holds half of one stage.
+    half_stage = dict(nnodes=2, tp_size=2, pp_size=2)
+    assert shard_glob(Topology(node_rank=0, **half_stage)) == "model-pp-0-rank-[0-1]-part-*.safetensors"
+    assert shard_glob(Topology(node_rank=1, **half_stage)) == "model-pp-1-rank-[0-1]-part-*.safetensors"
+
+    # One node, several whole stages.
+    assert shard_glob(Topology(nnodes=2, node_rank=1, tp_size=2, pp_size=4)) == (
+        "model-pp-[2-3]-rank-[0-1]-part-*.safetensors"
+    )
+    # One rank a node.
+    assert shard_glob(Topology(nnodes=4, node_rank=2, tp_size=1, pp_size=4)) == (
+        "model-pp-2-rank-0-part-*.safetensors"
+    )
+
+
+def test_a_node_holding_a_partial_stage_span_is_refused():
+    """3 ranks a node straddles stage 0 into stage 1, which one glob cannot express."""
+    with pytest.raises(ValueError, match="partial slice of stages"):
+        shard_glob(Topology(nnodes=2, node_rank=0, tp_size=2, pp_size=3))
+
+
 def test_sharded_state_is_what_makes_the_shards_per_rank():
     assert wants_sharded_state(sglang("--load-format", "sharded_state"))
     assert wants_sharded_state(sglang("--load-format=sharded_state"))
