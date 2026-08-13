@@ -17,7 +17,7 @@ EDF="${SLURM_SUBMIT_DIR}/sglang-clariden.toml"
 SHARDED_SRC="${SHARDED_SRC:-/capstor/store/cscs/swissai/infra01/cold-start-experiments/llama70b-tp8-sharded}"
 SERVED_MODEL_NAME=meta-llama/Llama-3.1-70B-Instruct
 
-SERVEKIT_DIR="${SLURM_SUBMIT_DIR}/../.."
+SERVEKIT_DIR="${SLURM_SUBMIT_DIR}/../../.."
 RUNDIR="${SLURM_SUBMIT_DIR}/logs/${SLURM_JOB_NAME}-${SLURM_JOB_ID}"
 OUT="${RUNDIR}/run.json"
 # What `servekit launch` writes on the head, once it knows --nnodes > 1.

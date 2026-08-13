@@ -11,7 +11,7 @@
 # multi-node staging path.
 #
 #   sbatch prepare-serve-apertus8b-pp.sbatch
-#   KEEP_PREPARED=1 sbatch prepare-serve-apertus8b-pp.sbatch
+#   KEEP_PREPARED=1 sbatch prepare-serve-apertus8b-pp.sbatch   # keep (1) for inspection
 
 #SBATCH --job-name=servekit-prepare-serve-apertus8b-pp
 #SBATCH --partition=debug
@@ -37,7 +37,7 @@ export PP="${PP:-2}"
 export PREPARED="${PREPARED:-${SCRATCH:-/tmp}/servekit-prepare-serve-pp-e2e-${SLURM_JOB_ID}}"
 
 # v0.5.11+, for the plugin framework the shim rides on.
-EDF="${SLURM_SUBMIT_DIR}/../../../examples/pipeline-parallel/sglang-clariden.toml"
+EDF="${SLURM_SUBMIT_DIR}/../../../examples/multinode/pipeline-parallel/sglang-clariden.toml"
 export SERVEKIT_DIR="${SLURM_SUBMIT_DIR}/../../.."
 export BASELINE="${SLURM_SUBMIT_DIR}/logs/prepared-pp-${SLURM_JOB_ID}.baseline.json"
 export OUT="${SLURM_SUBMIT_DIR}/logs/prepared-pp-${SLURM_JOB_ID}.json"
