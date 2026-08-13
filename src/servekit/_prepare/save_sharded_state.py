@@ -11,6 +11,7 @@ a future SGLang lets it return.
 """
 
 import dataclasses
+import inspect
 import json
 import os
 import shutil
@@ -99,15 +100,19 @@ def main(args):
         print(f"node_rank={node_rank}: engine constructor returned; nothing to issue here")
         return
 
-    # Flattening these hits a handler that takes one positional `params` dict.
-    llm.collective_rpc(
-        "save_sharded_model",
-        params={
-            "path": args.output,
-            "pattern": args.file_pattern,
-            "max_size": args.max_file_size,
-        },
-    )
+    payload = {
+        "path": args.output,
+        "pattern": args.file_pattern,
+        "max_size": args.max_file_size,
+    }
+    # The handler took one `params` dict up to v0.5.12 and flat kwargs from
+    # v0.5.13, where the dict moved a layer down into WeightUpdater. Sending the
+    # wrong shape surfaces as KeyError 'path' after a full model load.
+    from sglang.srt.managers.scheduler import Scheduler
+
+    if "params" in inspect.signature(Scheduler.save_sharded_model).parameters:
+        payload = {"params": payload}
+    llm.collective_rpc("save_sharded_model", **payload)
 
     for file in os.listdir(model_path):
         src = os.path.join(model_path, file)
