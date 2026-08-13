@@ -37,6 +37,23 @@ pip install -e .
 
 ## Usage
 
+### `servekit prepare`
+
+```bash
+servekit prepare --model <model> --out <dir> --tp 4
+
+# pipeline parallel, one stage a node
+servekit prepare --model <model> --out <dir> --tp 4 --pp 2 \
+  --nnodes 2 --node-rank $SLURM_PROCID --dist-init-addr <head>:20000
+```
+
+Writes a presharded checkpoint: one file set per rank, so at load time each rank
+reads only its own shard instead of the whole thing. Serve it with `--load-format
+sharded_state` and the same `--tp`/`--pp` it was written for — the layout is baked
+into the filenames, and `servekit launch` refuses a command that disagrees.
+
+Pipeline parallelism needs sglang >= 0.5.11.
+
 ### `servekit launch`
 
 ```bash
@@ -86,7 +103,7 @@ otherwise. `--out` writes the per-prompt result as JSON.
 ### Roadmap 👷‍♂️🚧
 
 - [x] Support Multi-Node fast weight loading
-- [x] Support Pipeline parallelism (needs sglang >= 0.5.11; multi-node sliced staging pending)
+- [x] Support Pipeline parallelism (needs sglang >= 0.5.11)
 - [ ] Support vllm fast weight loading
 
 ## Tests
