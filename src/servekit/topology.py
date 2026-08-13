@@ -98,6 +98,22 @@ def read_topology(command: List[str], spec: FrameworkSpec) -> Topology:
     return topo
 
 
+def _index_glob(lo: int, hi: int, what: str) -> str:
+    """One fnmatch term covering lo..hi.
+
+    The stager hands FILE_PATTERN to `find -name`, which is fnmatch: `[0-3]` is a
+    range, `{8,9,10}` matches nothing. Refuse rather than stage zero files.
+    """
+    if lo == hi:
+        return str(lo)
+    if hi > 9:
+        raise ValueError(
+            f"this node spans {what} {lo}-{hi}, which needs more than one glob; "
+            f"servekit can only slice the stage while every index stays below 10"
+        )
+    return f"[{lo}-{hi}]"
+
+
 def shard_glob(topo: Topology) -> str:
     """The presharded files this node's own ranks will read, and no others.
 
@@ -105,16 +121,23 @@ def shard_glob(topo: Topology) -> str:
     this pattern loads with no engine change.
     """
     lo, hi = topo.local_rank_range
-    if lo == hi:
-        return f"model-rank-{lo}-part-*.safetensors"
-    # The stager hands FILE_PATTERN to `find -name`, which is fnmatch: `[0-3]`
-    # is a range, `{8,9,10}` matches nothing. Refuse rather than stage zero files.
-    if hi > 9:
+    if topo.pp_size == 1:
+        return f"model-rank-{_index_glob(lo, hi, 'ranks')}-part-*.safetensors"
+
+    # global_rank = tp_size * pp_rank + tp_rank, so a node's contiguous range is
+    # a contiguous slice of pipeline stages.
+    tp = topo.tp_size
+    first_stage, last_stage = lo // tp, hi // tp
+    if first_stage == last_stage:
+        ranks = _index_glob(lo % tp, hi % tp, "tp ranks")
+        return f"model-pp-{first_stage}-rank-{ranks}-part-*.safetensors"
+    if lo % tp != 0 or hi % tp != tp - 1:
         raise ValueError(
-            f"this node holds ranks {lo}-{hi}, which needs more than one glob; "
-            f"servekit can only rank-slice the stage for worlds of at most 10 ranks per node"
+            f"this node holds ranks {lo}-{hi}, a partial slice of stages "
+            f"{first_stage}-{last_stage}, which needs more than one glob"
         )
-    return f"model-rank-[{lo}-{hi}]-part-*.safetensors"
+    stages = _index_glob(first_stage, last_stage, "pipeline stages")
+    return f"model-pp-{stages}-rank-{_index_glob(0, tp - 1, 'tp ranks')}-part-*.safetensors"
 
 
 def wants_sharded_state(command: List[str]) -> bool:

@@ -147,7 +147,13 @@ def launch(
             if pattern != "*":
                 want = len(list(src_path.glob(pattern)))
                 got = len(list(dest.glob(pattern)))
-                if got != want:
+                if want == 0:
+                    # Otherwise a pattern that fits no filename in this checkpoint
+                    # stages nothing and passes the count below as 0 of 0.
+                    staged["error"] = RuntimeError(
+                        f"no file in {src_path} matches {pattern!r}; refusing to serve {dest}"
+                    )
+                elif got != want:
                     staged["error"] = RuntimeError(
                         f"staged {got} of {want} files matching {pattern!r}; refusing to trust {dest}"
                     )
