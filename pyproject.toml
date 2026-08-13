@@ -11,6 +11,12 @@ Repository = "https://github.com/eth-easl/servekit"
 [project.scripts]
 servekit = "servekit.cli:main"
 
+# SGLang discovers this in every engine and scheduler process. It forces the
+# spawn start method, so a patch applied in the parent never reaches the workers
+# that read and write weights.
+[project.entry-points."sglang.srt.plugins"]
+servekit_pp = "servekit._shim:install"
+
 [build-system]
 requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"

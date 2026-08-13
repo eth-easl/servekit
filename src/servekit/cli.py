@@ -155,6 +155,7 @@ def _prepare(argv: List[str]) -> int:
     parser.add_argument("--model", type=Path, required=True, help="source checkpoint (a local directory)")
     parser.add_argument("--out", type=Path, required=True, help="where to write the presharded checkpoint")
     parser.add_argument("--tp", type=int, default=1, help="tensor-parallel size the shards will be locked to")
+    parser.add_argument("--pp", type=int, default=1, help="pipeline-parallel size the shards will be locked to")
     parser.add_argument("--nnodes", type=int, default=1, help="nodes to shard across (TP > GPUs per node)")
     parser.add_argument("--node-rank", type=int, default=0, help="this node's rank, e.g. $SLURM_PROCID")
     parser.add_argument("--dist-init-addr", default=None, help="rendezvous address, HOST:PORT on the head")
@@ -168,6 +169,7 @@ def _prepare(argv: List[str]) -> int:
         nnodes=args.nnodes,
         node_rank=args.node_rank,
         dist_init_addr=args.dist_init_addr,
+        pp=args.pp,
     )
 
 

@@ -22,6 +22,7 @@ from pathlib import Path
 from sglang import Engine, ServerArgs
 
 from servekit import quant_guard
+from servekit._shim import wait_for_writes
 
 parser = ArgumentParser()
 ServerArgs.add_cli_args(parser)
@@ -113,6 +114,12 @@ def main(args):
     if "params" in inspect.signature(Scheduler.save_sharded_model).parameters:
         payload = {"params": payload}
     llm.collective_rpc("save_sharded_model", **payload)
+
+    pp_size = getattr(engine_args, "pp_size", 1)
+    if pp_size > 1:
+        # The rpc reply comes from pp0/tp0 before later stages have even received
+        # the request, so without this the copy below exits out from under them.
+        wait_for_writes(args.output, pp_size, engine_args.tp_size)
 
     for file in os.listdir(model_path):
         src = os.path.join(model_path, file)

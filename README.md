@@ -86,7 +86,7 @@ otherwise. `--out` writes the per-prompt result as JSON.
 ### Roadmap 👷‍♂️🚧
 
 - [x] Support Multi-Node fast weight loading
-- [ ] Support Pipeline parallelism
+- [x] Support Pipeline parallelism (needs sglang >= 0.5.11; multi-node sliced staging pending)
 - [ ] Support vllm fast weight loading
 
 ## Tests

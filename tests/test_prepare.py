@@ -28,12 +28,15 @@ args = sys.argv[1:]
 def arg(name):
     return args[args.index(name) + 1]
 out, tp = arg("--output"), int(arg("--tensor-parallel-size"))
+pp = int(arg("--pipeline-parallel-size"))
 ranks = tp - 1 if "--drop-a-rank" in args else tp
-for r in range(ranks):
-    open(f"{out}/model-rank-{r}-part-0.safetensors", "wb").write(b"weights")
+for p in range(pp):
+    for r in range(ranks):
+        name = f"model-pp-{p}-rank-{r}-part-0" if pp > 1 else f"model-rank-{r}-part-0"
+        open(f"{out}/{name}.safetensors", "wb").write(b"weights")
 if "--no-resolved" not in args:
     resolved = json.load(open(arg("--fake-resolved")))
-    resolved["tp_size"] = tp
+    resolved["tp_size"], resolved["pp_size"] = tp, pp
     json.dump(resolved, open(arg("--servekit-resolved-out"), "w"))
 sys.exit(3 if "--fail" in args else 0)
 '''
@@ -76,6 +79,26 @@ def test_a_missing_rank_leaves_no_manifest(tmp_path, model, fake_sharder):
     assert manifest_mod.read(out) is None
 
 
+def test_prepare_records_the_pipeline_stages_it_sharded_for(tmp_path, model, fake_sharder, monkeypatch):
+    monkeypatch.setattr("servekit.prepare._plugins_available", lambda: True)
+    out = tmp_path / "llama70b-tp4pp2"
+
+    assert prepare(model, out, tp=4, pp=2, engine_args=fake_sharder) == 0
+
+    assert manifest_mod.read(out).pp_size == 2
+    assert (out / "model-pp-1-rank-3-part-0.safetensors").is_file()
+    assert not (out / "model-rank-0-part-0.safetensors").exists()
+
+
+def test_pipeline_parallel_is_refused_without_the_plugin_framework(tmp_path, model, fake_sharder, monkeypatch, capsys):
+    monkeypatch.setattr("servekit.prepare._plugins_available", lambda: False)
+    out = tmp_path / "llama70b-tp4pp2"
+
+    assert prepare(model, out, tp=4, pp=2, engine_args=fake_sharder) == 2
+    assert "0.5.11" in capsys.readouterr().err
+    assert manifest_mod.read(out) is None
+
+
 def test_a_failed_sharding_run_leaves_no_manifest(tmp_path, model, fake_sharder):
     out = tmp_path / "llama70b-tp4"
     assert prepare(model, out, tp=4, engine_args=fake_sharder + ["--fail"]) == 1
@@ -112,7 +135,8 @@ def test_prepare_cli_forwards_extra_engine_args(tmp_path, model, monkeypatch):
     assert rc == 0
     assert seen["tp"] == 4
     assert seen["engine_args"] == ["--trust-remote-code", "--context-length", "32768"]
-    # Single-node unless asked otherwise, so the sharder's argv is unchanged.
+    # Single-node, single-stage unless asked otherwise, so the sharder's argv is unchanged.
+    assert seen["pp"] == 1
     assert seen["nnodes"] == 1 and seen["node_rank"] == 0 and seen["dist_init_addr"] is None
 
 
