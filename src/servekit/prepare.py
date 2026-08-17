@@ -110,7 +110,6 @@ def prepare(
         ]
         where = f" (node {node_rank} of {nnodes})" if nnodes > 1 else ""
         print(f"[SERVEKIT] preparing {model} -> {out} (tp={tp}, pp={pp}){where}", flush=True)
-        print(f"[SERVEKIT] JIT caches will be built in {cache_build}", flush=True)
         rc = subprocess.call(command, env=env)
         if node_rank != 0:
             # A worker only ends when the job tears its task down, so its exit

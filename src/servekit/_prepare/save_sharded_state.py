@@ -24,6 +24,8 @@ from sglang import Engine, ServerArgs
 from servekit import quant_guard
 from servekit._shim import wait_for_writes
 
+SAVE_DIST_TIMEOUT_S = 7200
+
 parser = ArgumentParser()
 ServerArgs.add_cli_args(parser)
 parser.add_argument(
@@ -75,6 +77,10 @@ def resolved(llm, engine_args) -> dict:
 
 def main(args):
     engine_args = ServerArgs.from_cli_args(args)
+    if hasattr(engine_args, "weight_loader_disable_mmap"):
+        engine_args.weight_loader_disable_mmap = True
+    if getattr(engine_args, "dist_timeout", None) is None:
+        engine_args.dist_timeout = SAVE_DIST_TIMEOUT_S
     model_path = engine_args.model_path
     if not Path(model_path).is_dir():
         raise ValueError("model path must be a local directory")
