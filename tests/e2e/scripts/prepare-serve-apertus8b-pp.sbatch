@@ -1,8 +1,8 @@
 #!/bin/bash
 # The whole pipeline in one job, on Apertus-8B at TP2/PP2 on a single node:
 #   (0) plain sglang       -- serve the HF checkpoint, record logprobs
-#   (1) servekit prepare   -- dump a fresh sharded_state checkpoint
-#   (2) servekit launch    -- stage that checkpoint and serve it
+#   (1) servekit launch --only-prepare  -- dump a fresh sharded_state checkpoint
+#   (2) servekit launch                 -- find that artifact prepared, stage it, serve it
 #   (3) servekit verify    -- check (2)'s logprobs against (0)'s
 #
 # The baseline is recorded by this job at the same TP/PP, so a structural
@@ -78,12 +78,9 @@ kill ${BASELINE_PID} 2>/dev/null || true
 wait ${BASELINE_PID} 2>/dev/null || true
 
 # (1) prepare.
-servekit prepare --model "${MODEL}" --out "${PREPARED}" --tp "${TP}" --pp "${PP}" \
+servekit launch --servekit-artifact-path "${PREPARED}" --only-prepare \
   -- \
-  --attention-backend flashinfer \
-  --trust-remote-code \
-  --context-length 32768 \
-  --mem-fraction-static 0.85
+  python -m sglang.launch_server --model-path "${MODEL}" "${COMMON_ARGS[@]}"
 
 # The checkpoint is scratch, so keep what the test asserts on outside it.
 cp "${PREPARED}/servekit.json" "${MANIFEST_OUT}"
@@ -97,12 +94,11 @@ json.dump({
 }, open(out, "w"))
 PY
 
-# (2) launch: serve the fresh dump, which is now the model path.
-servekit launch --out "${REPORT}" --timeout 3000 \
+# (2) launch: the same command as (0), pointed at the artifact from (1).
+servekit launch --servekit-artifact-path "${PREPARED}" --out "${REPORT}" --timeout 3000 \
   -- \
   python -m sglang.launch_server \
-    --model-path "${PREPARED}" \
-    --load-format sharded_state \
+    --model-path "${MODEL}" \
     "${COMMON_ARGS[@]}" \
     --enable-metrics &
 LAUNCH_PID=$!

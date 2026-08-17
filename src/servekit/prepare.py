@@ -1,4 +1,4 @@
-"""`servekit prepare`: write a TP-presharded checkpoint plus its manifest.
+"""Writing a TP-presharded checkpoint plus its manifest, for `servekit launch`.
 """
 from __future__ import annotations
 
@@ -110,7 +110,6 @@ def prepare(
         ]
         where = f" (node {node_rank} of {nnodes})" if nnodes > 1 else ""
         print(f"[SERVEKIT] preparing {model} -> {out} (tp={tp}, pp={pp}){where}", flush=True)
-        print(f"[SERVEKIT] JIT caches will be built in {cache_build}", flush=True)
         rc = subprocess.call(command, env=env)
         if node_rank != 0:
             # A worker only ends when the job tears its task down, so its exit
@@ -145,9 +144,9 @@ def prepare(
     path = manifest.write(out)
     print(f"[SERVEKIT] prepared {tp * pp} ranks in {out}; manifest written to {path}", flush=True)
     print(
-        f"[SERVEKIT] launch it with: servekit launch -- python -m sglang.launch_server "
-        f"--model-path {out} --load-format {FORMAT} --tensor-parallel-size {tp} "
-        f"--pipeline-parallel-size {pp}",
+        f"[SERVEKIT] launch it with: servekit launch --servekit-artifact-path {out} -- "
+        f"python -m sglang.launch_server --model-path {model} "
+        f"--tensor-parallel-size {tp} --pipeline-parallel-size {pp}",
         flush=True,
     )
     return 0

@@ -37,31 +37,24 @@ pip install -e .
 
 ## Usage
 
-### `servekit prepare`
-
-```bash
-servekit prepare --model <model> --out <dir> --tp 4
-
-# pipeline parallel, one stage a node
-servekit prepare --model <model> --out <dir> --tp 4 --pp 2 \
-  --nnodes 2 --node-rank $SLURM_PROCID --dist-init-addr <head>:20000
-```
-
-Writes a presharded checkpoint: one file set per rank, so at load time each rank
-reads only its own shard instead of the whole thing. Serve it with `--load-format
-sharded_state` and the same `--tp`/`--pp` it was written for — the layout is baked
-into the filenames, and `servekit launch` refuses a command that disagrees.
-
-Pipeline parallelism needs sglang >= 0.5.11.
-
 ### `servekit launch`
 
 ```bash
-servekit launch -- python -m sglang.launch_server --model-path <model> ...
+servekit launch --servekit-artifact-path <dir> \
+  -- python -m sglang.launch_server --model-path <model> --tensor-parallel-size 4 ...
 ```
 
-Prepend `servekit launch --` to an engine command to enable servekit's optimizations. Currently, we offer:
+Prepend `servekit launch --servekit-artifact-path <dir> --` to an engine command
+to enable servekit's optimizations. Currently, we offer:
 * Fast weight loading: loads the weights in a multiprocessing fashion adapted to network storage like Lustre drives (e.g. CSCS `capstor` and `iopsstor`) to RAM (`/dev/shm`) and then to GPU memory.
+
+`<dir>` is where servekit keeps its presharded copy of the checkpoint. It writes
+one if the directory has none, so `--model-path` always names the real model. If
+the artifact doesn't fit the command, servekit says which setting disagrees and
+falls back to the engine's own loader rather than failing the job.
+
+`--only-prepare` writes the artifact and stops. Pipeline parallelism needs
+sglang >= 0.5.11.
 
 
 ### `servekit profile`

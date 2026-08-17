@@ -1,5 +1,5 @@
 #!/bin/bash
-# `servekit prepare` must refuse gpt-oss on the mxfp4 + triton_kernel path.
+# `servekit launch --only-prepare` must refuse gpt-oss on the mxfp4 + triton_kernel path.
 #
 #   sbatch presharding-guard-gptoss.sbatch
 #
@@ -36,10 +36,13 @@ set -uo pipefail
 ulimit -c 0
 pip install -e "${SERVEKIT_DIR}" --no-build-isolation --no-deps -q
 
-servekit prepare --model "${MODEL}" --out "${OUT}" --tp "${TP}" \
+servekit launch --servekit-artifact-path "${OUT}" --only-prepare \
   -- \
-  --moe-runner-backend triton_kernel \
-  --mem-fraction-static 0.85 \
+  python -m sglang.launch_server \
+    --model-path "${MODEL}" \
+    --tensor-parallel-size "${TP}" \
+    --moe-runner-backend triton_kernel \
+    --mem-fraction-static 0.85 \
   > "${CAPTURE}" 2>&1
 echo \$? > "${CAPTURE}.rc"
 EOF

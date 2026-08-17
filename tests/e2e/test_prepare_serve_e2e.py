@@ -1,10 +1,11 @@
-"""The whole pipeline in one job: `servekit prepare` shards Apertus-8B for TP4,
-`servekit launch` stages and serves that fresh checkpoint, `servekit verify`
-checks it against the recorded baseline.
+"""The whole pipeline in one job: `servekit launch` shards Apertus-8B into an
+empty artifact dir, stages and serves that fresh checkpoint, and `servekit
+verify` checks it against the recorded baseline.
 
-test_correctness_e2e.py serves checkpoints sharded long ago, so it can only fail
-on the loading path. Here the checkpoint comes out of the servekit under test,
-which puts `prepare` under the same logprob check.
+test_correctness_e2e.py runs the same scripts against checkpoints sharded long
+ago, so it can only fail on the loading path. Here the checkpoint comes out of
+the servekit under test, which puts the prepare step under the same logprob
+check.
 
     pytest tests/e2e/test_prepare_serve_e2e.py -m e2e
 """
@@ -29,7 +30,7 @@ PP_PP = 2
 JOB_TIMEOUT = 3600
 
 
-def _log(job_id: str, suffix: str, prefix: str = "prepared") -> dict:
+def _log(job_id: str, suffix: str, prefix: str = "fast") -> dict:
     path = SCRIPTSDIR / "logs" / f"{prefix}-{job_id}{suffix}"
     assert path.is_file(), f"the job wrote no {suffix} output at {path}"
     return json.loads(path.read_text())
@@ -42,7 +43,9 @@ def test_freshly_prepared_apertus8b_serves_the_lustre_baseline():
             f"run: MODE=baseline sbatch tests/e2e/scripts/correctness-apertus8b.sbatch"
         )
 
-    job_id = sbatch_wait(SCRIPTSDIR / "prepare-serve-apertus8b.sbatch", timeout=JOB_TIMEOUT)
+    job_id = sbatch_wait(
+        SCRIPTSDIR / "correctness-apertus8b.sbatch", timeout=JOB_TIMEOUT, env={"FRESH": "1"}
+    )
 
     manifest = _log(job_id, ".manifest.json")
     assert manifest["format"] == "sharded_state"

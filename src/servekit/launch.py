@@ -1,5 +1,10 @@
-"""`servekit launch -- <engine command>`: stage into /dev/shm, run the engine
-against the copy, free the copy when the server reports ready.
+"""`servekit launch --servekit-artifact-path <dir> -- <engine command>`: prepare
+the checkpoint if the artifact directory does not already hold one, stage it into
+/dev/shm, run the engine against the copy, free the copy when the server reports
+ready.
+
+An artifact that does not match the command is a warning, not a refusal: servekit
+names the mismatch and runs the command untouched, on the engine's own loader.
 
 `--overlap` starts the engine alongside the stage. It is unsafe and opt-in: the
 stager truncates every destination to full size before writing, so an engine
@@ -12,6 +17,7 @@ copy; the nodes never talk to each other and each writes its own report.
 """
 from __future__ import annotations
 
+import os
 import shutil
 import sys
 import threading
@@ -23,9 +29,10 @@ from . import jit_cache
 from . import manifest as manifest_mod
 from . import quant_guard
 from .engine_args import check_manifest, find_model_path, replace_model_path
+from .prepare import prepare
 from .profile import Phase, ProfileReport, detect_framework, render_table, run_profile, save_json
 from .stage import DEFAULT_SLICES, stage
-from .topology import Topology, read_topology, shard_glob, wants_sharded_state
+from .topology import SHARDED_FORMAT, Topology, read_topology, shard_glob, wants_sharded_state
 
 DEFAULT_ROOT = Path("/dev/shm/servekit")
 DEFAULT_CACHE_ROOT = jit_cache.NODE_LOCAL_ROOT
@@ -62,6 +69,59 @@ def _copy_metadata(src: Path, dest: Path) -> int:
     return len(files)
 
 
+def _sharder_args(command: List[str]) -> List[str]:
+    """The engine flags from a launch command, as the sharding run should see them.
+
+    Everything up to the first long option is the interpreter, which the sharding
+    run supplies itself. `--load-format` goes because the sharder reads the source
+    checkpoint, which is not presharded yet.
+    """
+    args: List[str] = []
+    for i, arg in enumerate(command):
+        if arg.startswith("--"):
+            args = list(command[i:])
+            break
+
+    out: List[str] = []
+    skip = False
+    for arg in args:
+        if skip:
+            skip = False
+        elif arg == "--load-format":
+            skip = True
+        elif not arg.startswith("--load-format="):
+            out.append(arg)
+    return out
+
+
+def _writable(path: Path) -> bool:
+    """Whether a prepared checkpoint could be written to `path`.
+
+    Walks up to the nearest directory that exists: an artifact directory that is
+    not there yet is fine as long as something above it takes the mkdir.
+    """
+    probe = Path(path).absolute()
+    while not probe.exists():
+        if probe.parent == probe:
+            return False
+        probe = probe.parent
+    return probe.is_dir() and os.access(probe, os.W_OK | os.X_OK)
+
+
+def _prepare_artifact(command: List[str], topo: Topology, model: Path, artifact: Path) -> int:
+    print(f"[SERVEKIT] no prepared checkpoint in {artifact}; preparing one now", flush=True)
+    return prepare(
+        model,
+        artifact,
+        topo.tp_size,
+        engine_args=_sharder_args(command),
+        pp=topo.pp_size,
+        nnodes=topo.nnodes,
+        node_rank=topo.node_rank,
+        dist_init_addr=topo.dist_init_addr,
+    )
+
+
 def _out_path(out: Optional[Path], t0: float, topo: Topology) -> Path:
     """Where this node writes its report.
 
@@ -77,12 +137,14 @@ def _out_path(out: Optional[Path], t0: float, topo: Topology) -> Path:
 
 def launch(
     command: List[str],
+    artifact: Path,
     out: Optional[Path] = None,
     shm_root: Optional[Path] = None,
     cache_root: Optional[Path] = None,
     slices: int = DEFAULT_SLICES,
     timeout: float = 1800.0,
     overlap: bool = False,
+    only_prepare: bool = False,
 ) -> int:
     # Resolved here rather than bound as a default value, so a test can
     # monkeypatch DEFAULT_ROOT/DEFAULT_CACHE_ROOT.
@@ -105,27 +167,59 @@ def launch(
         print(f"error: model path {src} is not a directory", file=sys.stderr)
         return 2
 
-    prepared = manifest_mod.read(src_path)
-    if prepared is not None:
-        problems = check_manifest(command, spec, prepared)
+    artifact = Path(artifact)
+    prepared = manifest_mod.read(artifact)
+    problems = check_manifest(command, spec, prepared) if prepared is not None else []
+
+    unwritable = False
+    if prepared is None or (only_prepare and problems):
+        if not _writable(artifact):
+            unwritable = True
+            print(f"[SERVEKIT] warning: cannot write a prepared checkpoint to {artifact}", flush=True)
+            if only_prepare:
+                print("error: --only-prepare had nowhere to write", file=sys.stderr)
+                return 1
+        else:
+            rc = _prepare_artifact(command, topo, src_path, artifact)
+            if rc != 0:
+                return rc
+            # A worker returns from prepare before the head has written the
+            # manifest, so an absent one here is the head still gating, not a
+            # failure.
+            prepared = manifest_mod.read(artifact)
+            problems = check_manifest(command, spec, prepared) if prepared is not None else []
+
+    if only_prepare:
+        return 0
+
+    plain = unwritable or bool(problems)
+    if plain:
         if problems:
-            print(f"error: {src} cannot be loaded by this command:", file=sys.stderr)
+            print(f"[SERVEKIT] warning: {artifact} does not match this command:", flush=True)
             for problem in problems:
-                print(f"  {problem}", file=sys.stderr)
-            print("       re-run `servekit prepare` for these settings, or fix the command", file=sys.stderr)
-            return 2
+                print(f"[SERVEKIT]   {problem}", flush=True)
+        print("[SERVEKIT] falling back to the default loader (slower cold start).", flush=True)
+        print("[SERVEKIT] re-run with --only-prepare to rebuild the artifact for these settings.", flush=True)
+    else:
+        src_path = artifact
+        src = str(artifact)
 
     # A checkpoint written before this check existed is still unusable, and so
     # is one whose serve-time flags reach a path the dump did not. Either way it
     # looks like a healthy server answering from dead weights.
-    if prepared is not None or wants_sharded_state(command):
+    if not plain:
         unsupported = quant_guard.check_command(src_path, command)
         if unsupported:
             print(quant_guard.refusal(unsupported, src), file=sys.stderr)
             return 2
 
     dest = shm_root / src_path.name
-    engine_command = replace_model_path(command, spec, str(dest))
+    if plain:
+        engine_command = list(command)
+    else:
+        engine_command = replace_model_path(command, spec, str(dest))
+        if not wants_sharded_state(command):
+            engine_command += ["--load-format", SHARDED_FORMAT]
     t0 = time.time()
 
     # A presharded checkpoint gives each rank its own files, so a node stages
@@ -177,7 +271,7 @@ def launch(
             flush=True,
         )
 
-    if sliced:
+    if sliced and not plain:
         lo, hi = topo.local_rank_range
         print(
             f"[SERVEKIT] node {topo.node_rank} of {topo.nnodes}: staging ranks {lo}-{hi} ({pattern})",
@@ -187,34 +281,35 @@ def launch(
     # Not a daemon: if the engine dies early we still wait for the stage rather
     # than leaving its ~1700 `dd` processes running on the node.
     thread: Optional[threading.Thread] = None
-    if replicate_metadata:
-        n = _copy_metadata(src_path, dest)
-        print(f"[SERVEKIT] copied {n} metadata files up front", flush=True)
-    if overlap:
-        print(OVERLAP_WARNING, file=sys.stderr, flush=True)
-        print(f"[SERVEKIT] staging {src} -> {dest} (overlapped, {pattern})", flush=True)
-        thread = threading.Thread(target=do_stage)
-        thread.start()
-    else:
-        print(f"[SERVEKIT] staging {src} -> {dest}", flush=True)
-        do_stage()
-        if "error" in staged:
-            print(f"error: {staged['error']}", file=sys.stderr)
-            print(f"       anything left behind: rm -r {dest}", file=sys.stderr)
-            return 1
-        report_stage()
-
-    # Synchronous even under --overlap: the engine reads these before it serves
-    # anything, and it is a few MB. The copy is what the engine writes to, so a
-    # read-only checkpoint serves and concurrent jobs share nothing.
-    cache_src = src_path / jit_cache.CACHE_DIR_NAME
-    cache_dest = jit_cache.copy_into(cache_src, jit_cache.node_local(cache_root, src_path.name))
     cache_env = None
-    if cache_dest is None:
-        print(f"[SERVEKIT] no JIT caches in {src}; the engine will JIT from cold", flush=True)
-    else:
-        cache_env = jit_cache.env_for(cache_dest)
-        print(f"[SERVEKIT] staged JIT caches from {cache_src}", flush=True)
+    if not plain:
+        if replicate_metadata:
+            n = _copy_metadata(src_path, dest)
+            print(f"[SERVEKIT] copied {n} metadata files up front", flush=True)
+        if overlap:
+            print(OVERLAP_WARNING, file=sys.stderr, flush=True)
+            print(f"[SERVEKIT] staging {src} -> {dest} (overlapped, {pattern})", flush=True)
+            thread = threading.Thread(target=do_stage)
+            thread.start()
+        else:
+            print(f"[SERVEKIT] staging {src} -> {dest}", flush=True)
+            do_stage()
+            if "error" in staged:
+                print(f"error: {staged['error']}", file=sys.stderr)
+                print(f"       anything left behind: rm -r {dest}", file=sys.stderr)
+                return 1
+            report_stage()
+
+        # Synchronous even under --overlap: the engine reads these before it
+        # serves anything, and it is a few MB. The copy is what the engine writes
+        # to, so a read-only checkpoint serves and concurrent jobs share nothing.
+        cache_src = src_path / jit_cache.CACHE_DIR_NAME
+        cache_dest = jit_cache.copy_into(cache_src, jit_cache.node_local(cache_root, src_path.name))
+        if cache_dest is None:
+            print(f"[SERVEKIT] no JIT caches in {src}; the engine will JIT from cold", flush=True)
+        else:
+            cache_env = jit_cache.env_for(cache_dest)
+            print(f"[SERVEKIT] staged JIT caches from {cache_src}", flush=True)
 
     print(f"[SERVEKIT] launching: {' '.join(engine_command)}", flush=True)
 
@@ -253,8 +348,9 @@ def launch(
         emitted["done"] = True
         join_stage()
         emit(report)
-        freed = free(dest)
-        print(f"[SERVEKIT] freed {freed / 1e9:.1f} GB from {dest}", flush=True)
+        if not plain:
+            freed = free(dest)
+            print(f"[SERVEKIT] freed {freed / 1e9:.1f} GB from {dest}", flush=True)
 
     report = run_profile(
         engine_command,
@@ -267,7 +363,8 @@ def launch(
     if not emitted["done"]:
         join_stage()
         emit(report)
-        print(f"[SERVEKIT] server never reported ready; {dest} left in place (rm -r {dest})", file=sys.stderr)
+        if not plain:
+            print(f"[SERVEKIT] server never reported ready; {dest} left in place (rm -r {dest})", file=sys.stderr)
 
     if "error" in staged:
         print(f"error: the stage failed: {staged['error']}", file=sys.stderr)

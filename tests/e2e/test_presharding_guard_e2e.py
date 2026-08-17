@@ -1,4 +1,4 @@
-"""`servekit prepare` must refuse the quantization paths a presharded checkpoint
+"""Preparing an artifact must refuse the quantization paths a presharded checkpoint
 cannot carry, against the real engine rather than a table of flag strings.
 
 gpt-oss-20b with `--moe-runner-backend triton_kernel` is the case from

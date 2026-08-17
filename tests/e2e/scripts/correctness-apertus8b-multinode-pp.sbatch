@@ -3,7 +3,7 @@
 #
 # Shards are keyed on (pp_rank, tp_rank), so this is the arm that proves a node
 # stages its own stage's files and no others. Build the checkpoint first with
-# examples/multinode/pipeline-parallel/prepare.sbatch.
+# examples/multinode/pipeline-parallel/run_apertus8b_sglang.sbatch.
 #
 # Needs sglang >= 0.5.11: the loader shim rides on the plugin framework, hence a
 # different EDF from the TP-only scripts.
@@ -20,10 +20,10 @@
 set -euo pipefail
 
 export MODE="${MODE:-fast}"
+export MODEL="${MODEL:-/capstor/store/cscs/swissai/infra01/hf_models/models/swiss-ai/Apertus-8B-Instruct-2509}"
 
 case "$MODE" in
   baseline)
-    export MODEL="${MODEL:-/capstor/store/cscs/swissai/infra01/hf_models/models/swiss-ai/Apertus-8B-Instruct-2509}"
     OUT_PREFIX="baseline"
     ;;
   fast)
@@ -62,11 +62,10 @@ unset BASH_ENV
 pip install -e "${SERVEKIT_DIR}" --no-build-isolation --no-deps -q
 
 if [ "\${MODE}" = "fast" ]; then
-  servekit launch --out "${REPORT:-}" --timeout 3000 \
+  servekit launch --servekit-artifact-path "${SHARDED_SRC}" --out "${REPORT:-}" --timeout 3000 \
     -- \
     python -m sglang.launch_server \
-      --model-path "${SHARDED_SRC:-}" \
-      --load-format sharded_state \
+      --model-path "${MODEL}" \
       --tensor-parallel-size ${TP_SIZE} \
       --pipeline-parallel-size ${PP_SIZE} \
       --nnodes ${NNODES} \

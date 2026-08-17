@@ -12,6 +12,7 @@ from safetensors.numpy import save_file
 from servekit import jit_cache
 from servekit.cli import main
 from servekit.engine_args import find_model_path, replace_model_path
+from servekit.manifest import Manifest
 from servekit.profile import SGLANG, VLLM, ProfileReport, detect_framework
 from servekit.stage import STAGER, StageResult, stage
 
@@ -73,9 +74,10 @@ def test_vllm_staging_is_not_supported_yet():
         find_model_path(["vllm", "serve", "/store/m"], VLLM)
 
 
-def test_launch_rejects_an_unusable_command():
-    assert main(["launch", "--", "python", "-m", "sglang.launch_server", "--tp", "4"]) == 2
-    assert main(["launch", "--", "frobnicate"]) == 2
+def test_launch_rejects_an_unusable_command(tmp_path):
+    artifact = ["--servekit-artifact-path", str(tmp_path / "a")]
+    assert main(["launch", *artifact, "--", "python", "-m", "sglang.launch_server", "--tp", "4"]) == 2
+    assert main(["launch", *artifact, "--", "frobnicate"]) == 2
     assert main(["launch"]) == 2
 
 
@@ -91,6 +93,7 @@ def fake_engine(monkeypatch):
 
     def fake_run_profile(command, ready_timeout=1800.0, on_ready=None, head=True, env=None):
         seen["env"] = env or {}
+        seen["command"] = command
         return ProfileReport(command="", started_at=0.0, ready_at=1.0, success=True, framework="sglang")
 
     monkeypatch.setattr("servekit.launch.stage", fake_stage)
@@ -99,15 +102,28 @@ def fake_engine(monkeypatch):
 
 
 @pytest.fixture
-def prepared_checkpoint(tmp_path):
+def model(tmp_path):
+    src = tmp_path / "llama70b"
+    src.mkdir()
+    (src / "config.json").write_text("{}")
+    return src
+
+
+@pytest.fixture
+def prepared_checkpoint(tmp_path, model):
     src = tmp_path / "llama70b-tp4"
     src.mkdir()
     (src / "config.json").write_text("{}")
     (src / "model-rank-0-part-0.safetensors").write_bytes(b"weights")
+    Manifest(
+        format="sharded_state", engine="sglang", engine_version="0.5.10",
+        tp_size=1, pp_size=1, dp_size=1, dtype="bfloat16", quantization=None,
+        source=str(model),
+    ).write(src)
     return src
 
 
-def _launch(tmp_path, src, monkeypatch):
+def _launch(tmp_path, model, artifact, monkeypatch):
     # --shm-root/--cache-root aren't public CLI flags, so isolation from the
     # real /dev/shm and /tmp/servekit/caches goes through the module defaults.
     monkeypatch.setattr("servekit.launch.DEFAULT_ROOT", tmp_path / "shm")
@@ -115,8 +131,9 @@ def _launch(tmp_path, src, monkeypatch):
     # --out or the report lands in the cwd, which is the checkout.
     return main([
         "launch",
+        "--servekit-artifact-path", str(artifact),
         "--out", str(tmp_path / "run.json"),
-        "--", "python", "-m", "sglang.launch_server", "--model-path", str(src),
+        "--", "python", "-m", "sglang.launch_server", "--model-path", str(model),
     ])
 
 
@@ -127,17 +144,22 @@ def _with_a_cached_kernel(checkpoint):
     return cache
 
 
-def test_the_engine_reads_a_node_local_copy_not_the_checkpoint(tmp_path, prepared_checkpoint, fake_engine, monkeypatch):
+def test_the_engine_reads_a_node_local_copy_not_the_checkpoint(tmp_path, model, prepared_checkpoint, fake_engine, monkeypatch):
     _with_a_cached_kernel(prepared_checkpoint)
 
-    assert _launch(tmp_path, prepared_checkpoint, monkeypatch) == 0
+    assert _launch(tmp_path, model, prepared_checkpoint, monkeypatch) == 0
 
     copy = tmp_path / "cache-root" / prepared_checkpoint.name
     assert fake_engine["env"] == jit_cache.env_for(copy)
+    assert fake_engine["command"] == [
+        "python", "-m", "sglang.launch_server",
+        "--model-path", str(tmp_path / "shm" / prepared_checkpoint.name),
+        "--load-format", "sharded_state",
+    ]
 
 
-def test_a_checkpoint_with_no_caches_still_serves(tmp_path, prepared_checkpoint, fake_engine, capsys, monkeypatch):
-    assert _launch(tmp_path, prepared_checkpoint, monkeypatch) == 0
+def test_a_checkpoint_with_no_caches_still_serves(tmp_path, model, prepared_checkpoint, fake_engine, capsys, monkeypatch):
+    assert _launch(tmp_path, model, prepared_checkpoint, monkeypatch) == 0
 
     assert fake_engine["env"] == {}
     assert "JIT from cold" in capsys.readouterr().out

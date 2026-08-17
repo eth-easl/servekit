@@ -24,6 +24,10 @@ pytestmark = pytest.mark.e2e
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
+# The fast arm shards the checkpoint itself when the artifact is missing,
+# which is a dump on top of the cold start, and the queue on top of that.
+JOB_TIMEOUT = 3600
+
 
 def _result(job_id: str) -> dict:
     path = SCRIPTSDIR / "logs" / f"fast-{job_id}.json"
@@ -83,7 +87,7 @@ def test_fast_weight_load_matches_the_lustre_baseline(case):
             f"no baseline capture at {fixture_path}; run: MODE=baseline sbatch tests/e2e/scripts/correctness-{case.script}"
         )
 
-    job_id = sbatch_wait(SCRIPTSDIR / f"correctness-{case.script}")
+    job_id = sbatch_wait(SCRIPTSDIR / f"correctness-{case.script}", timeout=JOB_TIMEOUT)
     result = _result(job_id)
     assert result["passed"], "\n".join(result["failures"])
 

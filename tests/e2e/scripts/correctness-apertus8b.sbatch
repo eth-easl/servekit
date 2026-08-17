@@ -4,9 +4,13 @@
 # Run with MODE=baseline or MODE=fast environment variable:
 #   MODE=baseline sbatch correctness-apertus8b.sbatch
 #   MODE=fast sbatch correctness-apertus8b.sbatch
+#   FRESH=1 sbatch correctness-apertus8b.sbatch     # shard the checkpoint in this job
 #
 # Baseline: plain sglang reading original HF safetensors.
 # Fast: presharded checkpoint staged into /dev/shm by servekit.
+#
+# FRESH points the artifact at an empty scratch dir, so `servekit launch` shards
+# the checkpoint itself instead of reading one sharded long ago.
 
 
 #SBATCH --partition=debug
@@ -16,20 +20,30 @@
 #SBATCH --cpus-per-task=288
 #SBATCH --gpus-per-node=4
 #SBATCH --exclusive
-#SBATCH --time=00:40:00
+#SBATCH --time=01:00:00
 #SBATCH --output=logs/%x-%j.out
 
 set -euo pipefail
 
+# The container mounts /capstor and /iopsstor only, so a submit dir reached
+# through a /users symlink has to be resolved before it crosses into the job.
+SLURM_SUBMIT_DIR="$(cd "${SLURM_SUBMIT_DIR}" && pwd -P)"
+
 export MODE="${MODE:-fast}"
+export MODEL="${MODEL:-/capstor/store/cscs/swissai/infra01/hf_models/models/swiss-ai/Apertus-8B-Instruct-2509}"
+export TP="${TP:-4}"
 
 case "$MODE" in
   baseline)
-    export MODEL="${MODEL:-/capstor/store/cscs/swissai/infra01/hf_models/models/swiss-ai/Apertus-8B-Instruct-2509}"
     OUT_PREFIX="baseline"
     ;;
   fast)
-    export SHARDED_SRC="${SHARDED_SRC:-/capstor/store/cscs/swissai/infra01/cold-start-experiments/apertus8b-tp4-sharded}"
+    if [ -n "${FRESH:-}" ]; then
+      export ARTIFACT="${ARTIFACT:-${SCRATCH:-/tmp}/servekit-correctness-e2e-${SLURM_JOB_ID}}"
+      [ -n "${KEEP_ARTIFACT:-}" ] || trap 'rm -rf "${ARTIFACT}"' EXIT
+    else
+      export ARTIFACT="${ARTIFACT:-/capstor/store/cscs/swissai/infra01/cold-start-experiments/apertus8b-tp4-sharded}"
+    fi
     OUT_PREFIX="fast"
     ;;
   *)
@@ -46,6 +60,8 @@ export OUT="${SLURM_SUBMIT_DIR}/logs/${OUT_PREFIX}-${SLURM_JOB_ID}.json"
 if [ "$MODE" = "fast" ]; then
   export REPORT="${SLURM_SUBMIT_DIR}/logs/${OUT_PREFIX}-${SLURM_JOB_ID}.report.json"
   export REFERENCE="${SERVEKIT_DIR}/tests/e2e/fixtures/apertus8b-tp4-bf16.json"
+  export MANIFEST_OUT="${SLURM_SUBMIT_DIR}/logs/${OUT_PREFIX}-${SLURM_JOB_ID}.manifest.json"
+  export CACHES_OUT="${SLURM_SUBMIT_DIR}/logs/${OUT_PREFIX}-${SLURM_JOB_ID}.caches.json"
 fi
 
 INNER_CMD=$(cat <<'EOF'
@@ -55,15 +71,14 @@ ulimit -c 0
 pip install -e "${SERVEKIT_DIR}" --no-build-isolation --no-deps -q
 
 if [ "$MODE" = "fast" ]; then
-  servekit launch --out "${REPORT}" --timeout 3000 \
+  servekit launch --servekit-artifact-path "${ARTIFACT}" --out "${REPORT}" --timeout 3000 \
     -- \
     python -m sglang.launch_server \
-      --model-path "${SHARDED_SRC}" \
-      --load-format sharded_state \
+      --model-path "${MODEL}" \
       --host 0.0.0.0 \
       --port 8080 \
       --served-model-name "${SERVED_MODEL_NAME}" \
-      --tensor-parallel-size 4 \
+      --tensor-parallel-size "${TP}" \
       --trust-remote-code \
       --context-length 32768 \
       --mem-fraction-static 0.85 \
@@ -76,7 +91,7 @@ else
     --host 0.0.0.0 \
     --port 8080 \
     --served-model-name "${SERVED_MODEL_NAME}" \
-    --tensor-parallel-size 4 \
+    --tensor-parallel-size "${TP}" \
     --trust-remote-code \
     --context-length 32768 \
     --mem-fraction-static 0.85 \
@@ -88,6 +103,20 @@ fi
 VERIFY_RC=0
 if [ "$MODE" = "fast" ]; then
   servekit verify --url "http://127.0.0.1:8080" --reference "${REFERENCE}" --out "${OUT}" --wait-ready 3000 || VERIFY_RC=$?
+
+  # The artifact may be scratch this job cleans up, so keep what the test
+  # asserts on outside it.
+  cp "${ARTIFACT}/servekit.json" "${MANIFEST_OUT}"
+  python - <<'PY'
+import json, os
+from pathlib import Path
+
+root = Path(os.environ["ARTIFACT"]) / "servekit-caches"
+dirs = sorted(d for d in root.iterdir() if d.is_dir()) if root.is_dir() else []
+summary = {d.name: {"bytes": sum(p.stat().st_size for p in d.rglob("*") if p.is_file())} for d in dirs}
+Path(os.environ["CACHES_OUT"]).write_text(json.dumps(summary))
+print(f"[E2E] JIT caches under {root}: {summary}")
+PY
 else
   servekit verify --url "http://127.0.0.1:8080" --record "${OUT}" --wait-ready 3000 || VERIFY_RC=$?
 fi

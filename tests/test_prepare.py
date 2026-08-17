@@ -1,4 +1,4 @@
-"""Tests for `servekit prepare`. The sharding needs 4 GPUs and sglang, so the
+"""Tests for preparing an artifact. The sharding needs 4 GPUs and sglang, so the
 child is faked; servekit's half is what is under test."""
 import json
 import sys
@@ -11,7 +11,7 @@ from servekit.cli import main
 from servekit.engine_args import check_manifest
 from servekit.manifest import Manifest
 from servekit.prepare import SAVE_SCRIPT, prepare
-from servekit.profile import SGLANG
+from servekit.profile import SGLANG, ProfileReport
 
 RESOLVED = {
     "engine": "sglang",
@@ -154,30 +154,41 @@ def test_no_manifest_reads_as_none(tmp_path):
     assert manifest_mod.read(tmp_path) is None
 
 
-def test_prepare_cli_forwards_extra_engine_args(tmp_path, model, monkeypatch):
+def test_launch_prepares_with_the_engine_args_it_will_serve_with(tmp_path, model, monkeypatch):
     seen = {}
 
     def fake_prepare(model_arg, out, tp, engine_args=(), **kwargs):
         seen.update(model=model_arg, out=out, tp=tp, engine_args=list(engine_args), **kwargs)
         return 0
 
-    monkeypatch.setattr("servekit.cli.prepare", fake_prepare)
+    monkeypatch.setattr("servekit.launch.prepare", fake_prepare)
     rc = main([
-        "prepare", "--model", str(model), "--out", str(tmp_path / "o"), "--tp", "4",
-        "--", "--trust-remote-code", "--context-length", "32768",
+        "launch", "--servekit-artifact-path", str(tmp_path / "o"), "--only-prepare",
+        "--", "python", "-m", "sglang.launch_server",
+        "--model-path", str(model), "--tensor-parallel-size", "4",
+        "--trust-remote-code", "--context-length", "32768",
+        "--load-format", "sharded_state",
     ])
 
     assert rc == 0
     assert seen["tp"] == 4
-    assert seen["engine_args"] == ["--trust-remote-code", "--context-length", "32768"]
+    assert seen["model"] == model and seen["out"] == tmp_path / "o"
+    assert seen["engine_args"] == [
+        "--model-path", str(model), "--tensor-parallel-size", "4",
+        "--trust-remote-code", "--context-length", "32768",
+    ]
     # Single-node, single-stage unless asked otherwise, so the sharder's argv is unchanged.
     assert seen["pp"] == 1
     assert seen["nnodes"] == 1 and seen["node_rank"] == 0 and seen["dist_init_addr"] is None
 
 
-def test_prepare_cli_requires_model_and_out():
+def test_launch_requires_an_artifact_path():
     with pytest.raises(SystemExit):
-        main(["prepare", "--model", "/store/m"])
+        main(["launch", "--", "python", "-m", "sglang.launch_server", "--model-path", "/store/m"])
+
+
+def test_prepare_is_not_a_subcommand():
+    assert main(["prepare", "--model", "/store/m", "--out", "/scratch/o"]) == 2
 
 
 PREPARED = Manifest(format="sharded_state", source="/store/m", **RESOLVED)
@@ -225,23 +236,39 @@ def test_a_checkpoint_prepared_for_another_engine_is_refused():
     assert problems == ["engine: the checkpoint was prepared for vllm, and sglang cannot load another engine's shards"]
 
 
-def test_launch_refuses_a_mismatched_checkpoint_before_staging(tmp_path, monkeypatch):
-    src = tmp_path / "llama70b-tp4"
-    src.mkdir()
-    (src / "config.json").write_text("{}")
-    (src / "model-rank-0-part-0.safetensors").write_bytes(b"weights")
-    PREPARED.write(src)
+def test_launch_warns_about_a_mismatched_artifact_and_serves_the_source(tmp_path, model, monkeypatch, capsys):
+    artifact = tmp_path / "llama70b-tp4"
+    artifact.mkdir()
+    (artifact / "config.json").write_text("{}")
+    (artifact / "model-rank-0-part-0.safetensors").write_bytes(b"weights")
+    Manifest(format="sharded_state", source=str(model), **RESOLVED).write(artifact)
+
+    launched = {}
+
+    def fake_run_profile(command, ready_timeout=1800.0, on_ready=None, head=True, env=None):
+        launched["command"] = command
+        return ProfileReport(command="", started_at=0.0, ready_at=1.0, success=True, framework="sglang")
+
+    def no_stage(*a, **k):
+        raise AssertionError("the slow path must not stage")
 
     shm = tmp_path / "shm"
     monkeypatch.setattr("servekit.launch.DEFAULT_ROOT", shm)
+    monkeypatch.setattr("servekit.launch.stage", no_stage)
+    monkeypatch.setattr("servekit.launch.run_profile", fake_run_profile)
     rc = main([
-        "launch",
+        "launch", "--servekit-artifact-path", str(artifact), "--out", str(tmp_path / "run.json"),
         "--", "python", "-m", "sglang.launch_server",
-        "--model-path", str(src), "--tensor-parallel-size", "2",
+        "--model-path", str(model), "--tensor-parallel-size", "2",
     ])
 
-    assert rc == 2
+    assert rc == 0
     assert not shm.exists()
+    assert "tp_size: the checkpoint is sharded for 4, the command asks for 2" in capsys.readouterr().out
+    assert launched["command"] == [
+        "python", "-m", "sglang.launch_server",
+        "--model-path", str(model), "--tensor-parallel-size", "2",
+    ]
 
 
 def test_the_vendored_sharder_skips_the_stale_weight_index(tmp_path):

@@ -12,10 +12,10 @@
 set -euo pipefail
 
 export MODE="${MODE:-fast}"
+export MODEL="${MODEL:-/capstor/store/cscs/swissai/infra01/hf_models/models/meta-llama/Llama-3.1-70B-Instruct}"
 
 case "$MODE" in
   baseline)
-    export MODEL="${MODEL:-/capstor/store/cscs/swissai/infra01/hf_models/models/meta-llama/Llama-3.1-70B-Instruct}"
     OUT_PREFIX="baseline"
     ;;
   fast)
@@ -53,11 +53,10 @@ unset BASH_ENV
 pip install -e "${SERVEKIT_DIR}" --no-build-isolation --no-deps -q
 
 if [ "\${MODE}" = "fast" ]; then
-  servekit launch --out "${REPORT:-}" --timeout 3000 \
+  servekit launch --servekit-artifact-path "${SHARDED_SRC}" --out "${REPORT:-}" --timeout 3000 \
     -- \
     python -m sglang.launch_server \
-      --model-path "${SHARDED_SRC:-}" \
-      --load-format sharded_state \
+      --model-path "${MODEL}" \
       --tensor-parallel-size ${TP_SIZE} \
       --nnodes ${NNODES} \
       --node-rank \${SLURM_PROCID} \
