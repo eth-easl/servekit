@@ -19,6 +19,7 @@ import time
 from pathlib import Path
 from typing import List, Optional
 
+from . import jit_cache
 from . import manifest as manifest_mod
 from . import quant_guard
 from .engine_args import check_manifest, find_model_path, replace_model_path
@@ -27,6 +28,7 @@ from .stage import DEFAULT_SLICES, stage
 from .topology import Topology, read_topology, shard_glob, wants_sharded_state
 
 DEFAULT_ROOT = Path("/dev/shm/servekit")
+DEFAULT_CACHE_ROOT = jit_cache.NODE_LOCAL_ROOT
 
 OVERLAP_WARNING = (
     "[SERVEKIT] --overlap is UNSAFE: the engine starts before staging finishes, with no barrier "
@@ -76,11 +78,19 @@ def _out_path(out: Optional[Path], t0: float, topo: Topology) -> Path:
 def launch(
     command: List[str],
     out: Optional[Path] = None,
-    shm_root: Path = DEFAULT_ROOT,
+    shm_root: Optional[Path] = None,
+    cache_root: Optional[Path] = None,
     slices: int = DEFAULT_SLICES,
     timeout: float = 1800.0,
     overlap: bool = False,
 ) -> int:
+    # Resolved here rather than bound as a default value, so a test can
+    # monkeypatch DEFAULT_ROOT/DEFAULT_CACHE_ROOT.
+    if shm_root is None:
+        shm_root = DEFAULT_ROOT
+    if cache_root is None:
+        cache_root = DEFAULT_CACHE_ROOT
+
     spec = detect_framework(command)
     topo = read_topology(command, spec)
     if not topo.is_head and spec.worker_ready_pattern is None:
@@ -194,6 +204,18 @@ def launch(
             return 1
         report_stage()
 
+    # Synchronous even under --overlap: the engine reads these before it serves
+    # anything, and it is a few MB. The copy is what the engine writes to, so a
+    # read-only checkpoint serves and concurrent jobs share nothing.
+    cache_src = src_path / jit_cache.CACHE_DIR_NAME
+    cache_dest = jit_cache.copy_into(cache_src, jit_cache.node_local(cache_root, src_path.name))
+    cache_env = None
+    if cache_dest is None:
+        print(f"[SERVEKIT] no JIT caches in {src}; the engine will JIT from cold", flush=True)
+    else:
+        cache_env = jit_cache.env_for(cache_dest)
+        print(f"[SERVEKIT] staged JIT caches from {cache_src}", flush=True)
+
     print(f"[SERVEKIT] launching: {' '.join(engine_command)}", flush=True)
 
     emitted = {"done": False}
@@ -239,6 +261,7 @@ def launch(
         ready_timeout=timeout,
         on_ready=on_ready,
         head=topo.is_head,
+        env=cache_env,
     )
 
     if not emitted["done"]:

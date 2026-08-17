@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import signal
 import subprocess
@@ -358,6 +359,7 @@ def run_profile(
     ready_timeout: float = 1800.0,
     on_ready: Optional[Callable[[ProfileReport], None]] = None,
     head: bool = True,
+    env: Optional[Dict[str, str]] = None,
 ) -> ProfileReport:
     """Run `command`, profiling it until it reports ready.
 
@@ -379,7 +381,14 @@ def run_profile(
     """
     spec = detect_framework(command)
     spawn_time = time.time()
-    proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+    proc = subprocess.Popen(
+        command,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+        env={**os.environ, **env} if env else None,
+    )
 
     def _forward(signum, _frame):  # noqa: ANN001 - signal handler signature
         print(f"\n[SERVEKIT] got signal {signum}, terminating the server", flush=True)

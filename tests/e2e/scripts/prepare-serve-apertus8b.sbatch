@@ -39,6 +39,7 @@ export REFERENCE="${SERVEKIT_DIR}/tests/e2e/fixtures/apertus8b-tp4-bf16.json"
 export OUT="${SLURM_SUBMIT_DIR}/logs/prepared-${SLURM_JOB_ID}.json"
 export REPORT="${SLURM_SUBMIT_DIR}/logs/prepared-${SLURM_JOB_ID}.report.json"
 export MANIFEST_OUT="${SLURM_SUBMIT_DIR}/logs/prepared-${SLURM_JOB_ID}.manifest.json"
+export CACHES_OUT="${SLURM_SUBMIT_DIR}/logs/prepared-${SLURM_JOB_ID}.caches.json"
 
 if [ -z "${KEEP_PREPARED:-}" ]; then
   trap 'rm -rf "${PREPARED}"' EXIT
@@ -59,6 +60,16 @@ servekit prepare --model "${MODEL}" --out "${PREPARED}" --tp "${TP}" \
 # The checkpoint itself is scratch, so keep its manifest where the test can
 # still read it once the job has cleaned up.
 cp "${PREPARED}/servekit.json" "${MANIFEST_OUT}"
+
+python - <<'PY'
+import json, os
+from pathlib import Path
+
+root = Path(os.environ["PREPARED"]) / "servekit-caches"
+summary = {d.name: {"bytes": sum(p.stat().st_size for p in d.rglob("*") if p.is_file())} for d in root.iterdir() if d.is_dir()}
+Path(os.environ["CACHES_OUT"]).write_text(json.dumps(summary))
+print(f"[E2E] JIT caches under {root}: {summary}")
+PY
 
 servekit launch --out "${REPORT}" --timeout 3000 \
   -- \

@@ -49,6 +49,10 @@ def test_freshly_prepared_apertus8b_serves_the_lustre_baseline():
     assert manifest["tp_size"] == TP, f"prepared for tp={manifest['tp_size']}, asked for {TP}"
     assert manifest["source"] == MODEL
 
+    caches = _log(job_id, ".caches.json")
+    for name in ("triton", "tvm-ffi"):
+        assert caches[name]["bytes"] > 1024, f"{name} cache is trivially small: {caches}"
+
     assert _log(job_id, ".report.json")["success"], "the server never reported ready"
 
     result = _log(job_id, ".json")

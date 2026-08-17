@@ -5,6 +5,7 @@ import sys
 
 import pytest
 
+from servekit import jit_cache
 from servekit import manifest as manifest_mod
 from servekit.cli import main
 from servekit.engine_args import check_manifest
@@ -23,7 +24,7 @@ RESOLVED = {
 }
 
 FAKE_SHARDER = '''
-import json, sys
+import json, os, sys
 args = sys.argv[1:]
 def arg(name):
     return args[args.index(name) + 1]
@@ -34,6 +35,10 @@ for p in range(pp):
     for r in range(ranks):
         name = f"model-pp-{p}-rank-{r}-part-0" if pp > 1 else f"model-rank-{r}-part-0"
         open(f"{out}/{name}.safetensors", "wb").write(b"weights")
+if "--dump-env" in args:
+    json.dump(dict(os.environ), open(arg("--dump-env"), "w"))
+if "--jit-a-kernel" in args:
+    open(arg("--jit-a-kernel"), "wb").write(b"cubin")
 if "--no-resolved" not in args:
     resolved = json.load(open(arg("--fake-resolved")))
     resolved["tp_size"], resolved["pp_size"] = tp, pp
@@ -70,6 +75,36 @@ def test_prepare_writes_a_manifest_of_what_the_engine_resolved(tmp_path, model, 
         format="sharded_state", source=str(model), **{**RESOLVED, "tp_size": 4}
     )
     assert written.dtype == "bfloat16"
+
+
+def test_the_sharding_run_jits_where_launch_will_read(tmp_path, model, fake_sharder):
+    """Not into `out`: a cache built anywhere but where launch reads it
+    rebuilds, and buys nothing."""
+    out = tmp_path / "llama70b-tp4"
+    cache_root = tmp_path / "node-local"
+    dumped = tmp_path / "env.json"
+
+    rc = prepare(
+        model, out, tp=4, cache_root=cache_root,
+        engine_args=fake_sharder + ["--dump-env", str(dumped)],
+    )
+
+    assert rc == 0
+    child_env = json.loads(dumped.read_text())
+    assert {k: child_env.get(k) for k in jit_cache.CACHES} == jit_cache.env_for(cache_root / out.name)
+
+
+def test_what_the_sharding_run_jitted_is_kept_with_the_checkpoint(tmp_path, model, fake_sharder):
+    out = tmp_path / "llama70b-tp4"
+    cache_root = tmp_path / "node-local"
+
+    rc = prepare(
+        model, out, tp=4, cache_root=cache_root,
+        engine_args=fake_sharder + ["--jit-a-kernel", str(cache_root / out.name / "triton" / "k.cubin")],
+    )
+
+    assert rc == 0
+    assert (out / jit_cache.CACHE_DIR_NAME / "triton" / "k.cubin").read_bytes() == b"cubin"
 
 
 def test_a_missing_rank_leaves_no_manifest(tmp_path, model, fake_sharder):
@@ -190,7 +225,7 @@ def test_a_checkpoint_prepared_for_another_engine_is_refused():
     assert problems == ["engine: the checkpoint was prepared for vllm, and sglang cannot load another engine's shards"]
 
 
-def test_launch_refuses_a_mismatched_checkpoint_before_staging(tmp_path):
+def test_launch_refuses_a_mismatched_checkpoint_before_staging(tmp_path, monkeypatch):
     src = tmp_path / "llama70b-tp4"
     src.mkdir()
     (src / "config.json").write_text("{}")
@@ -198,8 +233,9 @@ def test_launch_refuses_a_mismatched_checkpoint_before_staging(tmp_path):
     PREPARED.write(src)
 
     shm = tmp_path / "shm"
+    monkeypatch.setattr("servekit.launch.DEFAULT_ROOT", shm)
     rc = main([
-        "launch", "--shm-root", str(shm),
+        "launch",
         "--", "python", "-m", "sglang.launch_server",
         "--model-path", str(src), "--tensor-parallel-size", "2",
     ])
