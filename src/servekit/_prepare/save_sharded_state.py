@@ -77,8 +77,6 @@ def resolved(llm, engine_args) -> dict:
 
 def main(args):
     engine_args = ServerArgs.from_cli_args(args)
-    if hasattr(engine_args, "weight_loader_disable_mmap"):
-        engine_args.weight_loader_disable_mmap = True
     if getattr(engine_args, "dist_timeout", None) is None:
         engine_args.dist_timeout = SAVE_DIST_TIMEOUT_S
     model_path = engine_args.model_path

@@ -37,8 +37,6 @@ from .topology import SHARDED_FORMAT, Topology, read_topology, shard_glob, wants
 DEFAULT_ROOT = Path("/dev/shm/servekit")
 DEFAULT_CACHE_ROOT = jit_cache.NODE_LOCAL_ROOT
 
-NO_MMAP_FLAG = "--weight-loader-disable-mmap"
-
 OVERLAP_WARNING = (
     "[SERVEKIT] --overlap is UNSAFE: the engine starts before staging finishes, with no barrier "
     "stopping it reading a file that is at full size but still zero-filled. Corrupt weights are "
@@ -218,8 +216,6 @@ def launch(
     dest = shm_root / src_path.name
     if plain:
         engine_command = list(command)
-        if NO_MMAP_FLAG not in engine_command:
-            engine_command.append(NO_MMAP_FLAG)
     else:
         engine_command = replace_model_path(command, spec, str(dest))
         if not wants_sharded_state(command):

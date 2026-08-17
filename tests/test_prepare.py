@@ -268,7 +268,6 @@ def test_launch_warns_about_a_mismatched_artifact_and_serves_the_source(tmp_path
     assert launched["command"] == [
         "python", "-m", "sglang.launch_server",
         "--model-path", str(model), "--tensor-parallel-size", "2",
-        "--weight-loader-disable-mmap",
     ]
 
 
