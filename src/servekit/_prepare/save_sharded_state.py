@@ -138,6 +138,16 @@ def main(args):
             json.dump(resolved(llm, engine_args), f)
 
     print(f"saved sharded checkpoint to {args.output}")
+
+    # The warmup `launch_server` runs and an Engine does not: FlashInfer JITs
+    # only on a served request. The checkpoint is already written, so failing
+    # here costs a colder start, not the prepare.
+    try:
+        llm.generate("Hello", {"temperature": 0, "max_new_tokens": 8})
+        print("warmed the JIT caches with one generate")
+    except Exception as e:  # noqa: BLE001 - an embedding model has no generate
+        print(f"warmup generate failed ({e}); the JIT caches may be incomplete", file=sys.stderr)
+
     llm.shutdown()
 
 

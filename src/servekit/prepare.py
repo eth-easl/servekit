@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
 from typing import List, Optional, Sequence
 
+from . import jit_cache
 from ._shim import PP_PATTERN
 from .manifest import Manifest
 
@@ -64,6 +66,7 @@ def prepare(
     node_rank: int = 0,
     dist_init_addr: Optional[str] = None,
     pp: int = 1,
+    cache_root: Path = jit_cache.NODE_LOCAL_ROOT,
 ) -> int:
     if not model.is_dir():
         print(f"error: model path {model} is not a directory", file=sys.stderr)
@@ -79,6 +82,10 @@ def prepare(
             print(f"error: --node-rank {node_rank} is outside the {nnodes} nodes asked for", file=sys.stderr)
             return 2
     out.mkdir(parents=True, exist_ok=True)
+    # Built where `launch` will read them: the engine bakes this path into its
+    # ninja build dirs, so a cache compiled elsewhere rebuilds and buys nothing.
+    cache_build = jit_cache.node_local(cache_root, out.name)
+    env = {**os.environ, **jit_cache.create(cache_build)}
 
     dist_args: List[str] = []
     if nnodes > 1:
@@ -103,7 +110,8 @@ def prepare(
         ]
         where = f" (node {node_rank} of {nnodes})" if nnodes > 1 else ""
         print(f"[SERVEKIT] preparing {model} -> {out} (tp={tp}, pp={pp}){where}", flush=True)
-        rc = subprocess.call(command)
+        print(f"[SERVEKIT] JIT caches will be built in {cache_build}", flush=True)
+        rc = subprocess.call(command, env=env)
         if node_rank != 0:
             # A worker only ends when the job tears its task down, so its exit
             # code says nothing. The head gates.
@@ -127,6 +135,11 @@ def prepare(
         # presharded checkpoint does not have.
         print(f"error: stale weight index left in {out}: {', '.join(stale)}", file=sys.stderr)
         return 1
+
+    cached = jit_cache.copy_into(cache_build, out / jit_cache.CACHE_DIR_NAME)
+    if cached is not None:
+        n = sum(1 for p in cached.rglob("*") if p.is_file())
+        print(f"[SERVEKIT] kept {n} JIT cache files in {cached}", flush=True)
 
     manifest = Manifest(format=FORMAT, source=str(model), **resolved)
     path = manifest.write(out)

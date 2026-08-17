@@ -9,10 +9,11 @@ import numpy as np
 import pytest
 from safetensors.numpy import save_file
 
+from servekit import jit_cache
 from servekit.cli import main
 from servekit.engine_args import find_model_path, replace_model_path
-from servekit.profile import SGLANG, VLLM, detect_framework
-from servekit.stage import STAGER, stage
+from servekit.profile import SGLANG, VLLM, ProfileReport, detect_framework
+from servekit.stage import STAGER, StageResult, stage
 
 REPO = Path(__file__).resolve().parents[2]
 EXPERIMENT_STAGER = REPO / "experiments/lustre-loading-exp/scripts/phase4_shm/stage_to_shm_sliced.sh"
@@ -76,6 +77,70 @@ def test_launch_rejects_an_unusable_command():
     assert main(["launch", "--", "python", "-m", "sglang.launch_server", "--tp", "4"]) == 2
     assert main(["launch", "--", "frobnicate"]) == 2
     assert main(["launch"]) == 2
+
+
+# --- the JIT caches --------------------------------------------------------
+
+@pytest.fixture
+def fake_engine(monkeypatch):
+    """Run `launch` without a GPU, recording the env it would have handed sglang."""
+    seen = {}
+
+    def fake_stage(src, dest, slices=64, file_pattern="*"):
+        return StageResult(dest=dest, wall_s=0.1, gbps=1.0, bytes=1)
+
+    def fake_run_profile(command, ready_timeout=1800.0, on_ready=None, head=True, env=None):
+        seen["env"] = env or {}
+        return ProfileReport(command="", started_at=0.0, ready_at=1.0, success=True, framework="sglang")
+
+    monkeypatch.setattr("servekit.launch.stage", fake_stage)
+    monkeypatch.setattr("servekit.launch.run_profile", fake_run_profile)
+    return seen
+
+
+@pytest.fixture
+def prepared_checkpoint(tmp_path):
+    src = tmp_path / "llama70b-tp4"
+    src.mkdir()
+    (src / "config.json").write_text("{}")
+    (src / "model-rank-0-part-0.safetensors").write_bytes(b"weights")
+    return src
+
+
+def _launch(tmp_path, src, monkeypatch):
+    # --shm-root/--cache-root aren't public CLI flags, so isolation from the
+    # real /dev/shm and /tmp/servekit/caches goes through the module defaults.
+    monkeypatch.setattr("servekit.launch.DEFAULT_ROOT", tmp_path / "shm")
+    monkeypatch.setattr("servekit.launch.DEFAULT_CACHE_ROOT", tmp_path / "cache-root")
+    # --out or the report lands in the cwd, which is the checkout.
+    return main([
+        "launch",
+        "--out", str(tmp_path / "run.json"),
+        "--", "python", "-m", "sglang.launch_server", "--model-path", str(src),
+    ])
+
+
+def _with_a_cached_kernel(checkpoint):
+    cache = checkpoint / jit_cache.CACHE_DIR_NAME
+    (cache / "triton").mkdir(parents=True)
+    (cache / "triton" / "kernel.cubin").write_bytes(b"cubin")
+    return cache
+
+
+def test_the_engine_reads_a_node_local_copy_not_the_checkpoint(tmp_path, prepared_checkpoint, fake_engine, monkeypatch):
+    _with_a_cached_kernel(prepared_checkpoint)
+
+    assert _launch(tmp_path, prepared_checkpoint, monkeypatch) == 0
+
+    copy = tmp_path / "cache-root" / prepared_checkpoint.name
+    assert fake_engine["env"] == jit_cache.env_for(copy)
+
+
+def test_a_checkpoint_with_no_caches_still_serves(tmp_path, prepared_checkpoint, fake_engine, capsys, monkeypatch):
+    assert _launch(tmp_path, prepared_checkpoint, monkeypatch) == 0
+
+    assert fake_engine["env"] == {}
+    assert "JIT from cold" in capsys.readouterr().out
 
 
 # --- the stager ------------------------------------------------------------

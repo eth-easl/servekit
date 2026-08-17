@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 
 from .bench import BenchConfig, run_benchmark, render_bench
-from .launch import DEFAULT_ROOT, launch
+from .launch import launch
 from .prepare import prepare
 from .profile import ProfileReport, detect_framework, render_table, run_profile, save_json
 from .stage import DEFAULT_SLICES
@@ -121,7 +121,6 @@ def _launch(argv: List[str]) -> int:
     parser = argparse.ArgumentParser(prog="servekit launch")
     parser.add_argument("--out", type=Path, default=None)
     parser.add_argument("--timeout", type=float, default=1800.0, help="seconds to wait for the ready signal")
-    parser.add_argument("--shm-root", type=Path, default=DEFAULT_ROOT)
     parser.add_argument("--slices", type=int, default=DEFAULT_SLICES, help="concurrent read slices per file")
     parser.add_argument(
         "--overlap",
@@ -138,7 +137,6 @@ def _launch(argv: List[str]) -> int:
         return launch(
             command,
             out=args.out,
-            shm_root=args.shm_root,
             slices=args.slices,
             timeout=args.timeout,
             overlap=args.overlap,
