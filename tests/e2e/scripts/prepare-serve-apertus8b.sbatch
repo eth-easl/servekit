@@ -1,8 +1,8 @@
 #!/bin/bash
 # The whole pipeline in one job, on Apertus-8B at TP4:
-#   (1) servekit prepare  -- shard the HF checkpoint into a fresh scratch dir
-#   (2) servekit launch   -- stage that checkpoint and serve it
-#   (3) servekit verify   -- check the served logprobs against the recorded baseline
+#   (1) servekit launch --only-prepare  -- shard the HF checkpoint into a fresh scratch dir
+#   (2) servekit launch                 -- find that artifact prepared, stage it, serve it
+#   (3) servekit verify                 -- check the served logprobs against the recorded baseline
 #
 # correctness-apertus8b.sbatch checks (2) and (3) against a checkpoint sharded
 # long ago; here the checkpoint is built by the servekit under test, so a
@@ -51,11 +51,14 @@ ulimit -c 0
 
 pip install -e "${SERVEKIT_DIR}" --no-build-isolation --no-deps -q
 
-servekit prepare --model "${MODEL}" --out "${PREPARED}" --tp "${TP}" \
+servekit launch --servekit-artifact-path "${PREPARED}" --only-prepare \
   -- \
-  --trust-remote-code \
-  --context-length 32768 \
-  --mem-fraction-static 0.85
+  python -m sglang.launch_server \
+    --model-path "${MODEL}" \
+    --tensor-parallel-size "${TP}" \
+    --trust-remote-code \
+    --context-length 32768 \
+    --mem-fraction-static 0.85
 
 # The checkpoint itself is scratch, so keep its manifest where the test can
 # still read it once the job has cleaned up.
@@ -71,11 +74,10 @@ Path(os.environ["CACHES_OUT"]).write_text(json.dumps(summary))
 print(f"[E2E] JIT caches under {root}: {summary}")
 PY
 
-servekit launch --out "${REPORT}" --timeout 3000 \
+servekit launch --servekit-artifact-path "${PREPARED}" --out "${REPORT}" --timeout 3000 \
   -- \
   python -m sglang.launch_server \
-    --model-path "${PREPARED}" \
-    --load-format sharded_state \
+    --model-path "${MODEL}" \
     --host 0.0.0.0 \
     --port 8080 \
     --served-model-name "${SERVED_MODEL_NAME}" \

@@ -1,4 +1,4 @@
-"""The whole pipeline in one job: `servekit prepare` shards Apertus-8B for TP4,
+"""The whole pipeline in one job: `--only-prepare` shards Apertus-8B for TP4,
 `servekit launch` stages and serves that fresh checkpoint, `servekit verify`
 checks it against the recorded baseline.
 

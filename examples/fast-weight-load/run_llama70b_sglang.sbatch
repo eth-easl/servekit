@@ -13,7 +13,8 @@
 set -euo pipefail
 
 EDF="${SLURM_SUBMIT_DIR}/sglang.toml"
-SHARDED_SRC="${SHARDED_SRC:-/capstor/store/cscs/swissai/infra01/cold-start-experiments/llama70b-tp4-sharded}"
+MODEL="${MODEL:-/capstor/store/cscs/swissai/infra01/hf_models/models/meta-llama/Llama-3.1-70B-Instruct}"
+ARTIFACT="${ARTIFACT:-/capstor/store/cscs/swissai/infra01/cold-start-experiments/llama70b-tp4-sharded}"
 SERVED_MODEL_NAME=meta-llama/Llama-3.1-70B-Instruct
 
 SERVEKIT_DIR="${SLURM_SUBMIT_DIR}/../.."
@@ -24,11 +25,10 @@ set -euo pipefail
 ulimit -c 0
 pip install -e "${SERVEKIT_DIR}" --no-build-isolation --no-deps -q
 
-servekit launch --out "${OUT}" --overlap --timeout 3000 \
+servekit launch --servekit-artifact-path "${ARTIFACT}" --out "${OUT}" --overlap --timeout 3000 \
   -- \
   python -m sglang.launch_server \
-    --model-path "${SHARDED_SRC}" \
-    --load-format sharded_state \
+    --model-path "${MODEL}" \
     --host 0.0.0.0 \
     --port 8080 \
     --served-model-name "${SERVED_MODEL_NAME}" \

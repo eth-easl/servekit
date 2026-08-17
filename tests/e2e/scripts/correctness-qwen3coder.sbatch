@@ -26,11 +26,11 @@
 set -euo pipefail
 
 export MODE="${MODE:-fast}"
+export MODEL="${MODEL:-/capstor/store/cscs/swissai/infra01/hf_models/models/Qwen/Qwen3-Coder-30B-A3B-Instruct}"
 SEED=12345
 
 case "$MODE" in
   baseline)
-    export MODEL="${MODEL:-/capstor/store/cscs/swissai/infra01/hf_models/models/Qwen/Qwen3-Coder-30B-A3B-Instruct}"
     OUT_PREFIX="baseline"
     ;;
   fast)
@@ -61,11 +61,10 @@ ulimit -c 0
 pip install -e "${SERVEKIT_DIR}" --no-build-isolation --no-deps -q
 
 if [ "$MODE" = "fast" ]; then
-  servekit launch --out "${REPORT}" --timeout 3000 \
+  servekit launch --servekit-artifact-path "${SHARDED_SRC}" --out "${REPORT}" --timeout 3000 \
     -- \
     python -m sglang.launch_server \
-      --model-path "${SHARDED_SRC}" \
-      --load-format sharded_state \
+      --model-path "${MODEL}" \
       --host 0.0.0.0 \
       --port 8080 \
       --served-model-name "${SERVED_MODEL_NAME}" \

@@ -5,6 +5,7 @@ Pure: no filesystem, no processes. Everything engine-specific lives in
 """
 from __future__ import annotations
 
+import os
 from typing import List, Optional, Tuple
 
 from .manifest import Manifest
@@ -60,6 +61,14 @@ def check_manifest(command: List[str], spec: FrameworkSpec, manifest: Manifest) 
     dtype and quantization it does not catch at all.
     """
     problems = []
+
+    # The artifact directory is the user's to name, so nothing else stops one
+    # being reused for a second model.
+    _, asked = find_model_path(command, spec)
+    if os.path.normpath(asked) != os.path.normpath(manifest.source):
+        problems.append(
+            f"source: the artifact was prepared from {manifest.source}, the command asks for {asked}"
+        )
 
     if manifest.engine != spec.name:
         problems.append(

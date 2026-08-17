@@ -9,37 +9,38 @@ from typing import List, Optional, Tuple
 
 from .bench import BenchConfig, run_benchmark, render_bench
 from .launch import launch
-from .prepare import prepare
 from .profile import ProfileReport, detect_framework, render_table, run_profile, save_json
 from .stage import DEFAULT_SLICES
 from .topology import read_topology
 from .verify import capture, compare, discover_model, load_prompt_set, render_verify, wait_for_ready
 
 USAGE = """usage:
-  servekit launch [--out PATH] [--slices N] [--overlap] -- <command...>
-  servekit prepare --model PATH --out PATH [--tp N] [-- <extra engine args>]
-                   [--nnodes N --node-rank N --dist-init-addr HOST:PORT]
+  servekit launch --servekit-artifact-path PATH [--only-prepare] [--out PATH]
+                  [--slices N] [--overlap] -- <command...>
   servekit profile [--out PATH] [--timeout SECONDS] -- <command...>
   servekit bench --url URL (--into PATH | --out PATH) [--wait-ready SECONDS] [...]
   servekit verify --url URL (--record PATH | --reference PATH) [--wait-ready SECONDS] [...]
 
-`launch` wraps an engine command: it copies the model into /dev/shm, starts the
-engine against the copy, and frees the copy once the server reports ready --
-returning the RAM to the running job while it serves. It behaves like the
-command it wraps, so removing the wrapper gives the baseline back. `profile` is
-`launch` without the staging. `bench` loads any live server over the OpenAI
-protocol, whether or not servekit launched it. `prepare` is the one offline
-step: it writes a TP-presharded checkpoint that `launch` stages and loads with
-`--load-format sharded_state`. `verify` checks that a served model produces the
-same per-token logprobs it did before: `--record` captures a reference from a
-trusted server, `--reference` checks a later server against it.
+`launch` wraps an engine command. It writes a presharded checkpoint into
+--servekit-artifact-path if there is not one there already, copies it into
+/dev/shm, starts the engine against the copy, and frees the copy once the server
+reports ready -- returning the RAM to the running job while it serves. It
+behaves like the command it wraps, so removing the wrapper gives the baseline
+back. An artifact that does not match the command is a warning, not a failure:
+servekit names the mismatch and runs the command on the engine's own loader.
+`--only-prepare` writes the artifact and stops, for an offline build step.
+`profile` is `launch` without any of that. `bench` loads any live server over
+the OpenAI protocol, whether or not servekit launched it. `verify` checks that a
+served model produces the same per-token logprobs it did before: `--record`
+captures a reference from a trusted server, `--reference` checks a later server
+against it.
 
-  servekit launch -- python -m sglang.launch_server --model-path /store/llama70b-tp4 \\
-      --tensor-parallel-size 4 --load-format sharded_state
+  servekit launch --servekit-artifact-path /scratch/llama70b-tp4 -- \\
+      python -m sglang.launch_server --model-path /store/llama70b --tensor-parallel-size 4
 
 To profile and bench one run, put them side by side and join on the report file:
 
-  servekit launch --out run.json -- python -m sglang.launch_server ... &
+  servekit launch --servekit-artifact-path /scratch/a --out run.json -- python ... &
   PROF=$!
   servekit bench --url http://127.0.0.1:8080 --into run.json --requests 64
   kill $PROF; wait $PROF
@@ -48,10 +49,10 @@ Multi-node is the same command on every node, under an srun of one task per
 node, with the engine's own distributed flags set. Each node stages the shards
 its own ranks read and writes its own run.node<rank>.json:
 
-  srun --ntasks=$NNODES --ntasks-per-node=1 servekit launch --out run.json -- \\
-      python -m sglang.launch_server --model-path /store/llama70b-tp8 --tp-size 8 \\
-      --nnodes $NNODES --node-rank $SLURM_PROCID --dist-init-addr $HEAD:20000 \\
-      --load-format sharded_state
+  srun --ntasks=$NNODES --ntasks-per-node=1 servekit launch --out run.json \\
+      --servekit-artifact-path /scratch/llama70b-tp8 -- \\
+      python -m sglang.launch_server --model-path /store/llama70b --tp-size 8 \\
+      --nnodes $NNODES --node-rank $SLURM_PROCID --dist-init-addr $HEAD:20000
 """
 
 
@@ -117,8 +118,22 @@ def _profile(argv: List[str]) -> int:
 
 def _launch(argv: List[str]) -> int:
     options, command = _split_command(argv)
+    if not command:
+        print("error: no command given after --", file=sys.stderr)
+        return 2
 
     parser = argparse.ArgumentParser(prog="servekit launch")
+    parser.add_argument(
+        "--servekit-artifact-path",
+        type=Path,
+        required=True,
+        help="where the presharded checkpoint lives; written there if it is not prepared yet",
+    )
+    parser.add_argument(
+        "--only-prepare",
+        action="store_true",
+        help="prepare the artifact and stop, without launching the engine",
+    )
     parser.add_argument("--out", type=Path, default=None)
     parser.add_argument("--timeout", type=float, default=1800.0, help="seconds to wait for the ready signal")
     parser.add_argument("--slices", type=int, default=DEFAULT_SLICES, help="concurrent read slices per file")
@@ -129,46 +144,19 @@ def _launch(argv: List[str]) -> int:
     )
     args = parser.parse_args(options)
 
-    if not command:
-        print("error: no command given after --", file=sys.stderr)
-        return 2
-
     try:
         return launch(
             command,
+            artifact=args.servekit_artifact_path,
             out=args.out,
             slices=args.slices,
             timeout=args.timeout,
             overlap=args.overlap,
+            only_prepare=args.only_prepare,
         )
     except ValueError as e:
         print(f"error: {e}", file=sys.stderr)
         return 2
-
-
-def _prepare(argv: List[str]) -> int:
-    options, engine_args = _split_command(argv)
-
-    parser = argparse.ArgumentParser(prog="servekit prepare")
-    parser.add_argument("--model", type=Path, required=True, help="source checkpoint (a local directory)")
-    parser.add_argument("--out", type=Path, required=True, help="where to write the presharded checkpoint")
-    parser.add_argument("--tp", type=int, default=1, help="tensor-parallel size the shards will be locked to")
-    parser.add_argument("--pp", type=int, default=1, help="pipeline-parallel size the shards will be locked to")
-    parser.add_argument("--nnodes", type=int, default=1, help="nodes to shard across (TP > GPUs per node)")
-    parser.add_argument("--node-rank", type=int, default=0, help="this node's rank, e.g. $SLURM_PROCID")
-    parser.add_argument("--dist-init-addr", default=None, help="rendezvous address, HOST:PORT on the head")
-    args = parser.parse_args(options)
-
-    return prepare(
-        args.model,
-        args.out,
-        args.tp,
-        engine_args=engine_args,
-        nnodes=args.nnodes,
-        node_rank=args.node_rank,
-        dist_init_addr=args.dist_init_addr,
-        pp=args.pp,
-    )
 
 
 def _wait_for_report(path: Path, timeout_s: float, interval_s: float = 0.5) -> bool:
@@ -338,7 +326,6 @@ def main(argv: Optional[List[str]] = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     commands = {
         "launch": _launch,
-        "prepare": _prepare,
         "profile": _profile,
         "bench": _bench,
         "verify": _verify,

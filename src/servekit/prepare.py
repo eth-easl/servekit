@@ -1,4 +1,4 @@
-"""`servekit prepare`: write a TP-presharded checkpoint plus its manifest.
+"""Writing a TP-presharded checkpoint plus its manifest, for `servekit launch`.
 """
 from __future__ import annotations
 
@@ -145,9 +145,9 @@ def prepare(
     path = manifest.write(out)
     print(f"[SERVEKIT] prepared {tp * pp} ranks in {out}; manifest written to {path}", flush=True)
     print(
-        f"[SERVEKIT] launch it with: servekit launch -- python -m sglang.launch_server "
-        f"--model-path {out} --load-format {FORMAT} --tensor-parallel-size {tp} "
-        f"--pipeline-parallel-size {pp}",
+        f"[SERVEKIT] launch it with: servekit launch --servekit-artifact-path {out} -- "
+        f"python -m sglang.launch_server --model-path {model} "
+        f"--tensor-parallel-size {tp} --pipeline-parallel-size {pp}",
         flush=True,
     )
     return 0

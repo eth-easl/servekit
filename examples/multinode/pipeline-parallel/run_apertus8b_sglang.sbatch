@@ -1,6 +1,8 @@
 #!/bin/bash
-# Llama-3.1-70B at TP=8 across two 4-GPU Clariden nodes, served from /dev/shm.
-#SBATCH --job-name=multinode-tp-llama70b
+# Apertus-8B at TP=4/PP=2 across two 4-GPU Clariden nodes, one pipeline stage a
+# node, served from /dev/shm. The first run presharded the checkpoint into
+# ARTIFACT; later runs find it there and only serve.
+#SBATCH --job-name=multinode-pp-apertus8b
 #SBATCH --partition=debug
 #SBATCH --account=a-infra02
 #SBATCH --nodes=2
@@ -14,9 +16,9 @@
 set -euo pipefail
 
 EDF="${SLURM_SUBMIT_DIR}/sglang-clariden.toml"
-MODEL="${MODEL:-/capstor/store/cscs/swissai/infra01/hf_models/models/meta-llama/Llama-3.1-70B-Instruct}"
-ARTIFACT="${ARTIFACT:-/capstor/store/cscs/swissai/infra01/cold-start-experiments/llama70b-tp8-sharded}"
-SERVED_MODEL_NAME=meta-llama/Llama-3.1-70B-Instruct
+MODEL="${MODEL:-/capstor/store/cscs/swissai/infra01/hf_models/models/swiss-ai/Apertus-8B-Instruct-2509}"
+ARTIFACT="${ARTIFACT:-/capstor/store/cscs/swissai/infra01/cold-start-experiments/apertus8b-tp4pp2-sharded}"
+SERVED_MODEL_NAME=swiss-ai/Apertus-8B-Instruct-2509
 
 SERVEKIT_DIR="${SLURM_SUBMIT_DIR}/../../.."
 RUNDIR="${SLURM_SUBMIT_DIR}/logs/${SLURM_JOB_NAME}-${SLURM_JOB_ID}"
@@ -26,7 +28,8 @@ OUT_HEAD="${RUNDIR}/run.node0.json"
 mkdir -p "${RUNDIR}"
 
 NNODES=2
-TP_SIZE=8
+TP=4
+PP=2
 DIST_PORT=20000
 # Resolved here, not in the container: both tasks must be handed the same
 # literal address, and only the submit host can expand the nodelist.
@@ -49,10 +52,12 @@ servekit launch --servekit-artifact-path "${ARTIFACT}" --out "${OUT}" --timeout 
   -- \
   python -m sglang.launch_server \
     --model-path "${MODEL}" \
-    --tensor-parallel-size ${TP_SIZE} \
+    --tensor-parallel-size ${TP} \
+    --pipeline-parallel-size ${PP} \
     --nnodes ${NNODES} \
     --node-rank \${SLURM_PROCID} \
     --dist-init-addr ${HEAD_NODE}:${DIST_PORT} \
+    --attention-backend flashinfer \
     --host 0.0.0.0 \
     --port 8080 \
     --served-model-name "${SERVED_MODEL_NAME}" \
@@ -75,8 +80,7 @@ EOF
 )
 
 # --wait=60: once the head's task ends, give the worker a minute to fall over on
-# its own rather than holding the allocation to the time limit. The worker's
-# exit code is meaningless here -- the gates below decide whether this worked.
+# its own rather than holding the allocation to the time limit.
 srun \
   --nodes="${NNODES}" \
   --ntasks="${NNODES}" \
@@ -87,4 +91,15 @@ srun \
   --environment="${EDF}" \
   bash -c "${INNER_CMD}" || true
 
-# Cold-start thresholds are checked in tests/e2e/test_cold_start.py (pytest -m e2e)
+# Shards are keyed on (pp_rank, tp_rank), so the two nodes write disjoint names
+# into one directory.
+echo
+echo "=== artifact ==="
+for pp in $(seq 0 $((PP - 1))); do
+  for tp in $(seq 0 $((TP - 1))); do
+    [ -e "${ARTIFACT}/model-pp-${pp}-rank-${tp}-part-0.safetensors" ] || { echo "GATE FAIL: pp ${pp} tp ${tp} wrote no shards" >&2; exit 1; }
+  done
+done
+[ -e "${ARTIFACT}/servekit.json" ] || { echo "GATE FAIL: no manifest" >&2; exit 1; }
+du -sh "${ARTIFACT}"
+cat "${ARTIFACT}/servekit.json"
