@@ -72,10 +72,9 @@ def _copy_metadata(src: Path, dest: Path) -> int:
 def _sharder_args(command: List[str]) -> List[str]:
     """The engine flags from a launch command, as the sharding run should see them.
 
-    Everything before the first long option is the interpreter and its own flags
-    (`python -m sglang.launch_server`), which the sharding run supplies itself.
-    `--load-format` is dropped: the sharder reads the source checkpoint, which is
-    not presharded yet, so the serve-time format would refuse to load it.
+    Everything up to the first long option is the interpreter, which the sharding
+    run supplies itself. `--load-format` goes because the sharder reads the source
+    checkpoint, which is not presharded yet.
     """
     args: List[str] = []
     for i, arg in enumerate(command):
@@ -98,8 +97,8 @@ def _sharder_args(command: List[str]) -> List[str]:
 def _writable(path: Path) -> bool:
     """Whether a prepared checkpoint could be written to `path`.
 
-    Walks up to the nearest directory that exists, since an artifact directory
-    that is not there yet is fine as long as something above it takes the mkdir.
+    Walks up to the nearest directory that exists: an artifact directory that is
+    not there yet is fine as long as something above it takes the mkdir.
     """
     probe = Path(path).absolute()
     while not probe.exists():
@@ -175,9 +174,6 @@ def launch(
     unwritable = False
     if prepared is None or (only_prepare and problems):
         if not _writable(artifact):
-            # Caught here rather than left to the mkdir: a read-only scratch
-            # path is a config mistake, not a reason to fail a job that can
-            # still serve the source checkpoint.
             unwritable = True
             print(f"[SERVEKIT] warning: cannot write a prepared checkpoint to {artifact}", flush=True)
             if only_prepare:

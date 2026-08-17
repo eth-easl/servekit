@@ -151,7 +151,6 @@ def test_the_engine_reads_a_node_local_copy_not_the_checkpoint(tmp_path, model, 
 
     copy = tmp_path / "cache-root" / prepared_checkpoint.name
     assert fake_engine["env"] == jit_cache.env_for(copy)
-    # The command names the shm copy of the artifact, not the source the user gave.
     assert fake_engine["command"] == [
         "python", "-m", "sglang.launch_server",
         "--model-path", str(tmp_path / "shm" / prepared_checkpoint.name),

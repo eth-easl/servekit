@@ -1,18 +1,28 @@
+import os
 import re
 import subprocess
 import time
 from pathlib import Path
+from typing import Mapping, Optional
 
 SCRIPTSDIR = Path(__file__).resolve().parent / "scripts"
 EXAMPLES = Path(__file__).resolve().parents[2] / "examples"
 
 
-def sbatch_wait(script: Path, timeout: float = 600, poll_interval: float = 5.0) -> str:
+def sbatch_wait(
+    script: Path,
+    timeout: float = 600,
+    poll_interval: float = 5.0,
+    env: Optional[Mapping[str, str]] = None,
+) -> str:
     """Submit `script`, poll until it finishes, return its job id.
 
     Cancels the job and raises if it's still queued/running after `timeout`
     seconds, so a hung job (e.g. a stuck weight load) fails the test instead
     of running until the SLURM allocation's own time limit.
+
+    `env` is passed per call rather than set on os.environ, so one test's knobs
+    cannot leak into another's job in the same session.
     """
     submit = subprocess.run(
         ["sbatch", script.name],
@@ -20,6 +30,7 @@ def sbatch_wait(script: Path, timeout: float = 600, poll_interval: float = 5.0) 
         capture_output=True,
         text=True,
         check=True,
+        env={**os.environ, **(env or {})},
     )
     job_id = re.search(r"Submitted batch job (\d+)", submit.stdout).group(1)
 

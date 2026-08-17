@@ -173,7 +173,6 @@ def test_launch_prepares_with_the_engine_args_it_will_serve_with(tmp_path, model
     assert rc == 0
     assert seen["tp"] == 4
     assert seen["model"] == model and seen["out"] == tmp_path / "o"
-    # The program prefix and the serve-time load format are not the sharder's.
     assert seen["engine_args"] == [
         "--model-path", str(model), "--tensor-parallel-size", "4",
         "--trust-remote-code", "--context-length", "32768",
