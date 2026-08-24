@@ -58,12 +58,24 @@ for f in "${FILES[@]}"; do
   truncate -s "$(stat -c%s "$SRC/$f")" "$DEST/$f"
 done
 
+# Each dd writes into the memory next to the CPU it runs on, so some memory banks
+# fill up while others stay empty. An engine rank can only use the bank next to
+# its GPU, so a rank with a full bank gets killed for running out of memory even
+# though the node still has plenty. Interleaving spreads the writes out.
+#
+# Only banks that have CPUs: on GH200 each GPU's memory counts as a bank too, and
+# --interleave=all would put the model there.
+NUMA=""
+if command -v numactl >/dev/null 2>&1 && [[ -r /sys/devices/system/node/has_cpu ]]; then
+  NUMA="numactl --interleave=$(< /sys/devices/system/node/has_cpu)"
+fi
+
 stage_slice() { # <src> <dst> <skip_blocks> <count_blocks>
-  dd if="$1" of="$2" bs="$BS" skip="$3" seek="$3" count="$4" \
+  $NUMA dd if="$1" of="$2" bs="$BS" skip="$3" seek="$3" count="$4" \
      $IFLAG conv=notrunc status=none
 }
 export -f stage_slice
-export BS IFLAG
+export BS IFLAG NUMA
 
 # "<src> <dst> <skip> <count>" per slice, tiling each file exactly. A file
 # smaller than one block yields a single slice, so small config files just work.
