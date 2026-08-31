@@ -1,11 +1,12 @@
-image = "lmsysorg/sglang:v0.5.10"
+# v0.5.11+, for the plugin framework the --overlap barrier rides on.
+image = "lmsysorg/sglang:v0.5.16"
 
 mounts = [
   "/capstor:/capstor",
   "/iopsstor:/iopsstor",
 ]
 
-workdir = "/iopsstor/scratch/cscs/yboughizane/simple-serving-stack/examples/fast-weight-load"
+workdir = "/iopsstor/scratch/cscs/yboughizane/cold-start-elimination/servekit-overlap-barrier/examples/fast-weight-load"
 
 [env]
 HOME = "/root"

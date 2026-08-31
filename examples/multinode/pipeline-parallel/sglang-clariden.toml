@@ -10,7 +10,7 @@ mounts = [
   "/iopsstor:/iopsstor",
 ]
 
-workdir = "/iopsstor/scratch/cscs/yboughizane/cold-start-elimination/servekit-api-refactor/examples/multinode/pipeline-parallel"
+workdir = "/iopsstor/scratch/cscs/yboughizane/cold-start-elimination/servekit-overlap-barrier/examples/multinode/pipeline-parallel"
 
 [env]
 HOME = "/root"

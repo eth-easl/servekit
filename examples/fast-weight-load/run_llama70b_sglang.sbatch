@@ -33,6 +33,7 @@ servekit launch --servekit-artifact-path "${ARTIFACT}" --out "${OUT}" --overlap 
     --port 8080 \
     --served-model-name "${SERVED_MODEL_NAME}" \
     --tensor-parallel-size 4 \
+    --attention-backend flashinfer \
     --trust-remote-code \
     --context-length 32768 \
     --mem-fraction-static 0.85 \

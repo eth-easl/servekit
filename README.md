@@ -56,6 +56,9 @@ falls back to the engine's own loader rather than failing the job.
 `--only-prepare` writes the artifact and stops. Pipeline parallelism needs
 sglang >= 0.5.11.
 
+`--overlap` starts the engine while the stage is still running, hiding it behind
+engine startup; sglang only.
+
 
 ### `servekit profile`
 

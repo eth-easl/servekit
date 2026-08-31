@@ -1,4 +1,5 @@
-"""Pipeline-parallel filenames for SGLang's `sharded_state` checkpoints.
+"""SGLang plugin: pipeline-parallel checkpoint filenames, and the --overlap
+stage barrier.
 
 `sharded_state` keys shard files on `tp_rank`, which restarts at 0 on every
 pipeline stage, so stages collide on one filename and overwrite each other.
@@ -8,6 +9,11 @@ start method: the schedulers that read and write weights are fresh interpreters
 that never see a patch made in the parent. Filenames match SGLang's own
 pipeline-parallel branch, so if that lands upstream these hooks go redundant
 rather than conflicting.
+
+The same `spawn` boundary is why --overlap needs a filesystem marker rather
+than a lock or event: `launch.py` publishes stage progress at
+`stage_marker(dest)`, and `_around_run_load` blocks each scheduler there until
+its node's stage is done, right before the weight read.
 
 SGLang imports stay inside function bodies -- `prepare` imports
 `wait_for_writes`, and servekit must not pull SGLang into its own process.
@@ -22,6 +28,10 @@ DONE_PREFIX = ".sharded-state-done"
 
 SAVE_TARGET = "sglang.srt.model_loader.loader.ShardedStateLoader.save_model"
 LOAD_TARGET = "sglang.srt.model_loader.loader.ShardedStateLoader.load_model"
+RUN_TARGET = "sglang.srt.model_executor.model_runner.ModelRunner.load_model"
+
+STAGE_OK = "ok"
+STAGE_PENDING = "pending"
 
 
 def done_marker(path: str, pp_rank: int, tp_rank: int) -> str:
@@ -57,6 +67,45 @@ def wait_for_writes(
         os.unlink(marker)
 
 
+def stage_marker(dest: str) -> str:
+    p = os.path.normpath(dest)
+    parent, name = os.path.dirname(p), os.path.basename(p)
+    return os.path.join(parent, f".{name}.stage")
+
+
+def publish_stage(dest: str, state: str) -> None:
+    marker = stage_marker(dest)
+    tmp = marker + ".tmp"
+    with open(tmp, "w") as f:
+        f.write(state)
+    os.replace(tmp, marker)
+
+
+def clear_stage(dest: str) -> None:
+    try:
+        os.unlink(stage_marker(dest))
+    except FileNotFoundError:
+        pass
+
+
+def wait_for_stage(dest: str, timeout_s: float = 1800, poll_s: float = 0.1) -> None:
+    marker = stage_marker(dest)
+    deadline = time.monotonic() + timeout_s
+    while True:
+        try:
+            with open(marker) as f:
+                state = f.read()
+        except FileNotFoundError:
+            return
+        if state == STAGE_OK:
+            return
+        if state != STAGE_PENDING:
+            raise RuntimeError(f"servekit stage into {dest} failed: {state}")
+        if time.monotonic() > deadline:
+            raise TimeoutError(f"timed out after {timeout_s}s waiting for the stage into {dest}")
+        time.sleep(poll_s)
+
+
 def _stage_pattern(template: str, parallel) -> str:
     """Fill in {pp_rank}, leaving {rank} and {part} for SGLang to format."""
     if "{pp_rank}" not in template:
@@ -89,9 +138,15 @@ def _around_save_model(original, model, path, pattern=None, max_size=None):
         pass
 
 
+def _around_run_load(original, self):
+    wait_for_stage(self.server_args.model_path)
+    return original(self)
+
+
 def install() -> None:
     """SGLang plugin entry point; runs in every engine and scheduler process."""
     from sglang.srt.plugins.hook_registry import HookRegistry, HookType
 
     HookRegistry.register(SAVE_TARGET, _around_save_model, HookType.AROUND)
     HookRegistry.register(LOAD_TARGET, _around_load_model, HookType.AROUND)
+    HookRegistry.register(RUN_TARGET, _around_run_load, HookType.AROUND)
