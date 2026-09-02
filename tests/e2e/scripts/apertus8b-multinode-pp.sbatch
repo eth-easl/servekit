@@ -1,12 +1,12 @@
 #!/bin/bash
-# Serve-only, multinode: two nodes at TP=4/PP=2, one pipeline stage a node.
+# Apertus-8B, TP4/PP2, 2 nodes, one pipeline stage a node: one job covers both
+# cold-start speed and correctness against a presharded checkpoint.
 #
 # Shards are keyed on (pp_rank, tp_rank), so this is the arm that proves a node
 # stages its own stage's files and no others. Build the checkpoint first with
-# examples/multinode/pipeline-parallel/run_apertus8b_sglang.sbatch.
+# `servekit launch --only-prepare` at the same TP/PP (see SHARDED_SRC below).
 #
-# Needs sglang >= 0.5.11: the loader shim rides on the plugin framework, hence a
-# different EDF from the TP-only scripts.
+# Needs sglang >= 0.5.11: the loader shim rides on the plugin framework.
 #SBATCH --partition=debug
 #SBATCH --account=a-infra02
 #SBATCH --nodes=2
@@ -36,7 +36,7 @@ case "$MODE" in
     ;;
 esac
 
-EDF="${SLURM_SUBMIT_DIR}/../../../examples/multinode/pipeline-parallel/sglang-clariden.toml"
+EDF="${SLURM_SUBMIT_DIR}/sglang.toml"
 SERVED_MODEL_NAME=swiss-ai/Apertus-8B-Instruct-2509
 SERVEKIT_DIR="${SLURM_SUBMIT_DIR}/../../.."
 OUT="${SLURM_SUBMIT_DIR}/logs/${OUT_PREFIX}-${SLURM_JOB_ID}.json"
@@ -62,7 +62,7 @@ unset BASH_ENV
 pip install -e "${SERVEKIT_DIR}" --no-build-isolation --no-deps -q
 
 if [ "\${MODE}" = "fast" ]; then
-  servekit launch --servekit-artifact-path "${SHARDED_SRC}" --out "${REPORT:-}" --timeout 3000 \
+  servekit launch --servekit-artifact-path "${SHARDED_SRC}" --out "${REPORT:-}" --timeout 3000 --overlap \
     -- \
     python -m sglang.launch_server \
       --model-path "${MODEL}" \
@@ -103,6 +103,8 @@ fi
 
 if [ "\${SLURM_PROCID}" = "0" ]; then
   if [ "\${MODE}" = "fast" ]; then
+    servekit bench --url "http://127.0.0.1:8080" --into "${REPORT:-}" --wait-ready 3000 \
+      --requests 64 --concurrency 16 --input-len 512 --output-len 128 --no-correctness || true
     servekit verify --url "http://127.0.0.1:8080" --reference "${REFERENCE:-}" --out "${OUT}" --wait-ready 3000 || true
   else
     servekit verify --url "http://127.0.0.1:8080" --record "${OUT}" --wait-ready 3000 || true

@@ -26,7 +26,7 @@ MODEL="${MODEL:-/capstor/store/cscs/swissai/infra01/hf_models/models/openai/gpt-
 OUT="${OUT:-${SCRATCH:-/tmp}/servekit-guard-e2e-${SLURM_JOB_ID}}"
 TP="${TP:-1}"
 
-EDF="${SLURM_SUBMIT_DIR}/../../../examples/fast-weight-load/llama-3.1-70b-sglang.toml"
+EDF="${SLURM_SUBMIT_DIR}/sglang.toml"
 SERVEKIT_DIR="${SLURM_SUBMIT_DIR}/../../.."
 CAPTURE="${SLURM_SUBMIT_DIR}/logs/guard-${SLURM_JOB_ID}.txt"
 RESULT="${SLURM_SUBMIT_DIR}/logs/guard-${SLURM_JOB_ID}.json"

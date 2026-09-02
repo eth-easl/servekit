@@ -21,6 +21,7 @@ SGLang imports stay inside function bodies -- `prepare` imports
 from __future__ import annotations
 
 import os
+import sys
 import time
 
 PP_PATTERN = "model-pp-{pp_rank}-rank-{rank}-part-{part}.safetensors"
@@ -116,21 +117,54 @@ def _stage_pattern(template: str, parallel) -> str:
     return template.replace("{pp_rank}", str(parallel.pp_rank))
 
 
-def _around_load_model(original, self, **kwargs):
-    from sglang.srt.runtime_context import get_parallel
+def _pp_requested() -> bool:
+    """Best-effort check of the engine's own argv, independent of runtime_context:
+    used only to tell a real pp>1 request apart from no pp at all when that
+    module is missing, so the fallback below fails loud on the former instead
+    of silently mis-sharding it as pp_size=1.
+    """
+    argv = sys.argv
+    for i, arg in enumerate(argv):
+        if arg in ("--pipeline-parallel-size", "--pp-size"):
+            return i + 1 < len(argv) and argv[i + 1] not in ("1", "0")
+        if arg.startswith("--pipeline-parallel-size=") or arg.startswith("--pp-size="):
+            return arg.split("=", 1)[1] not in ("1", "0")
+    return False
 
-    parallel = get_parallel()
-    if parallel.pp_size > 1:
+
+def _get_parallel():
+    """`None` on sglang builds that predate `runtime_context` -- these hooks run
+    on every load regardless of pp_size, and that module is where pipeline
+    parallel support (and this shim's pp_size introspection) lives. Older than
+    that, servekit only has TP to shim: callers treat `None` as pp_size=1, which
+    is safe only because a real pp>1 request raises here instead of silently
+    falling through and mis-sharding.
+    """
+    try:
+        from sglang.srt.runtime_context import get_parallel
+    except ModuleNotFoundError:
+        if _pp_requested():
+            raise RuntimeError(
+                "servekit's pipeline-parallel checkpoint sharding needs "
+                "sglang.srt.runtime_context, which this sglang build does not have "
+                "(needs sglang >= 0.5.11, and some 0.5.11 builds still lack it -- "
+                "if so, use a newer point release). TP-only launches are unaffected."
+            ) from None
+        return None
+    return get_parallel()
+
+
+def _around_load_model(original, self, **kwargs):
+    parallel = _get_parallel()
+    if parallel is not None and parallel.pp_size > 1:
         chosen = self.pattern != type(self).DEFAULT_PATTERN
         self.pattern = _stage_pattern(self.pattern if chosen else PP_PATTERN, parallel)
     return original(self, **kwargs)
 
 
 def _around_save_model(original, model, path, pattern=None, max_size=None):
-    from sglang.srt.runtime_context import get_parallel
-
-    parallel = get_parallel()
-    if parallel.pp_size == 1:
+    parallel = _get_parallel()
+    if parallel is None or parallel.pp_size == 1:
         return original(model, path, pattern, max_size)
     original(model, path, _stage_pattern(pattern or PP_PATTERN, parallel), max_size)
     # Never block here; the caller waits on these markers instead.

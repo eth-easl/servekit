@@ -2,10 +2,9 @@
 empty artifact dir, stages and serves that fresh checkpoint, and `servekit
 verify` checks it against the recorded baseline.
 
-test_correctness_e2e.py runs the same scripts against checkpoints sharded long
-ago, so it can only fail on the loading path. Here the checkpoint comes out of
-the servekit under test, which puts the prepare step under the same logprob
-check.
+test_e2e.py runs the same scripts against checkpoints sharded long ago, so it
+can only fail on the loading path. Here the checkpoint comes out of the
+servekit under test, which puts the prepare step under the same logprob check.
 
     pytest tests/e2e/test_prepare_serve_e2e.py -m e2e
 """
@@ -36,16 +35,21 @@ def _log(job_id: str, suffix: str, prefix: str = "fast") -> dict:
     return json.loads(path.read_text())
 
 
+def _assert_served_and_benched(report: dict) -> None:
+    assert report["success"], "the server never reported ready"
+    bench = report["benchmark"]
+    assert not bench["errors"], f"bench-level errors: {bench['errors']}"
+    assert bench["throughput"]["errors"] == 0, f"{bench['throughput']['errors']} failed requests"
+
+
 def test_freshly_prepared_apertus8b_serves_the_lustre_baseline():
     if not FIXTURE.is_file():
         pytest.skip(
             f"no baseline capture at {FIXTURE}; "
-            f"run: MODE=baseline sbatch tests/e2e/scripts/correctness-apertus8b.sbatch"
+            f"run: MODE=baseline sbatch tests/e2e/scripts/apertus8b.sbatch"
         )
 
-    job_id = sbatch_wait(
-        SCRIPTSDIR / "correctness-apertus8b.sbatch", timeout=JOB_TIMEOUT, env={"FRESH": "1"}
-    )
+    job_id = sbatch_wait(SCRIPTSDIR / "apertus8b.sbatch", timeout=JOB_TIMEOUT, env={"FRESH": "1"})
 
     manifest = _log(job_id, ".manifest.json")
     assert manifest["format"] == "sharded_state"
@@ -56,7 +60,7 @@ def test_freshly_prepared_apertus8b_serves_the_lustre_baseline():
     for name in ("triton", "tvm-ffi"):
         assert caches[name]["bytes"] > 1024, f"{name} cache is trivially small: {caches}"
 
-    assert _log(job_id, ".report.json")["success"], "the server never reported ready"
+    _assert_served_and_benched(_log(job_id, ".report.json"))
 
     result = _log(job_id, ".json")
     assert result["passed"], "\n".join(result["failures"])
@@ -83,7 +87,7 @@ def test_freshly_prepared_apertus8b_pp_serves_its_own_baseline():
             )
     assert not shards["markers"], f"leftover done-markers: {shards['markers']}"
 
-    assert log(".report.json")["success"], "the server never reported ready"
+    _assert_served_and_benched(log(".report.json"))
 
     result = log(".json")
     assert result["passed"], "\n".join(result["failures"])

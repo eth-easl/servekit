@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import Mapping, Optional
 
 SCRIPTSDIR = Path(__file__).resolve().parent / "scripts"
-EXAMPLES = Path(__file__).resolve().parents[2] / "examples"
 
 
 def sbatch_wait(

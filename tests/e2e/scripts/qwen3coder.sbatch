@@ -1,12 +1,18 @@
 #!/bin/bash
-# Correctness test for weight loading: compares baseline (no servekit) vs fast (servekit staging).
+# Qwen3-Coder-30B-A3B (MoE), TP4, 1 node: one job covers both cold-start speed
+# and correctness for servekit's --overlap fast weight load, compared against
+# baseline (no servekit).
 #
 # Run with MODE=baseline or MODE=fast environment variable:
-#   MODE=baseline sbatch correctness-llama70b.sbatch
-#   MODE=fast sbatch correctness-llama70b.sbatch
+#   MODE=baseline sbatch qwen3coder.sbatch
+#   MODE=fast sbatch qwen3coder.sbatch
 #
 # Baseline: plain sglang reading original HF safetensors.
 # Fast: presharded checkpoint staged into /dev/shm by servekit.
+#
+# Qwen3-Coder-30B-A3B is a MoE model; its MoE routing kernels are seed-sensitive
+# at temperature=0 (see scratch/fp4-experiment/results.md, Finding 3), so both
+# arms pin --random-seed to the same value to keep the comparison meaningful.
 
 
 #SBATCH --partition=debug
@@ -22,14 +28,15 @@
 set -euo pipefail
 
 export MODE="${MODE:-fast}"
-export MODEL="${MODEL:-/capstor/store/cscs/swissai/infra01/hf_models/models/meta-llama/Llama-3.1-70B-Instruct}"
+export MODEL="${MODEL:-/capstor/store/cscs/swissai/infra01/hf_models/models/Qwen/Qwen3-Coder-30B-A3B-Instruct}"
+SEED=12345
 
 case "$MODE" in
   baseline)
     OUT_PREFIX="baseline"
     ;;
   fast)
-    export SHARDED_SRC="${SHARDED_SRC:-/capstor/store/cscs/swissai/infra01/cold-start-experiments/llama70b-tp4-sharded}"
+    export SHARDED_SRC="${SHARDED_SRC:-/capstor/store/cscs/swissai/infra01/cold-start-experiments/qwen3-coder-30b-a3b-tp4-sharded}"
     OUT_PREFIX="fast"
     ;;
   *)
@@ -38,14 +45,15 @@ case "$MODE" in
     ;;
 esac
 
-EDF="${SLURM_SUBMIT_DIR}/../../../examples/fast-weight-load/sglang.toml"
-export SERVED_MODEL_NAME=meta-llama/Llama-3.1-70B-Instruct
+EDF="${SLURM_SUBMIT_DIR}/sglang.toml"
+export SERVED_MODEL_NAME=Qwen/Qwen3-Coder-30B-A3B-Instruct
 export SERVEKIT_DIR="${SLURM_SUBMIT_DIR}/../../.."
 export OUT="${SLURM_SUBMIT_DIR}/logs/${OUT_PREFIX}-${SLURM_JOB_ID}.json"
+export SEED
 
 if [ "$MODE" = "fast" ]; then
   export REPORT="${SLURM_SUBMIT_DIR}/logs/${OUT_PREFIX}-${SLURM_JOB_ID}.report.json"
-  export REFERENCE="${SERVEKIT_DIR}/tests/e2e/fixtures/llama70b-tp4-bf16.json"
+  export REFERENCE="${SERVEKIT_DIR}/tests/e2e/fixtures/qwen3-coder-30b-a3b-tp4-bf16.json"
 fi
 
 INNER_CMD=$(cat <<'EOF'
@@ -55,7 +63,7 @@ ulimit -c 0
 pip install -e "${SERVEKIT_DIR}" --no-build-isolation --no-deps -q
 
 if [ "$MODE" = "fast" ]; then
-  servekit launch --servekit-artifact-path "${SHARDED_SRC}" --out "${REPORT}" --timeout 3000 \
+  servekit launch --servekit-artifact-path "${SHARDED_SRC}" --out "${REPORT}" --timeout 3000 --overlap \
     -- \
     python -m sglang.launch_server \
       --model-path "${MODEL}" \
@@ -67,6 +75,7 @@ if [ "$MODE" = "fast" ]; then
       --context-length 32768 \
       --mem-fraction-static 0.85 \
       --max-running-requests 256 \
+      --random-seed "${SEED}" \
       --enable-metrics &
   LAUNCH_PID=$!
 else
@@ -80,12 +89,15 @@ else
     --context-length 32768 \
     --mem-fraction-static 0.85 \
     --max-running-requests 256 \
+    --random-seed "${SEED}" \
     --enable-metrics &
   SERVER_PID=$!
 fi
 
 VERIFY_RC=0
 if [ "$MODE" = "fast" ]; then
+  servekit bench --url "http://127.0.0.1:8080" --into "${REPORT}" --wait-ready 3000 \
+    --requests 64 --concurrency 16 --input-len 512 --output-len 128 --no-correctness
   servekit verify --url "http://127.0.0.1:8080" --reference "${REFERENCE}" --out "${OUT}" --wait-ready 3000 || VERIFY_RC=$?
 else
   servekit verify --url "http://127.0.0.1:8080" --record "${OUT}" --wait-ready 3000 || VERIFY_RC=$?

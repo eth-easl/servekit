@@ -37,7 +37,7 @@ export PP="${PP:-2}"
 export PREPARED="${PREPARED:-${SCRATCH:-/tmp}/servekit-prepare-serve-pp-e2e-${SLURM_JOB_ID}}"
 
 # v0.5.11+, for the plugin framework the shim rides on.
-EDF="${SLURM_SUBMIT_DIR}/../../../examples/multinode/pipeline-parallel/sglang-clariden.toml"
+EDF="${SLURM_SUBMIT_DIR}/sglang.toml"
 export SERVEKIT_DIR="${SLURM_SUBMIT_DIR}/../../.."
 export BASELINE="${SLURM_SUBMIT_DIR}/logs/prepared-pp-${SLURM_JOB_ID}.baseline.json"
 export OUT="${SLURM_SUBMIT_DIR}/logs/prepared-pp-${SLURM_JOB_ID}.json"
@@ -94,8 +94,9 @@ json.dump({
 }, open(out, "w"))
 PY
 
-# (2) launch: the same command as (0), pointed at the artifact from (1).
-servekit launch --servekit-artifact-path "${PREPARED}" --out "${REPORT}" --timeout 3000 \
+# (2) launch: the same command as (0), pointed at the artifact from (1), with
+# the engine started concurrently with the stage.
+servekit launch --servekit-artifact-path "${PREPARED}" --out "${REPORT}" --timeout 3000 --overlap \
   -- \
   python -m sglang.launch_server \
     --model-path "${MODEL}" \
@@ -103,7 +104,10 @@ servekit launch --servekit-artifact-path "${PREPARED}" --out "${REPORT}" --timeo
     --enable-metrics &
 LAUNCH_PID=$!
 
-# (3) verify against the baseline from (0).
+# (3) bench for cold-start timing, then verify against the baseline from (0).
+servekit bench --url "http://127.0.0.1:8080" --into "${REPORT}" --wait-ready 3000 \
+  --requests 64 --concurrency 16 --input-len 512 --output-len 128 --no-correctness
+
 VERIFY_RC=0
 servekit verify --url "http://127.0.0.1:8080" --reference "${BASELINE}" \
   --out "${OUT}" --wait-ready 3000 || VERIFY_RC=$?

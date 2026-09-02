@@ -1,0 +1,26 @@
+# v0.5.11+: --overlap and pipeline parallel both ride on the plugin framework
+# that landed in that release. Shared by every e2e script -- single-node,
+# multinode TP, and multinode PP alike; the aws_ofi_nccl hook below is what
+# puts NCCL on Slingshot for the multinode ones and is a no-op otherwise.
+image = "lmsysorg/sglang:v0.5.11"
+
+mounts = [
+  "/capstor:/capstor",
+  "/iopsstor:/iopsstor",
+]
+
+workdir = "/iopsstor/scratch/cscs/yboughizane/cold-start-elimination/servekit-overlap-barrier/tests/e2e/scripts"
+
+[env]
+HOME = "/root"
+NCCL_DEBUG = "WARN"
+PYTHONPATH = ""
+PYTHONNOUSERSITE = "1"
+HF_HUB_OFFLINE = "1"
+TRANSFORMERS_OFFLINE = "1"
+TOKENIZERS_PARALLELISM = "false"
+
+[annotations]
+com.pyxis.entrypoint_log = "true"
+com.hooks.aws_ofi_nccl.enabled = "true"
+com.hooks.aws_ofi_nccl.variant = "cuda12"
