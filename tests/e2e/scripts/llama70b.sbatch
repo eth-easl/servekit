@@ -89,9 +89,12 @@ fi
 
 VERIFY_RC=0
 if [ "$MODE" = "fast" ]; then
+  # Verify first: the reference was recorded from a server that had served
+  # nothing, and 64 batched bench requests ahead of the check would have the two
+  # arms comparing different server states rather than different loaders.
+  servekit verify --url "http://127.0.0.1:8080" --reference "${REFERENCE}" --out "${OUT}" --wait-ready 3000 || VERIFY_RC=$?
   servekit bench --url "http://127.0.0.1:8080" --into "${REPORT}" --wait-ready 3000 \
     --requests 64 --concurrency 16 --input-len 512 --output-len 128 --no-correctness
-  servekit verify --url "http://127.0.0.1:8080" --reference "${REFERENCE}" --out "${OUT}" --wait-ready 3000 || VERIFY_RC=$?
 else
   servekit verify --url "http://127.0.0.1:8080" --record "${OUT}" --wait-ready 3000 || VERIFY_RC=$?
 fi

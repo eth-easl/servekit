@@ -4,6 +4,7 @@
 #   (1) servekit launch --only-prepare  -- dump a fresh sharded_state checkpoint
 #   (2) servekit launch                 -- find that artifact prepared, stage it, serve it
 #   (3) servekit verify    -- check (2)'s logprobs against (0)'s
+#   (4) servekit bench     -- cold-start timing, after the check
 #
 # The baseline is recorded by this job at the same TP/PP, so a structural
 # mismatch cannot masquerade as a loading bug and there is no fixture to go
@@ -68,11 +69,6 @@ COMMON_ARGS=(
   --context-length 32768
   --mem-fraction-static 0.85
   --max-running-requests 256
-  # Both arms load identical weights (0.0 logprob delta, proven separately by
-  # this job's own verify step) but can still diverge in free-running greedy
-  # continuation without this: any tie-break or routing decision left to RNG
-  # state compounds over the autoregressive loop. See qwen3coder.sbatch for
-  # the same call on MoE routing kernels.
   --random-seed 12345
 )
 
@@ -110,13 +106,16 @@ servekit launch --servekit-artifact-path "${PREPARED}" --out "${REPORT}" --timeo
     --enable-metrics &
 LAUNCH_PID=$!
 
-# (3) bench for cold-start timing, then verify against the baseline from (0).
-servekit bench --url "http://127.0.0.1:8080" --into "${REPORT}" --wait-ready 3000 \
-  --requests 64 --concurrency 16 --input-len 512 --output-len 128 --no-correctness
-
+# (3) verify against the baseline from (0), on a server as cold as the one the
+# baseline was recorded from: 64 batched bench requests first would leave the two
+# arms comparing different server states, not different loaders.
 VERIFY_RC=0
 servekit verify --url "http://127.0.0.1:8080" --reference "${BASELINE}" \
   --out "${OUT}" --wait-ready 3000 || VERIFY_RC=$?
+
+# (4) bench for cold-start timing, once the comparison above is safely done.
+servekit bench --url "http://127.0.0.1:8080" --into "${REPORT}" --wait-ready 3000 \
+  --requests 64 --concurrency 16 --input-len 512 --output-len 128 --no-correctness
 
 kill ${LAUNCH_PID} 2>/dev/null || true
 wait ${LAUNCH_PID} 2>/dev/null || true

@@ -103,9 +103,12 @@ fi
 
 if [ "\${SLURM_PROCID}" = "0" ]; then
   if [ "\${MODE}" = "fast" ]; then
+    # Verify first: the reference was recorded from a server that had served
+    # nothing, and 64 batched bench requests ahead of the check would have the
+    # two arms comparing server states rather than loaders.
+    servekit verify --url "http://127.0.0.1:8080" --reference "${REFERENCE:-}" --out "${OUT}" --wait-ready 3000 || true
     servekit bench --url "http://127.0.0.1:8080" --into "${REPORT:-}" --wait-ready 3000 \
       --requests 64 --concurrency 16 --input-len 512 --output-len 128 --no-correctness || true
-    servekit verify --url "http://127.0.0.1:8080" --reference "${REFERENCE:-}" --out "${OUT}" --wait-ready 3000 || true
   else
     servekit verify --url "http://127.0.0.1:8080" --record "${OUT}" --wait-ready 3000 || true
   fi
