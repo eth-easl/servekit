@@ -1,9 +1,10 @@
 #!/bin/bash
 # The whole pipeline in one job, on Apertus-8B at TP4 on a single node:
 #   (0) plain sglang       -- serve the HF checkpoint, record logprobs
-#   (1) servekit launch    -- stage the artifact and serve it under --overlap
-#   (2) servekit verify    -- check (1)'s logprobs against (0)'s
-#   (3) servekit bench     -- cold-start timing, after the check
+#   (1) servekit launch --only-prepare  -- dump a fresh sharded_state checkpoint
+#   (2) servekit launch                 -- stage that artifact and serve it
+#   (3) servekit verify    -- check (2)'s logprobs against (0)'s
+#   (4) servekit bench     -- cold-start timing, after the check
 #
 # The baseline is recorded by this job at the same TP, on the same node, so a
 # reference from other hardware cannot masquerade as a loading bug and there is
@@ -66,6 +67,7 @@ COMMON_ARGS=(
   --port 8080
   --served-model-name "${SERVED_MODEL_NAME}"
   --tensor-parallel-size "${TP}"
+  --attention-backend flashinfer
   --trust-remote-code
   --context-length 32768
   --mem-fraction-static 0.85
@@ -80,26 +82,11 @@ servekit verify --url "http://127.0.0.1:8080" --record "${BASELINE}" --wait-read
 kill ${BASELINE_PID} 2>/dev/null || true
 wait ${BASELINE_PID} 2>/dev/null || true
 
-# (1) launch: the same command as (0), pointed at the artifact, with the engine
-# started concurrently with the stage.
-servekit launch --servekit-artifact-path "${ARTIFACT}" --out "${REPORT}" --timeout 3000 --overlap \
+# (1) prepare. A no-op when ARTIFACT already holds a matching checkpoint, so the
+# pre-sharded path stays a straight launch.
+servekit launch --servekit-artifact-path "${ARTIFACT}" --only-prepare \
   -- \
-  python -m sglang.launch_server \
-    --model-path "${MODEL}" \
-    "${COMMON_ARGS[@]}" \
-    --enable-metrics &
-LAUNCH_PID=$!
-
-# (2) verify against the baseline from (0), on a server as cold as the one that
-# baseline was recorded from: 64 batched bench requests first would leave the two
-# arms comparing different server states, not different loaders.
-VERIFY_RC=0
-servekit verify --url "http://127.0.0.1:8080" --reference "${BASELINE}" \
-  --out "${OUT}" --wait-ready 3000 || VERIFY_RC=$?
-
-# (3) bench for cold-start timing, once the comparison above is safely done.
-servekit bench --url "http://127.0.0.1:8080" --into "${REPORT}" --wait-ready 3000 \
-  --requests 64 --concurrency 16 --input-len 512 --output-len 128 --no-correctness
+  python -m sglang.launch_server --model-path "${MODEL}" "${COMMON_ARGS[@]}"
 
 # The artifact may be scratch this job cleans up, so keep what the test
 # asserts on outside it.
@@ -114,6 +101,27 @@ summary = {d.name: {"bytes": sum(p.stat().st_size for p in d.rglob("*") if p.is_
 Path(os.environ["CACHES_OUT"]).write_text(json.dumps(summary))
 print(f"[E2E] JIT caches under {root}: {summary}")
 PY
+
+# (2) launch: the same command as (0), pointed at the artifact from (1), with
+# the engine started concurrently with the stage.
+servekit launch --servekit-artifact-path "${ARTIFACT}" --out "${REPORT}" --timeout 3000 --overlap \
+  -- \
+  python -m sglang.launch_server \
+    --model-path "${MODEL}" \
+    "${COMMON_ARGS[@]}" \
+    --enable-metrics &
+LAUNCH_PID=$!
+
+# (3) verify against the baseline from (0), on a server as cold as the one that
+# baseline was recorded from: 64 batched bench requests first would leave the two
+# arms comparing different server states, not different loaders.
+VERIFY_RC=0
+servekit verify --url "http://127.0.0.1:8080" --reference "${BASELINE}" \
+  --out "${OUT}" --wait-ready 3000 || VERIFY_RC=$?
+
+# (4) bench for cold-start timing, once the comparison above is safely done.
+servekit bench --url "http://127.0.0.1:8080" --into "${REPORT}" --wait-ready 3000 \
+  --requests 64 --concurrency 16 --input-len 512 --output-len 128 --no-correctness
 
 kill ${LAUNCH_PID} 2>/dev/null || true
 wait ${LAUNCH_PID} 2>/dev/null || true
