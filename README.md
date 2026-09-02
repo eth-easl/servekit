@@ -54,7 +54,7 @@ the artifact doesn't fit the command, servekit says which setting disagrees and
 falls back to the engine's own loader rather than failing the job.
 
 `--only-prepare` writes the artifact and stops. Pipeline parallelism needs
-sglang >= 0.5.11.
+sglang >= 0.5.14 (`sglang.srt.runtime_context`, for pp_rank/pp_size).
 
 `--overlap` starts the engine while the stage is still running, hiding it behind
 engine startup; sglang only.
@@ -99,7 +99,7 @@ otherwise. `--out` writes the per-prompt result as JSON.
 ### Roadmap 👷‍♂️🚧
 
 - [x] Support Multi-Node fast weight loading
-- [x] Support Pipeline parallelism (needs sglang >= 0.5.11)
+- [x] Support Pipeline parallelism (needs sglang >= 0.5.14)
 - [ ] Support vllm fast weight loading
 
 ## Tests

@@ -1,5 +1,7 @@
-# v0.5.11+, for the plugin framework the --overlap barrier rides on.
-image = "lmsysorg/sglang:v0.5.11"
+# v0.5.11+, for the plugin framework the --overlap barrier rides on. Pinned to
+# v0.5.16 to match the rest of the repo (pipeline parallel needs >= 0.5.14, for
+# sglang.srt.runtime_context).
+image = "lmsysorg/sglang:v0.5.16"
 
 mounts = [
   "/capstor:/capstor",

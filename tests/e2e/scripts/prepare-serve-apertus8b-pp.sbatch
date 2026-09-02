@@ -36,7 +36,7 @@ export TP="${TP:-2}"
 export PP="${PP:-2}"
 export PREPARED="${PREPARED:-${SCRATCH:-/tmp}/servekit-prepare-serve-pp-e2e-${SLURM_JOB_ID}}"
 
-# v0.5.11+, for the plugin framework the shim rides on.
+# v0.5.14+: this PP shim needs sglang.srt.runtime_context.
 EDF="${SLURM_SUBMIT_DIR}/sglang.toml"
 export SERVEKIT_DIR="${SLURM_SUBMIT_DIR}/../../.."
 export BASELINE="${SLURM_SUBMIT_DIR}/logs/prepared-pp-${SLURM_JOB_ID}.baseline.json"
@@ -68,6 +68,12 @@ COMMON_ARGS=(
   --context-length 32768
   --mem-fraction-static 0.85
   --max-running-requests 256
+  # Both arms load identical weights (0.0 logprob delta, proven separately by
+  # this job's own verify step) but can still diverge in free-running greedy
+  # continuation without this: any tie-break or routing decision left to RNG
+  # state compounds over the autoregressive loop. See qwen3coder.sbatch for
+  # the same call on MoE routing kernels.
+  --random-seed 12345
 )
 
 # (0) baseline: plain HF load at the same TP/PP as the fast arm.

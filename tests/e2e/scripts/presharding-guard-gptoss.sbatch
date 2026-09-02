@@ -44,24 +44,16 @@ servekit launch --servekit-artifact-path "${OUT}" --only-prepare \
     --moe-runner-backend triton_kernel \
     --mem-fraction-static 0.85 \
   > "${CAPTURE}" 2>&1
-echo \$? > "${CAPTURE}.rc"
-EOF
-)
-
-srun --nodes=1 --ntasks=1 --ntasks-per-node=1 \
-  --cpus-per-task="${SLURM_CPUS_PER_TASK}" --gpus-per-task=4 \
-  --environment="${EDF}" \
-  bash -c "${INNER_CMD}"
-
+RC=\$?
 cat "${CAPTURE}"
 
 # Read back by the test: whether prepare refused, and whether it left anything
-# behind that a later `servekit launch` could pick up and serve.
-python3 - "$CAPTURE" "$OUT" "$RESULT" <<'PY'
+# behind that a later \`servekit launch\` could pick up and serve. Runs inside
+# the container -- the pinned interpreter, not whatever python3 the submit
+# host's PATH happens to resolve first.
+python3 - "\${RC}" "${CAPTURE}" "${OUT}" "${RESULT}" <<'PY'
 import json, sys, glob, os
-capture, out, result = sys.argv[1:4]
-with open(capture + ".rc") as f:
-    rc = int(f.read().strip())
+rc, capture, out, result = int(sys.argv[1]), sys.argv[2], sys.argv[3], sys.argv[4]
 json.dump({
     "rc": rc,
     "output": open(capture).read(),
@@ -72,3 +64,10 @@ PY
 
 rm -rf "${OUT}"
 echo "wrote ${RESULT}"
+EOF
+)
+
+srun --nodes=1 --ntasks=1 --ntasks-per-node=1 \
+  --cpus-per-task="${SLURM_CPUS_PER_TASK}" --gpus-per-task=4 \
+  --environment="${EDF}" \
+  bash -c "${INNER_CMD}"

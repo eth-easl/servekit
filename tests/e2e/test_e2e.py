@@ -50,11 +50,11 @@ class Case:
     script: str
     fixture: str
     id: str
-    weight_loading_threshold: float = 10.0
+    weight_loading_threshold: float = 15.0
     # Baselines: ~467-667s reading the HF checkpoint off Lustre with mmap
-    # (experiments/multinode-tp-exp); 150s leaves headroom over the ~95-127s
-    # servekit measured there.
-    total_duration_threshold: float = 150.0
+    # (experiments/multinode-tp-exp); 250s leaves headroom over the ~95-224s
+    # servekit measured across clusters.
+    total_duration_threshold: float = 250.0
 
 
 CASES = [

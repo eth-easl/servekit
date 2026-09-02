@@ -1,8 +1,9 @@
-# v0.5.11+: --overlap and pipeline parallel both ride on the plugin framework
-# that landed in that release. Shared by every e2e script -- single-node,
-# multinode TP, and multinode PP alike; the aws_ofi_nccl hook below is what
-# puts NCCL on Slingshot for the multinode ones and is a no-op otherwise.
-image = "lmsysorg/sglang:v0.5.11"
+# v0.5.14+: --overlap rides on the plugin framework (v0.5.11+), pipeline
+# parallel additionally needs sglang.srt.runtime_context (v0.5.14+) -- this
+# file is shared by both single-node TP and single-node PP scripts. Single-node
+# only -- multinode scripts need cross-node NCCL fabric and use
+# sglang-multinode.toml instead (see there for why).
+image = "lmsysorg/sglang:v0.5.16"
 
 mounts = [
   "/capstor:/capstor",
@@ -22,5 +23,3 @@ TOKENIZERS_PARALLELISM = "false"
 
 [annotations]
 com.pyxis.entrypoint_log = "true"
-com.hooks.aws_ofi_nccl.enabled = "true"
-com.hooks.aws_ofi_nccl.variant = "cuda12"

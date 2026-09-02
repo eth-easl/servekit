@@ -32,7 +32,7 @@ case "$MODE" in
     ;;
 esac
 
-EDF="${SLURM_SUBMIT_DIR}/sglang.toml"
+EDF="${SLURM_SUBMIT_DIR}/sglang-multinode.toml"
 SERVED_MODEL_NAME=meta-llama/Llama-3.1-70B-Instruct
 SERVEKIT_DIR="${SLURM_SUBMIT_DIR}/../../.."
 OUT="${SLURM_SUBMIT_DIR}/logs/${OUT_PREFIX}-${SLURM_JOB_ID}.json"
