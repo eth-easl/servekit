@@ -1,4 +1,8 @@
 #!/bin/bash
+# Llama-3.1-70B, TP8, 2 nodes: one job covers both cold-start speed and
+# correctness for servekit's --overlap fast weight load, compared against
+# baseline (no servekit). MODE=baseline or MODE=fast (default), as in
+# llama70b.sbatch.
 #SBATCH --partition=debug
 #SBATCH --account=a-infra02
 #SBATCH --nodes=2
@@ -28,7 +32,7 @@ case "$MODE" in
     ;;
 esac
 
-EDF="${SLURM_SUBMIT_DIR}/../../../examples/multinode/tensor-parallel/sglang-clariden.toml"
+EDF="${SLURM_SUBMIT_DIR}/sglang-multinode.toml"
 SERVED_MODEL_NAME=meta-llama/Llama-3.1-70B-Instruct
 SERVEKIT_DIR="${SLURM_SUBMIT_DIR}/../../.."
 OUT="${SLURM_SUBMIT_DIR}/logs/${OUT_PREFIX}-${SLURM_JOB_ID}.json"
@@ -53,7 +57,7 @@ unset BASH_ENV
 pip install -e "${SERVEKIT_DIR}" --no-build-isolation --no-deps -q
 
 if [ "\${MODE}" = "fast" ]; then
-  servekit launch --servekit-artifact-path "${SHARDED_SRC}" --out "${REPORT:-}" --timeout 3000 \
+  servekit launch --servekit-artifact-path "${SHARDED_SRC}" --out "${REPORT:-}" --timeout 3000 --overlap \
     -- \
     python -m sglang.launch_server \
       --model-path "${MODEL}" \
@@ -90,7 +94,12 @@ fi
 
 if [ "\${SLURM_PROCID}" = "0" ]; then
   if [ "\${MODE}" = "fast" ]; then
+    # Verify first: the reference was recorded from a server that had served
+    # nothing, and 64 batched bench requests ahead of the check would have the
+    # two arms comparing server states rather than loaders.
     servekit verify --url "http://127.0.0.1:8080" --reference "${REFERENCE:-}" --out "${OUT}" --wait-ready 3000 || true
+    servekit bench --url "http://127.0.0.1:8080" --into "${REPORT:-}" --wait-ready 3000 \
+      --requests 64 --concurrency 16 --input-len 512 --output-len 128 --no-correctness || true
   else
     servekit verify --url "http://127.0.0.1:8080" --record "${OUT}" --wait-ready 3000 || true
   fi

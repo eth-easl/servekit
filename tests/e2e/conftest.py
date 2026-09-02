@@ -1,12 +1,20 @@
 import os
 import re
+import shlex
 import subprocess
 import time
 from pathlib import Path
 from typing import Mapping, Optional
 
 SCRIPTSDIR = Path(__file__).resolve().parent / "scripts"
-EXAMPLES = Path(__file__).resolve().parents[2] / "examples"
+
+# The scripts' #SBATCH directives (partition, account, cpus-per-task) are
+# tuned for CSCS Clariden. SLURM applies sbatch CLI flags over #SBATCH
+# directives, so a cluster with different accounting or node shapes (e.g.
+# Bristen: account infra02/partition normal/128 cpus per node, vs Clariden's
+# a-infra02/debug/288) can run the same scripts unmodified by setting this,
+# e.g. SERVEKIT_E2E_SBATCH_ARGS="--partition=normal --account=infra02 --cpus-per-task=128".
+SBATCH_ARGS = shlex.split(os.environ.get("SERVEKIT_E2E_SBATCH_ARGS", ""))
 
 
 def sbatch_wait(
@@ -25,7 +33,7 @@ def sbatch_wait(
     cannot leak into another's job in the same session.
     """
     submit = subprocess.run(
-        ["sbatch", script.name],
+        ["sbatch", *SBATCH_ARGS, script.name],
         cwd=script.parent,
         capture_output=True,
         text=True,

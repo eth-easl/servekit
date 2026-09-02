@@ -1,12 +1,15 @@
 #!/bin/bash
-# Correctness test for weight loading: compares baseline (no servekit) vs fast (servekit staging).
+# Llama-3.1-70B, TP4, 1 node: one job covers both cold-start speed and
+# correctness for servekit's --overlap fast weight load, compared against
+# baseline (no servekit).
 #
 # Run with MODE=baseline or MODE=fast environment variable:
-#   MODE=baseline sbatch correctness-llama70b.sbatch
-#   MODE=fast sbatch correctness-llama70b.sbatch
+#   MODE=baseline sbatch llama70b.sbatch
+#   MODE=fast sbatch llama70b.sbatch
 #
 # Baseline: plain sglang reading original HF safetensors.
-# Fast: presharded checkpoint staged into /dev/shm by servekit.
+# Fast: presharded checkpoint staged into /dev/shm by servekit, engine started
+# concurrently with the stage (--overlap).
 
 
 #SBATCH --partition=debug
@@ -38,7 +41,7 @@ case "$MODE" in
     ;;
 esac
 
-EDF="${SLURM_SUBMIT_DIR}/../../../examples/fast-weight-load/sglang.toml"
+EDF="${SLURM_SUBMIT_DIR}/sglang.toml"
 export SERVED_MODEL_NAME=meta-llama/Llama-3.1-70B-Instruct
 export SERVEKIT_DIR="${SLURM_SUBMIT_DIR}/../../.."
 export OUT="${SLURM_SUBMIT_DIR}/logs/${OUT_PREFIX}-${SLURM_JOB_ID}.json"
@@ -55,7 +58,7 @@ ulimit -c 0
 pip install -e "${SERVEKIT_DIR}" --no-build-isolation --no-deps -q
 
 if [ "$MODE" = "fast" ]; then
-  servekit launch --servekit-artifact-path "${SHARDED_SRC}" --out "${REPORT}" --timeout 3000 \
+  servekit launch --servekit-artifact-path "${SHARDED_SRC}" --out "${REPORT}" --timeout 3000 --overlap \
     -- \
     python -m sglang.launch_server \
       --model-path "${MODEL}" \
@@ -86,7 +89,12 @@ fi
 
 VERIFY_RC=0
 if [ "$MODE" = "fast" ]; then
+  # Verify first: the reference was recorded from a server that had served
+  # nothing, and 64 batched bench requests ahead of the check would have the two
+  # arms comparing different server states rather than different loaders.
   servekit verify --url "http://127.0.0.1:8080" --reference "${REFERENCE}" --out "${OUT}" --wait-ready 3000 || VERIFY_RC=$?
+  servekit bench --url "http://127.0.0.1:8080" --into "${REPORT}" --wait-ready 3000 \
+    --requests 64 --concurrency 16 --input-len 512 --output-len 128 --no-correctness
 else
   servekit verify --url "http://127.0.0.1:8080" --record "${OUT}" --wait-ready 3000 || VERIFY_RC=$?
 fi

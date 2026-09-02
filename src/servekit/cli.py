@@ -140,7 +140,7 @@ def _launch(argv: List[str]) -> int:
     parser.add_argument(
         "--overlap",
         action="store_true",
-        help="UNSAFE: start the engine concurrently with the stage; no barrier, corruption is silent",
+        help="start the engine concurrently with the stage; sglang only",
     )
     args = parser.parse_args(options)
 

@@ -1,0 +1,25 @@
+# v0.5.14+: --overlap rides on the plugin framework (v0.5.11+), pipeline
+# parallel additionally needs sglang.srt.runtime_context (v0.5.14+) -- this
+# file is shared by both single-node TP and single-node PP scripts. Single-node
+# only -- multinode scripts need cross-node NCCL fabric and use
+# sglang-multinode.toml instead (see there for why).
+image = "lmsysorg/sglang:v0.5.16"
+
+mounts = [
+  "/capstor:/capstor",
+  "/iopsstor:/iopsstor",
+]
+
+workdir = "/iopsstor/scratch/cscs/yboughizane/cold-start-elimination/servekit-overlap-barrier/tests/e2e/scripts"
+
+[env]
+HOME = "/root"
+NCCL_DEBUG = "WARN"
+PYTHONPATH = ""
+PYTHONNOUSERSITE = "1"
+HF_HUB_OFFLINE = "1"
+TRANSFORMERS_OFFLINE = "1"
+TOKENIZERS_PARALLELISM = "false"
+
+[annotations]
+com.pyxis.entrypoint_log = "true"

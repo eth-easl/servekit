@@ -6,9 +6,10 @@ ready.
 An artifact that does not match the command is a warning, not a refusal: servekit
 names the mismatch and runs the command untouched, on the engine's own loader.
 
-`--overlap` starts the engine alongside the stage. It is unsafe and opt-in: the
-stager truncates every destination to full size before writing, so an engine
-that opens a file too early reads zeros with no error.
+`--overlap` starts the engine alongside the stage, hiding it behind engine
+startup: an sglang plugin blocks each scheduler at the weight read until this
+node's stage has published done, so a scheduler never opens a file the stage
+has not finished writing.
 
 Multi-node is the same command on every node, under one srun task per node, with
 the engine's own `--nnodes / --node-rank / --dist-init-addr` set. Each node
@@ -25,6 +26,7 @@ import time
 from pathlib import Path
 from typing import List, Optional
 
+from . import _shim
 from . import jit_cache
 from . import manifest as manifest_mod
 from . import quant_guard
@@ -38,9 +40,8 @@ DEFAULT_ROOT = Path("/dev/shm/servekit")
 DEFAULT_CACHE_ROOT = jit_cache.NODE_LOCAL_ROOT
 
 OVERLAP_WARNING = (
-    "[SERVEKIT] --overlap is UNSAFE: the engine starts before staging finishes, with no barrier "
-    "stopping it reading a file that is at full size but still zero-filled. Corrupt weights are "
-    "silent. Check the output before trusting the run."
+    "[SERVEKIT] --overlap: the engine starts before staging finishes; it blocks at the weight "
+    "read until the stage into this node's copy is done."
 )
 
 
@@ -263,6 +264,8 @@ def launch(
                     )
         except RuntimeError as e:
             staged["error"] = e
+        if overlap:
+            _shim.publish_stage(str(dest), str(staged["error"]) if "error" in staged else _shim.STAGE_OK)
 
     def report_stage() -> None:
         result = staged["result"]
@@ -289,6 +292,8 @@ def launch(
         if overlap:
             print(OVERLAP_WARNING, file=sys.stderr, flush=True)
             print(f"[SERVEKIT] staging {src} -> {dest} (overlapped, {pattern})", flush=True)
+            _shim.clear_stage(str(dest))
+            _shim.publish_stage(str(dest), _shim.STAGE_PENDING)
             thread = threading.Thread(target=do_stage)
             thread.start()
         else:
@@ -351,6 +356,8 @@ def launch(
         if not plain:
             freed = free(dest)
             print(f"[SERVEKIT] freed {freed / 1e9:.1f} GB from {dest}", flush=True)
+            if overlap:
+                _shim.clear_stage(str(dest))
 
     report = run_profile(
         engine_command,
@@ -365,6 +372,8 @@ def launch(
         emit(report)
         if not plain:
             print(f"[SERVEKIT] server never reported ready; {dest} left in place (rm -r {dest})", file=sys.stderr)
+            if overlap:
+                _shim.clear_stage(str(dest))
 
     if "error" in staged:
         print(f"error: the stage failed: {staged['error']}", file=sys.stderr)

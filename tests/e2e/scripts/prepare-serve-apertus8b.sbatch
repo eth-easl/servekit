@@ -1,20 +1,24 @@
 #!/bin/bash
-# The whole pipeline in one job, on Apertus-8B at TP2/PP2 on a single node:
+# The whole pipeline in one job, on Apertus-8B at TP4 on a single node:
 #   (0) plain sglang       -- serve the HF checkpoint, record logprobs
 #   (1) servekit launch --only-prepare  -- dump a fresh sharded_state checkpoint
-#   (2) servekit launch                 -- find that artifact prepared, stage it, serve it
+#   (2) servekit launch                 -- stage that artifact and serve it
 #   (3) servekit verify    -- check (2)'s logprobs against (0)'s
 #   (4) servekit bench     -- cold-start timing, after the check
 #
-# The baseline is recorded by this job at the same TP/PP, so a structural
-# mismatch cannot masquerade as a loading bug and there is no fixture to go
-# stale. TP2/PP2 fits four GPUs on one node, which keeps this off the sliced
-# multi-node staging path.
+# The baseline is recorded by this job at the same TP, on the same node, so a
+# reference from other hardware cannot masquerade as a loading bug and there is
+# no fixture to go stale.
 #
-#   sbatch prepare-serve-apertus8b-pp.sbatch
-#   KEEP_PREPARED=1 sbatch prepare-serve-apertus8b-pp.sbatch   # keep (1) for inspection
+#   sbatch prepare-serve-apertus8b.sbatch
+#   FRESH=1 sbatch prepare-serve-apertus8b.sbatch      # shard it in this job
+#   KEEP_ARTIFACT=1 FRESH=1 sbatch prepare-serve-apertus8b.sbatch
+#
+# FRESH points the artifact at an empty scratch dir, so `servekit launch` shards
+# the checkpoint itself instead of reading one sharded long ago.
 
-#SBATCH --job-name=servekit-prepare-serve-apertus8b-pp
+
+#SBATCH --job-name=servekit-prepare-serve-apertus8b
 #SBATCH --partition=debug
 #SBATCH --account=a-infra02
 #SBATCH --nodes=1
@@ -32,39 +36,38 @@ set -euo pipefail
 SLURM_SUBMIT_DIR="$(cd "${SLURM_SUBMIT_DIR}" && pwd -P)"
 
 export MODEL="${MODEL:-/capstor/store/cscs/swissai/infra01/hf_models/models/swiss-ai/Apertus-8B-Instruct-2509}"
-export SERVED_MODEL_NAME=swiss-ai/Apertus-8B-Instruct-2509
-export TP="${TP:-2}"
-export PP="${PP:-2}"
-export PREPARED="${PREPARED:-${SCRATCH:-/tmp}/servekit-prepare-serve-pp-e2e-${SLURM_JOB_ID}}"
+export TP="${TP:-4}"
 
-# v0.5.14+: this PP shim needs sglang.srt.runtime_context.
-EDF="${SLURM_SUBMIT_DIR}/sglang.toml"
-export SERVEKIT_DIR="${SLURM_SUBMIT_DIR}/../../.."
-export BASELINE="${SLURM_SUBMIT_DIR}/logs/prepared-pp-${SLURM_JOB_ID}.baseline.json"
-export OUT="${SLURM_SUBMIT_DIR}/logs/prepared-pp-${SLURM_JOB_ID}.json"
-export REPORT="${SLURM_SUBMIT_DIR}/logs/prepared-pp-${SLURM_JOB_ID}.report.json"
-export MANIFEST_OUT="${SLURM_SUBMIT_DIR}/logs/prepared-pp-${SLURM_JOB_ID}.manifest.json"
-export SHARDS_OUT="${SLURM_SUBMIT_DIR}/logs/prepared-pp-${SLURM_JOB_ID}.shards.json"
-
-if [ -z "${KEEP_PREPARED:-}" ]; then
-  trap 'rm -rf "${PREPARED}"' EXIT
+if [ -n "${FRESH:-}" ]; then
+  export ARTIFACT="${ARTIFACT:-${SCRATCH:-/tmp}/servekit-correctness-e2e-${SLURM_JOB_ID}}"
+  [ -n "${KEEP_ARTIFACT:-}" ] || trap 'rm -rf "${ARTIFACT}"' EXIT
+else
+  export ARTIFACT="${ARTIFACT:-/capstor/store/cscs/swissai/infra01/cold-start-experiments/apertus8b-tp4-sharded}"
 fi
 
-# No backticks below, not even in comments: they would be command substituted on
-# the submit host while this heredoc is built.
+EDF="${SLURM_SUBMIT_DIR}/sglang.toml"
+export SERVED_MODEL_NAME=swiss-ai/Apertus-8B-Instruct-2509
+export SERVEKIT_DIR="${SLURM_SUBMIT_DIR}/../../.."
+export BASELINE="${SLURM_SUBMIT_DIR}/logs/prepared-${SLURM_JOB_ID}.baseline.json"
+export OUT="${SLURM_SUBMIT_DIR}/logs/prepared-${SLURM_JOB_ID}.json"
+export REPORT="${SLURM_SUBMIT_DIR}/logs/prepared-${SLURM_JOB_ID}.report.json"
+export MANIFEST_OUT="${SLURM_SUBMIT_DIR}/logs/prepared-${SLURM_JOB_ID}.manifest.json"
+export CACHES_OUT="${SLURM_SUBMIT_DIR}/logs/prepared-${SLURM_JOB_ID}.caches.json"
+
 INNER_CMD=$(cat <<'EOF'
 set -euo pipefail
 ulimit -c 0
 
 pip install -e "${SERVEKIT_DIR}" --no-build-isolation --no-deps -q
 
+# One list, both arms: an engine flag that reached only one of them would show up
+# as a loading difference that isn't one.
 COMMON_ARGS=(
-  --tensor-parallel-size "${TP}"
-  --pipeline-parallel-size "${PP}"
-  --attention-backend flashinfer
   --host 0.0.0.0
   --port 8080
   --served-model-name "${SERVED_MODEL_NAME}"
+  --tensor-parallel-size "${TP}"
+  --attention-backend flashinfer
   --trust-remote-code
   --context-length 32768
   --mem-fraction-static 0.85
@@ -72,33 +75,36 @@ COMMON_ARGS=(
   --random-seed 12345
 )
 
-# (0) baseline: plain HF load at the same TP/PP as the fast arm.
+# (0) baseline: plain HF load at the same TP as the fast arm.
 python -m sglang.launch_server --model-path "${MODEL}" "${COMMON_ARGS[@]}" &
 BASELINE_PID=$!
 servekit verify --url "http://127.0.0.1:8080" --record "${BASELINE}" --wait-ready 3000
 kill ${BASELINE_PID} 2>/dev/null || true
 wait ${BASELINE_PID} 2>/dev/null || true
 
-# (1) prepare.
-servekit launch --servekit-artifact-path "${PREPARED}" --only-prepare \
+# (1) prepare. A no-op when ARTIFACT already holds a matching checkpoint, so the
+# pre-sharded path stays a straight launch.
+servekit launch --servekit-artifact-path "${ARTIFACT}" --only-prepare \
   -- \
   python -m sglang.launch_server --model-path "${MODEL}" "${COMMON_ARGS[@]}"
 
-# The checkpoint is scratch, so keep what the test asserts on outside it.
-cp "${PREPARED}/servekit.json" "${MANIFEST_OUT}"
-python3 - "${PREPARED}" "${SHARDS_OUT}" <<'PY'
-import json, os, sys
-prepared, out = sys.argv[1:3]
-names = sorted(os.listdir(prepared))
-json.dump({
-    "shards": [n for n in names if n.endswith(".safetensors")],
-    "markers": [n for n in names if n.startswith(".sharded-state-done")],
-}, open(out, "w"))
+# The artifact may be scratch this job cleans up, so keep what the test
+# asserts on outside it.
+cp "${ARTIFACT}/servekit.json" "${MANIFEST_OUT}"
+python - <<'PY'
+import json, os
+from pathlib import Path
+
+root = Path(os.environ["ARTIFACT"]) / "servekit-caches"
+dirs = sorted(d for d in root.iterdir() if d.is_dir()) if root.is_dir() else []
+summary = {d.name: {"bytes": sum(p.stat().st_size for p in d.rglob("*") if p.is_file())} for d in dirs}
+Path(os.environ["CACHES_OUT"]).write_text(json.dumps(summary))
+print(f"[E2E] JIT caches under {root}: {summary}")
 PY
 
 # (2) launch: the same command as (0), pointed at the artifact from (1), with
 # the engine started concurrently with the stage.
-servekit launch --servekit-artifact-path "${PREPARED}" --out "${REPORT}" --timeout 3000 --overlap \
+servekit launch --servekit-artifact-path "${ARTIFACT}" --out "${REPORT}" --timeout 3000 --overlap \
   -- \
   python -m sglang.launch_server \
     --model-path "${MODEL}" \
@@ -106,7 +112,7 @@ servekit launch --servekit-artifact-path "${PREPARED}" --out "${REPORT}" --timeo
     --enable-metrics &
 LAUNCH_PID=$!
 
-# (3) verify against the baseline from (0), on a server as cold as the one the
+# (3) verify against the baseline from (0), on a server as cold as the one that
 # baseline was recorded from: 64 batched bench requests first would leave the two
 # arms comparing different server states, not different loaders.
 VERIFY_RC=0

@@ -1,0 +1,29 @@
+# Same as sglang.toml, plus the aws_ofi_nccl hook: it's what puts NCCL on
+# Slingshot, and it is the only fabric configuration cross-node needs here --
+# no NCCL_SOCKET_IFNAME, no NCCL_IB_HCA, no GLOO_SOCKET_IFNAME. Without it the
+# collectives fall back to sockets and cross-node TP/PP is unusable. Not used
+# for single-node jobs: on top of being unnecessary there, a cluster that
+# hasn't provisioned the hook's netstack path fails container startup with it
+# enabled at all, single-node included.
+image = "lmsysorg/sglang:v0.5.16"
+
+mounts = [
+  "/capstor:/capstor",
+  "/iopsstor:/iopsstor",
+]
+
+workdir = "/iopsstor/scratch/cscs/yboughizane/cold-start-elimination/servekit-overlap-barrier/tests/e2e/scripts"
+
+[env]
+HOME = "/root"
+NCCL_DEBUG = "WARN"
+PYTHONPATH = ""
+PYTHONNOUSERSITE = "1"
+HF_HUB_OFFLINE = "1"
+TRANSFORMERS_OFFLINE = "1"
+TOKENIZERS_PARALLELISM = "false"
+
+[annotations]
+com.pyxis.entrypoint_log = "true"
+com.hooks.aws_ofi_nccl.enabled = "true"
+com.hooks.aws_ofi_nccl.variant = "cuda12"

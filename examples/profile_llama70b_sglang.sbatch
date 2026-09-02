@@ -1,5 +1,7 @@
 #!/bin/bash
-#SBATCH --job-name=apertus-8b-sglang
+# `servekit profile`: per-phase timing off the engine's own log output, no
+# servekit optimizations applied. Llama-3.1-70B, TP4, 1 node.
+#SBATCH --job-name=profile-llama70b-sglang
 #SBATCH --partition=debug
 #SBATCH --account=a-infra02
 #SBATCH --nodes=1
@@ -12,12 +14,12 @@
 
 set -euo pipefail
 
-EDF="${SLURM_SUBMIT_DIR}/profile/apertus-8b-bristen/apertus-8b-sglang.toml"
-MODEL=/capstor/store/cscs/swissai/infra01/hf_models/models/swiss-ai/Apertus-8B-Instruct-2509
-SERVED_MODEL_NAME=swiss-ai/Apertus-8B-Instruct-2509
-# ServerKit directory
+EDF="${SLURM_SUBMIT_DIR}/sglang.toml"
+MODEL="${MODEL:-/capstor/store/cscs/swissai/infra01/hf_models/models/meta-llama/Llama-3.1-70B-Instruct}"
+SERVED_MODEL_NAME=meta-llama/Llama-3.1-70B-Instruct
+
 SERVEKIT_DIR="${SLURM_SUBMIT_DIR}/.."
-PROFILE_OUT="${SLURM_SUBMIT_DIR}/logs/${SLURM_JOB_NAME}-${SLURM_JOB_ID}-profile.json"
+PROFILE_OUT="${SLURM_SUBMIT_DIR}/logs/${SLURM_JOB_NAME}-${SLURM_JOB_ID}.json"
 
 INNER_CMD=$(cat <<EOF
 set -euo pipefail
@@ -46,6 +48,3 @@ srun \
   --gpus-per-task=4 \
   --environment="${EDF}" \
   bash -c "${INNER_CMD}"
-SRUN_EXIT=$?
-echo "srun_exited code=${SRUN_EXIT} $(date --iso-8601=seconds)"
-exit "${SRUN_EXIT}"

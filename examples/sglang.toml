@@ -1,11 +1,14 @@
-image = "lmsysorg/sglang:v0.5.10"
+# v0.5.11+, for the plugin framework the --overlap barrier rides on. Pinned to
+# v0.5.16 to match the rest of the repo (pipeline parallel needs >= 0.5.14, for
+# sglang.srt.runtime_context).
+image = "lmsysorg/sglang:v0.5.16"
 
 mounts = [
   "/capstor:/capstor",
   "/iopsstor:/iopsstor",
 ]
 
-workdir = "/iopsstor/scratch/cscs/yboughizane/simple-serving-stack/examples/fast-weight-load"
+workdir = "/iopsstor/scratch/cscs/yboughizane/cold-start-elimination/servekit-overlap-barrier/examples"
 
 [env]
 HOME = "/root"

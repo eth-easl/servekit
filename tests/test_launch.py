@@ -3,13 +3,15 @@ import filecmp
 import hashlib
 import os
 import tempfile
+import threading
+import time
 from pathlib import Path
 
 import numpy as np
 import pytest
 from safetensors.numpy import save_file
 
-from servekit import jit_cache
+from servekit import _shim, jit_cache
 from servekit.cli import main
 from servekit.engine_args import find_model_path, replace_model_path
 from servekit.manifest import Manifest
@@ -123,7 +125,7 @@ def prepared_checkpoint(tmp_path, model):
     return src
 
 
-def _launch(tmp_path, model, artifact, monkeypatch):
+def _launch(tmp_path, model, artifact, monkeypatch, overlap=False):
     # --shm-root/--cache-root aren't public CLI flags, so isolation from the
     # real /dev/shm and /tmp/servekit/caches goes through the module defaults.
     monkeypatch.setattr("servekit.launch.DEFAULT_ROOT", tmp_path / "shm")
@@ -133,6 +135,7 @@ def _launch(tmp_path, model, artifact, monkeypatch):
         "launch",
         "--servekit-artifact-path", str(artifact),
         "--out", str(tmp_path / "run.json"),
+        *(["--overlap"] if overlap else []),
         "--", "python", "-m", "sglang.launch_server", "--model-path", str(model),
     ])
 
@@ -163,6 +166,60 @@ def test_a_checkpoint_with_no_caches_still_serves(tmp_path, model, prepared_chec
 
     assert fake_engine["env"] == {}
     assert "JIT from cold" in capsys.readouterr().out
+
+
+# --- --overlap: the stage barrier -------------------------------------------
+
+def test_a_serial_run_never_touches_the_stage_marker(tmp_path, model, prepared_checkpoint, fake_engine, monkeypatch):
+    assert _launch(tmp_path, model, prepared_checkpoint, monkeypatch) == 0
+
+    dest = tmp_path / "shm" / prepared_checkpoint.name
+    assert not Path(_shim.stage_marker(str(dest))).exists()
+
+
+def test_overlap_publishes_pending_then_clears_the_marker(tmp_path, model, prepared_checkpoint, monkeypatch):
+    def slow_stage(src, dest, slices=64, file_pattern="*"):
+        time.sleep(0.1)
+        dest.mkdir(parents=True, exist_ok=True)
+        for f in src.glob(file_pattern):
+            (dest / f.name).write_bytes(f.read_bytes())
+        return StageResult(dest=dest, wall_s=0.1, gbps=1.0, bytes=1)
+
+    def fake_run_profile(command, ready_timeout=1800.0, on_ready=None, head=True, env=None):
+        return ProfileReport(command="", started_at=0.0, ready_at=1.0, success=True, framework="sglang")
+
+    monkeypatch.setattr("servekit.launch.stage", slow_stage)
+    monkeypatch.setattr("servekit.launch.run_profile", fake_run_profile)
+
+    dest = tmp_path / "shm" / prepared_checkpoint.name
+    marker = Path(_shim.stage_marker(str(dest)))
+    result = {}
+    thread = threading.Thread(
+        target=lambda: result.__setitem__("rc", _launch(tmp_path, model, prepared_checkpoint, monkeypatch, overlap=True))
+    )
+    thread.start()
+
+    deadline = time.monotonic() + 5
+    while not marker.exists() and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert marker.read_text() == _shim.STAGE_PENDING
+
+    thread.join(timeout=5)
+    assert result["rc"] == 0
+    assert not marker.exists()
+
+
+def test_a_failed_overlapped_stage_is_reported(tmp_path, model, prepared_checkpoint, fake_engine, monkeypatch, capsys):
+    def failing_stage(src, dest, slices=64, file_pattern="*"):
+        raise RuntimeError("stager failed: disk full")
+
+    monkeypatch.setattr("servekit.launch.stage", failing_stage)
+
+    assert _launch(tmp_path, model, prepared_checkpoint, monkeypatch, overlap=True) == 1
+    assert "stager failed: disk full" in capsys.readouterr().err
+
+    dest = tmp_path / "shm" / prepared_checkpoint.name
+    assert not Path(_shim.stage_marker(str(dest))).exists()
 
 
 # --- the stager ------------------------------------------------------------
