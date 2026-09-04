@@ -31,7 +31,12 @@ JOB_TIMEOUT = 9000
 
 def _log(job_id: str, suffix: str) -> dict:
     path = SCRIPTSDIR / "logs" / f"fast-{job_id}{suffix}"
-    assert path.is_file(), f"the fast arm wrote no {suffix} output at {path}"
+    if not path.is_file():
+        # Multi-node launch writes the head's report as .node0, never the bare
+        # name, so the single-node name alone would fail every multinode case.
+        head = path.with_name(f"{path.stem}.node0{path.suffix}")
+        assert head.is_file(), f"the fast arm wrote no {suffix} output at {path} or {head}"
+        path = head
     return json.loads(path.read_text())
 
 

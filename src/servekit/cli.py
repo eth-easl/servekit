@@ -159,19 +159,26 @@ def _launch(argv: List[str]) -> int:
         return 2
 
 
-def _wait_for_report(path: Path, timeout_s: float, interval_s: float = 0.5) -> bool:
+def _wait_for_report(path: Path, timeout_s: float, interval_s: float = 0.5) -> Optional[Path]:
     """Block until `profile` has written its report, or `timeout_s` elapses.
 
     An engine accepts traffic before it announces ready, so probing over HTTP
     alone could start benching mid-warmup and corrupt the cold-start
     measurement. The report's appearance is the ready signal instead.
+
+    Multi-node `launch` writes run.node<rank>.json and never the bare name it
+    was given, so the head's own file counts too: otherwise `--into run.json`
+    waits out the whole clock against a job that is serving fine.
     """
+    head = path.with_name(f"{path.stem}.node0{path.suffix}")
     t0 = time.time()
-    while not path.exists():
+    while True:
+        for candidate in (path, head):
+            if candidate.exists():
+                return candidate
         if time.time() - t0 >= timeout_s:
-            return False
+            return None
         time.sleep(interval_s)
-    return True
 
 
 def _merge_into(path: Path, benchmark: dict) -> int:
@@ -236,9 +243,13 @@ def _bench(argv: List[str]) -> int:
 
     if args.into is not None and args.wait_ready > 0 and not args.into.exists():
         print(f"[SERVEKIT] waiting for the profile report {args.into}", flush=True)
-        if not _wait_for_report(args.into, args.wait_ready):
+        found = _wait_for_report(args.into, args.wait_ready)
+        if found is None:
             print(f"error: no profile report at {args.into} after {args.wait_ready:g}s", file=sys.stderr)
             return 1
+        if found != args.into:
+            print(f"[SERVEKIT] no {args.into.name}; merging into the head's {found.name}", flush=True)
+            args.into = found
 
     if args.wait_ready > 0:
         print(f"[SERVEKIT] waiting up to {args.wait_ready:g}s for {args.url} to serve", flush=True)

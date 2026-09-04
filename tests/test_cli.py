@@ -132,3 +132,23 @@ def test_bench_reports_failure_when_server_never_serves():
         rc = main(["bench", "--url", _dead_url(), "--out", str(path), "--wait-ready", "0.3"])
         assert rc == 1
         assert json.loads(path.read_text())["errors"]
+
+
+def test_wait_for_report_accepts_the_head_nodes_multinode_name():
+    from servekit.cli import _wait_for_report
+
+    with tempfile.TemporaryDirectory() as d:
+        asked = Path(d) / "run.report.json"
+        head = Path(d) / "run.report.node0.json"
+        head.write_text("{}")
+
+        found = _wait_for_report(asked, timeout_s=0.5)
+
+        assert found == head
+
+
+def test_wait_for_report_still_times_out_when_neither_name_appears():
+    from servekit.cli import _wait_for_report
+
+    with tempfile.TemporaryDirectory() as d:
+        assert _wait_for_report(Path(d) / "run.report.json", timeout_s=0.2) is None
