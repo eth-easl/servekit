@@ -1,0 +1,25 @@
+image = "lmsysorg/sglang:v0.5.16"
+
+mounts = [
+  "/capstor:/capstor",
+  "/iopsstor:/iopsstor",
+]
+
+[env]
+HOME = "/root"
+NCCL_DEBUG = "WARN"
+PYTHONPATH = ""
+PYTHONNOUSERSITE = "1"
+HF_HUB_OFFLINE = "1"
+TRANSFORMERS_OFFLINE = "1"
+TOKENIZERS_PARALLELISM = "false"
+NCCL_SOCKET_IFNAME = "hsn0"
+GLOO_SOCKET_IFNAME = "hsn0"
+FI_CXI_RDZV_THRESHOLD = "0"
+FI_CXI_RDZV_GET_MIN = "0"
+
+[annotations]
+com.pyxis.entrypoint_log = "true"
+com.hooks.aws_ofi_nccl.enabled = "true"
+com.hooks.aws_ofi_nccl.variant = "cuda12"
+com.hooks.netstack.name = "gpu_cuda13-cxi_13.1.0-ofi_2.6.0-aws_1.20.0_dl"
