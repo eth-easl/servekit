@@ -226,7 +226,7 @@ def launch(
     # A presharded checkpoint gives each rank its own files, so a node stages
     # only its own ranks' -- two nodes pull disjoint halves off Lustre at once
     # instead of the whole checkpoint twice.
-    sliced = topo.is_multinode and wants_sharded_state(command)
+    sliced = topo.is_multinode and not plain and wants_sharded_state(engine_command)
     # The engine reads config.json and the tokenizer within seconds of starting,
     # so with --overlap those cannot be left to a stage still running underneath
     # it: the stager truncates every destination to full size first, so an early
