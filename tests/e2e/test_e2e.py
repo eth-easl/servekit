@@ -26,12 +26,17 @@ FIXTURES = Path(__file__).parent / "fixtures"
 
 # The fast arm shards the checkpoint itself when the artifact is missing,
 # which is a dump on top of the cold start, and the queue on top of that.
-JOB_TIMEOUT = 3600
+JOB_TIMEOUT = 9000
 
 
 def _log(job_id: str, suffix: str) -> dict:
     path = SCRIPTSDIR / "logs" / f"fast-{job_id}{suffix}"
-    assert path.is_file(), f"the fast arm wrote no {suffix} output at {path}"
+    if not path.is_file():
+        # Multi-node launch writes the head's report as .node0, never the bare
+        # name, so the single-node name alone would fail every multinode case.
+        head = path.with_name(f"{path.stem}.node0{path.suffix}")
+        assert head.is_file(), f"the fast arm wrote no {suffix} output at {path} or {head}"
+        path = head
     return json.loads(path.read_text())
 
 
@@ -71,6 +76,17 @@ CASES = [
         script="apertus8b-multinode-pp.sbatch",
         fixture="apertus8b-tp4pp2-bf16.json",
         id="apertus8b_tp4pp2_multinode",
+    ),
+    # pp multinode, moe, fp8
+    Case(
+        script="glm51-fp8-multinode-pp.sbatch",
+        fixture="glm5.1-tp4pp4-fp8.json",
+        id="glm51_fp8_tp4pp4_multinode",
+        # 705 GB across 78 layers: 6.1s weight_loading, 234.7s total. Nearly all
+        # of the rest is cuda graph capture and JIT warmup, which scale with the
+        # model rather than the loader, so this sits well above the 250s default
+        # instead of a few seconds under it.
+        total_duration_threshold=400.0,
     ),
 ]
 

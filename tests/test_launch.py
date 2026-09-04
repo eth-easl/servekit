@@ -286,3 +286,45 @@ def test_stage_is_bitwise_exact_across_concurrent_writers(odirect_tmpdir):
 def test_stage_fails_loudly_on_a_missing_source(odirect_tmpdir):
     with pytest.raises(RuntimeError, match="stager failed"):
         stage(odirect_tmpdir / "nope", odirect_tmpdir / "dest")
+
+
+def test_a_node_slices_even_when_servekit_supplies_the_load_format(tmp_path, monkeypatch, model):
+    seen = {}
+
+    def fake_stage(src, dest, slices=64, file_pattern="*"):
+        seen["pattern"] = file_pattern
+        return StageResult(dest=dest, wall_s=0.1, gbps=1.0, bytes=1)
+
+    def fake_run_profile(command, ready_timeout=1800.0, on_ready=None, head=True, env=None):
+        return ProfileReport(command="", started_at=0.0, ready_at=1.0, success=True, framework="sglang")
+
+    monkeypatch.setattr("servekit.launch.stage", fake_stage)
+    monkeypatch.setattr("servekit.launch.run_profile", fake_run_profile)
+    monkeypatch.setattr("servekit.launch.DEFAULT_ROOT", tmp_path / "shm")
+    monkeypatch.setattr("servekit.launch.DEFAULT_CACHE_ROOT", tmp_path / "cache-root")
+
+    artifact = tmp_path / "glm-tp4pp2"
+    artifact.mkdir()
+    (artifact / "config.json").write_text("{}")
+    for tp in range(4):
+        (artifact / f"model-pp-1-rank-{tp}-part-0.safetensors").write_bytes(b"weights")
+    Manifest(
+        format="sharded_state", engine="sglang", engine_version="0.5.16",
+        tp_size=4, pp_size=2, dp_size=1, dtype="bfloat16", quantization="fp8",
+        source=str(model),
+    ).write(artifact)
+
+    main([
+        "launch", "--servekit-artifact-path", str(artifact),
+        "--out", str(tmp_path / "run.json"),
+        "--", "python", "-m", "sglang.launch_server",
+        "--model-path", str(model),
+        "--tensor-parallel-size", "4",
+        "--pipeline-parallel-size", "2",
+        "--nnodes", "2",
+        "--node-rank", "1",
+        "--dist-init-addr", "head:20000",
+    ])
+
+    assert seen["pattern"] != "*", "every node staged the whole checkpoint"
+    assert seen["pattern"].startswith("model-pp-1-rank-")
