@@ -76,3 +76,37 @@ def test_no_sglang_at_all_names_what_it_tried(tmp_path, sys_path, monkeypatch):
     monkeypatch.setattr(sys, "path", [str(tmp_path)])
     with pytest.raises(SystemExit, match="no sglang holding"):
         sglang_35715.target()
+
+
+def test_an_editable_install_is_found_through_the_import_system(tmp_path, sys_path, monkeypatch):
+    """A PEP 660 editable install resolves through a meta-path finder, so it is
+    reachable by importing the module and by nothing on sys.path."""
+    shadow = tmp_path / "opt"
+    (shadow / "sglang" / "python").mkdir(parents=True)
+    real = _install(tmp_path / "editable" / "sglang")
+    monkeypatch.setattr(sys, "path", [str(shadow)])
+
+    class Spec:
+        origin = str(real)
+
+    def fake_find_spec(name):
+        if name == "sglang":
+            return None
+        assert name == "sglang.srt.models.deepseek_v2"
+        assert str(shadow) not in sys.path, "the shadow must be off sys.path for the import to bind"
+        return Spec()
+
+    monkeypatch.setattr(sglang_35715.importlib.util, "find_spec", fake_find_spec)
+
+    assert sglang_35715.target() == real
+
+
+def test_an_unimportable_sglang_still_reports_rather_than_raising(tmp_path, sys_path, monkeypatch):
+    monkeypatch.setattr(sys, "path", [str(tmp_path)])
+
+    def boom(name):
+        raise ModuleNotFoundError(name)
+
+    monkeypatch.setattr(sglang_35715.importlib.util, "find_spec", boom)
+    with pytest.raises(SystemExit, match="no sglang holding"):
+        sglang_35715.target()

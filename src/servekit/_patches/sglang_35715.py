@@ -10,7 +10,7 @@ a fresh model has never forwarded, so loading KeyErrors on the attn_mha name.
 import importlib.util
 import sys
 from pathlib import Path
-from typing import Iterator
+from typing import Iterator, Optional
 
 OLD_INIT = "        self.attn_mha.kv_b_proj = None\n"
 NEW_INIT = (
@@ -37,7 +37,10 @@ def roots() -> Iterator[Path]:
     python/ directory. Whichever candidate actually holds the file wins.
     """
     seen = set()
-    spec = importlib.util.find_spec("sglang")
+    try:
+        spec = importlib.util.find_spec("sglang")
+    except Exception:
+        spec = None
     locations = list(spec.submodule_search_locations or ()) if spec is not None else []
     for entry in sys.path:
         if entry:
@@ -48,6 +51,40 @@ def roots() -> Iterator[Path]:
             yield Path(location)
 
 
+def _shadow_free_path() -> list:
+    """sys.path without the entries that only offer a package missing the file.
+
+    /opt/sglang is the source tree, not the package, so leaving it in place
+    makes `import sglang` bind to an empty namespace and the submodule lookup
+    below fail before it reaches the real install.
+    """
+    keep = []
+    for entry in sys.path:
+        directory = Path(entry or ".") / "sglang"
+        if directory.is_dir() and not (directory / RELATIVE).is_file():
+            continue
+        keep.append(entry)
+    return keep
+
+
+def _module_origin() -> Optional[Path]:
+    """Where the import system says the module lives.
+
+    An editable install resolves through a meta-path finder rather than a
+    directory on sys.path, so scanning cannot see it. This costs an import of
+    sglang, which is why it is the fallback and not the first move.
+    """
+    saved = list(sys.path)
+    sys.path[:] = _shadow_free_path()
+    try:
+        spec = importlib.util.find_spec("sglang.srt.models.deepseek_v2")
+    except Exception:
+        return None
+    finally:
+        sys.path[:] = saved
+    return Path(spec.origin) if spec is not None and spec.origin else None
+
+
 def target() -> Path:
     tried = []
     for root in roots():
@@ -55,6 +92,11 @@ def target() -> Path:
         if candidate.is_file():
             return candidate
         tried.append(str(candidate))
+
+    origin = _module_origin()
+    if origin is not None and origin.is_file():
+        return origin
+
     raise SystemExit(
         "error: no sglang holding {} was importable; tried:\n  {}".format(
             RELATIVE, "\n  ".join(tried) or "nothing"
