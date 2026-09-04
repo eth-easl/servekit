@@ -6,10 +6,13 @@
 # layers. Block-wise FP8 keeps its scales in separate tensors that have to
 # follow their weights into the right shard, which is what this arm proves.
 #
-# Build the checkpoint first with examples/run_glm51_fp8_sglang.sbatch. It must
-# be dumped on an sglang carrying sgl-project/sglang#35715, or the canonical
-# kv_b_proj weights are missing from the files and no amount of re-serving
-# recovers them.
+# Three modes. MODE=prepare builds the checkpoint and gates the result, and has
+# to run once before MODE=fast has anything to serve. MODE=baseline records the
+# reference off Lustre, MODE=fast checks the presharded load against it.
+#
+# Every mode applies sgl-project/sglang#35715. It is not optional at dump time:
+# without it the canonical kv_b_proj weights never reach the files, prepare
+# still reports success, and no amount of re-serving recovers them.
 #SBATCH --partition=normal
 #SBATCH --account=infra02
 #SBATCH --nodes=4
@@ -31,12 +34,12 @@ case "$MODE" in
   baseline)
     OUT_PREFIX="baseline"
     ;;
-  fast)
+  prepare|fast)
     export SHARDED_SRC="${SHARDED_SRC:-/capstor/store/cscs/swissai/infra01/servekit-artifacts/glm5.1-fp8-tp4-pp4}"
-    OUT_PREFIX="fast"
+    OUT_PREFIX="${MODE}"
     ;;
   *)
-    echo "MODE must be 'baseline' or 'fast', got: $MODE" >&2
+    echo "MODE must be 'prepare', 'baseline' or 'fast', got: $MODE" >&2
     exit 1
     ;;
 esac
@@ -70,6 +73,30 @@ pip install -e "${SERVEKIT_DIR}" --no-build-isolation --no-deps -q
 # makes save_model's storage dedup evict the canonical name. Both arms patch so
 # they differ only in the loader.
 python -m servekit._patches.sglang_35715
+
+if [ "\${MODE}" = "prepare" ]; then
+  servekit launch --servekit-artifact-path "${SHARDED_SRC:-}" --only-prepare --out "${OUT}" --timeout 5400 \
+    -- \
+    python -m sglang.launch_server \
+      --model-path "${MODEL}" \
+      --tensor-parallel-size ${TP_SIZE} \
+      --pipeline-parallel-size ${PP_SIZE} \
+      --expert-parallel-size ${EP_SIZE} \
+      --nnodes ${NNODES} \
+      --node-rank \${SLURM_PROCID} \
+      --dist-init-addr ${HEAD_NODE}:${DIST_PORT} \
+      --attention-backend flashinfer \
+      --host 0.0.0.0 \
+      --port 8080 \
+      --served-model-name "${SERVED_MODEL_NAME}" \
+      --trust-remote-code \
+      --context-length 32768 \
+      --mem-fraction-static 0.85 \
+      --max-running-requests 256 \
+      --random-seed 12345 \
+      --enable-metrics
+  exit 0
+fi
 
 if [ "\${MODE}" = "fast" ]; then
   servekit launch --servekit-artifact-path "${SHARDED_SRC:-}" --out "${REPORT:-}" --timeout 5400 --overlap \
@@ -141,3 +168,32 @@ srun \
   --gpus-per-task=4 \
   --environment="${EDF}" \
   bash -c "${INNER_CMD}" || true
+
+if [ "$MODE" = "prepare" ]; then
+  echo
+  echo "=== artifact ==="
+  # Shards are keyed on (pp_rank, tp_rank), so the four nodes write disjoint
+  # names into one directory and a gap means a stage dumped nothing.
+  for pp in $(seq 0 $((PP_SIZE - 1))); do
+    for tp in $(seq 0 $((TP_SIZE - 1))); do
+      [ -e "${SHARDED_SRC}/model-pp-${pp}-rank-${tp}-part-0.safetensors" ] || { echo "GATE FAIL: pp ${pp} tp ${tp} wrote no shards" >&2; exit 1; }
+    done
+  done
+  [ -e "${SHARDED_SRC}/servekit.json" ] || { echo "GATE FAIL: no manifest" >&2; exit 1; }
+  # The dump is worthless if #35715 was missing, and that is invisible in the
+  # manifest: the canonical name is simply absent from every shard.
+  python3 - "${SHARDED_SRC}" <<'GATE'
+import glob, json, struct, sys
+
+canonical = 0
+for path in glob.glob(f"{sys.argv[1]}/model-pp-*-rank-*-part-*.safetensors"):
+    with open(path, "rb") as fh:
+        header = json.loads(fh.read(struct.unpack("<Q", fh.read(8))[0]))
+    canonical += sum(1 for key in header if key.endswith("self_attn.kv_b_proj.weight"))
+if not canonical:
+    sys.exit("GATE FAIL: no self_attn.kv_b_proj.weight in any shard; dumped without sglang#35715")
+print(f"canonical kv_b_proj weights: {canonical}")
+GATE
+  du -sh "${SHARDED_SRC}"
+  cat "${SHARDED_SRC}/servekit.json"
+fi
