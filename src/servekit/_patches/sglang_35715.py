@@ -10,6 +10,7 @@ a fresh model has never forwarded, so loading KeyErrors on the attn_mha name.
 import importlib.util
 import sys
 from pathlib import Path
+from typing import Iterator
 
 OLD_INIT = "        self.attn_mha.kv_b_proj = None\n"
 NEW_INIT = (
@@ -24,12 +25,41 @@ OLD_FORWARD = (
 )
 
 
-def target() -> Path:
+RELATIVE = Path("srt") / "models" / "deepseek_v2.py"
+
+
+def roots() -> Iterator[Path]:
+    """Every directory that could be the sglang package, best guess first.
+
+    find_spec alone is not enough: the image's workdir is /opt and the sglang
+    source tree sits at /opt/sglang, so with cwd on sys.path a namespace
+    portion shadows the installed package and points a level above its own
+    python/ directory. Whichever candidate actually holds the file wins.
+    """
+    seen = set()
     spec = importlib.util.find_spec("sglang")
-    if spec is None or not spec.submodule_search_locations:
-        raise SystemExit("error: sglang is not importable, nothing to patch")
-    root = Path(list(spec.submodule_search_locations)[0])
-    return root / "srt" / "models" / "deepseek_v2.py"
+    locations = list(spec.submodule_search_locations or ()) if spec is not None else []
+    for entry in sys.path:
+        if entry:
+            locations.append(str(Path(entry) / "sglang"))
+    for location in locations:
+        if location not in seen:
+            seen.add(location)
+            yield Path(location)
+
+
+def target() -> Path:
+    tried = []
+    for root in roots():
+        candidate = root / RELATIVE
+        if candidate.is_file():
+            return candidate
+        tried.append(str(candidate))
+    raise SystemExit(
+        "error: no sglang holding {} was importable; tried:\n  {}".format(
+            RELATIVE, "\n  ".join(tried) or "nothing"
+        )
+    )
 
 
 def main() -> int:
