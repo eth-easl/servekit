@@ -6,6 +6,11 @@ ready.
 An artifact that does not match the command is a warning, not a refusal: servekit
 names the mismatch and runs the command untouched, on the engine's own loader.
 
+Before anything else, launch applies the vendored sglang backports in
+servekit._patches (sglang#35715 guards the dump path of ShardedStateLoader, so
+prepare needs them on disk just as much as serve does). A patch that does not
+fit the installed sglang is dropped with a log line, not a refusal.
+
 `--overlap` starts the engine alongside the stage, hiding it behind engine
 startup: an sglang plugin blocks each scheduler at the weight read until this
 node's stage has published done, so a scheduler never opens a file the stage
@@ -30,6 +35,7 @@ from . import _shim
 from . import jit_cache
 from . import manifest as manifest_mod
 from . import quant_guard
+from ._patches import apply_all
 from .engine_args import check_manifest, find_model_path, replace_model_path
 from .prepare import prepare
 from .profile import Phase, ProfileReport, detect_framework, render_table, run_profile, save_json
@@ -147,6 +153,11 @@ def launch(
     overlap: bool = False,
     only_prepare: bool = False,
 ) -> int:
+    # Backports go on disk before anything imports sglang: sglang#35715 breaks
+    # the dump path of ShardedStateLoader, so prepare needs the patch too, not
+    # just the engine. One that does not fit is a log line, not a refusal.
+    apply_all()
+
     # Resolved here rather than bound as a default value, so a test can
     # monkeypatch DEFAULT_ROOT/DEFAULT_CACHE_ROOT.
     if shm_root is None:
