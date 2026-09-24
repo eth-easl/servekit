@@ -139,8 +139,7 @@ def test_apply_all_is_idempotent(tmp_path, sys_path, capsys):
 
 
 def test_a_patch_that_does_not_fit_is_dropped_not_a_refusal(tmp_path, sys_path, capsys):
-    """`servekit launch` runs unpatched rather than dying on a build the patch
-    was never written for."""
+    """`servekit launch` runs unpatched rather than dying on a build the patch was never written for."""
     _install(tmp_path / "sglang", source="class DeepseekV2AttentionMLA:\n    pass\n")
     sys_path.insert(0, str(tmp_path))
 

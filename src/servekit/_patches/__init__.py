@@ -1,12 +1,4 @@
-"""Vendored backports applied to the installed sglang.
-
-`servekit launch` runs every patch in this package before it prepares or
-starts the engine (see apply_all). A patch is a file named
-``sglang_<upstream-issue>.py`` with a ``main()`` that applies idempotently
-and fails loudly when it does not fit the installed sglang. One that fails
-is dropped with a log line, never a refusal: the engine then runs unpatched,
-exactly like it would without servekit.
-"""
+"""Vendored sglang backports; `servekit launch` runs them all before it prepares or serves."""
 from __future__ import annotations
 
 import importlib
@@ -21,13 +13,7 @@ def _drop(name: str, reason: object) -> None:
 
 
 def apply_all() -> None:
-    """Run every patch in this package, dropping the ones that fail.
-
-    Called by `servekit launch` before anything imports sglang: a backport
-    like sglang#35715 guards the dump path of ShardedStateLoader, so prepare
-    needs the patch on disk just as much as serve does. A patch that does not
-    fit the installed sglang is a log line, not a refusal.
-    """
+    """Run every patch in this package before anything imports sglang, dropping failures with a log line."""
     package = Path(__file__).resolve().parent
     for path in sorted(package.glob("sglang_*.py")):
         name = path.stem
