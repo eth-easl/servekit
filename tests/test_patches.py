@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from servekit._patches import sglang_35715
+from servekit._patches import apply_all, sglang_35715
 
 REAL = Path("srt") / "models" / "deepseek_v2.py"
 
@@ -110,3 +110,49 @@ def test_an_unimportable_sglang_still_reports_rather_than_raising(tmp_path, sys_
     monkeypatch.setattr(sglang_35715.importlib.util, "find_spec", boom)
     with pytest.raises(SystemExit, match="no sglang holding"):
         sglang_35715.target()
+
+
+# --- apply_all: what `servekit launch` runs ---------------------------------
+
+
+def test_apply_all_runs_the_vendored_patches(tmp_path, sys_path, capsys):
+    real = _install(tmp_path / "sglang")
+    sys_path.insert(0, str(tmp_path))
+
+    apply_all()
+
+    patched = real.read_text()
+    assert "object.__setattr__(self.attn_mha" in patched
+    assert "[SERVEKIT] applied sglang#35715" in capsys.readouterr().out
+
+
+def test_apply_all_is_idempotent(tmp_path, sys_path, capsys):
+    real = _install(tmp_path / "sglang")
+    sys_path.insert(0, str(tmp_path))
+
+    apply_all()
+    apply_all()
+
+    out = capsys.readouterr().out
+    assert out.count("[SERVEKIT] applied sglang#35715") == 1
+    assert "[SERVEKIT] sglang#35715 already applied" in out
+
+
+def test_a_patch_that_does_not_fit_is_dropped_not_a_refusal(tmp_path, sys_path, capsys):
+    """`servekit launch` runs unpatched rather than dying on a build the patch was never written for."""
+    _install(tmp_path / "sglang", source="class DeepseekV2AttentionMLA:\n    pass\n")
+    sys_path.insert(0, str(tmp_path))
+
+    apply_all()  # returns normally, no SystemExit
+
+    assert "[SERVEKIT] dropping sglang_35715" in capsys.readouterr().err
+
+
+def test_a_patch_with_nowhere_to_apply_is_dropped_with_the_reason(tmp_path, sys_path, monkeypatch, capsys):
+    monkeypatch.setattr(sys, "path", [str(tmp_path)])
+
+    apply_all()
+
+    err = capsys.readouterr().err
+    assert "[SERVEKIT] dropping sglang_35715" in err
+    assert "no sglang holding" in err
