@@ -10,9 +10,11 @@
 # to run once before MODE=fast has anything to serve. MODE=baseline records the
 # reference off Lustre, MODE=fast checks the presharded load against it.
 #
-# Every mode applies sgl-project/sglang#35715. It is not optional at dump time:
+# servekit launch applies sgl-project/sglang#35715 itself before preparing or
+# serving, which covers prepare and fast. It is not optional at dump time:
 # without it the canonical kv_b_proj weights never reach the files, prepare
-# still reports success, and no amount of re-serving recovers them.
+# still reports success, and no amount of re-serving recovers them. The
+# baseline arm never dumps, so it runs unpatched.
 #SBATCH --partition=normal
 #SBATCH --account=infra02
 #SBATCH --nodes=4
@@ -69,10 +71,6 @@ ulimit -c 0
 unset BASH_ENV
 
 pip install -e "${SERVEKIT_DIR}" --no-build-isolation --no-deps -q
-# MLA registers kv_b_proj as a submodule of attn_mha on first forward, which
-# makes save_model's storage dedup evict the canonical name. Both arms patch so
-# they differ only in the loader.
-python -m servekit._patches.sglang_35715
 
 if [ "\${MODE}" = "prepare" ]; then
   servekit launch --servekit-artifact-path "${SHARDED_SRC:-}" --only-prepare --out "${OUT}" --timeout 5400 \
