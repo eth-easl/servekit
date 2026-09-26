@@ -123,7 +123,7 @@ def test_apply_all_runs_the_vendored_patches(tmp_path, sys_path, capsys):
 
     patched = real.read_text()
     assert "object.__setattr__(self.attn_mha" in patched
-    assert "[PATCH] applied sglang#35715" in capsys.readouterr().out
+    assert "[SERVEKIT] applied sglang#35715" in capsys.readouterr().out
 
 
 def test_apply_all_is_idempotent(tmp_path, sys_path, capsys):
@@ -134,8 +134,8 @@ def test_apply_all_is_idempotent(tmp_path, sys_path, capsys):
     apply_all()
 
     out = capsys.readouterr().out
-    assert out.count("[PATCH] applied sglang#35715") == 1
-    assert "[PATCH] sglang#35715 already applied" in out
+    assert out.count("[SERVEKIT] applied sglang#35715") == 1
+    assert "[SERVEKIT] sglang#35715 already applied" in out
 
 
 def test_a_patch_that_does_not_fit_is_dropped_not_a_refusal(tmp_path, sys_path, capsys):
@@ -145,7 +145,7 @@ def test_a_patch_that_does_not_fit_is_dropped_not_a_refusal(tmp_path, sys_path, 
 
     apply_all()  # returns normally, no SystemExit
 
-    assert "[PATCH] dropping sglang_35715" in capsys.readouterr().err
+    assert "[SERVEKIT] dropping sglang_35715" in capsys.readouterr().err
 
 
 def test_a_patch_with_nowhere_to_apply_is_dropped_with_the_reason(tmp_path, sys_path, monkeypatch, capsys):
@@ -154,5 +154,5 @@ def test_a_patch_with_nowhere_to_apply_is_dropped_with_the_reason(tmp_path, sys_
     apply_all()
 
     err = capsys.readouterr().err
-    assert "[PATCH] dropping sglang_35715" in err
+    assert "[SERVEKIT] dropping sglang_35715" in err
     assert "no sglang holding" in err

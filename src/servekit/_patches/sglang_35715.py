@@ -109,7 +109,7 @@ def main() -> int:
     text = path.read_text()
 
     if NEW_INIT in text:
-        print(f"[PATCH] sglang#35715 already applied to {path}", flush=True)
+        print(f"[SERVEKIT] sglang#35715 already applied to {path}", flush=True)
         return 0
     for anchor, what in ((OLD_INIT, "the __init__ assignment"), (OLD_FORWARD, "the forward_prepare fill-in")):
         if text.count(anchor) != 1:
@@ -121,7 +121,7 @@ def main() -> int:
             return 1
 
     path.write_text(text.replace(OLD_INIT, NEW_INIT, 1).replace(OLD_FORWARD, "", 1))
-    print(f"[PATCH] applied sglang#35715 to {path}", flush=True)
+    print(f"[SERVEKIT] applied sglang#35715 to {path}", flush=True)
     return 0
 
 

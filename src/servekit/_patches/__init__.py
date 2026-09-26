@@ -9,7 +9,7 @@ from pathlib import Path
 def _drop(name: str, reason: object) -> None:
     """One line: the patch is off, here is why, moving on."""
     text = " ".join(str(reason).split()) if reason is not None else ""
-    print(f"[PATCH] dropping {name}: {text or 'unknown error'}", file=sys.stderr, flush=True)
+    print(f"[SERVEKIT] dropping {name}: {text or 'unknown error'}", file=sys.stderr, flush=True)
 
 
 def apply_all() -> None:
