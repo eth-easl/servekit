@@ -37,7 +37,7 @@ case "$MODE" in
     OUT_PREFIX="baseline"
     ;;
   prepare|fast)
-    export SHARDED_SRC="${SHARDED_SRC:-/capstor/store/cscs/swissai/infra01/servekit-artifacts/glm5.1-fp8-tp4-pp4}"
+    export SHARDED_SRC="${SHARDED_SRC:-/capstor/store/cscs/swissai/infra01/swiss-ai-serving/servekit-artifacts/glm5.1-fp8-tp4-pp4}"
     OUT_PREFIX="${MODE}"
     ;;
   *)
