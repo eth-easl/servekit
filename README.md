@@ -71,6 +71,31 @@ Parses the engine's own log output for phase timings (no engine changes
 needed) and prints a per-phase duration table once the server is ready. 
 
 
+### `servekit profile --log`
+
+```bash
+servekit profile --log server.log [--launch-time 2026-10-05T16:18:25] [--out report.json]
+```
+
+Profiles a saved vLLM log with the same parser, phase rules, table, and JSON
+report used by live `servekit profile`. Docker `-t` timestamps and vLLM's own
+`MM-DD HH:MM:SS` timestamps are accepted. With `--launch-time`, `process_startup`
+includes the time from container launch to the first log line; without it, the
+profile starts at the first log line. `--out` writes the usual Servekit JSON
+report, including the vLLM version and the pattern version used. Yearless vLLM
+timestamps use the current year unless `--launch-time` supplies one; elapsed
+durations do not depend on that choice.
+
+Patterns for each vLLM version live in `src/servekit/profile_specs/vllm/`.
+Servekit reads the version from the log, uses its exact file when present, or
+uses the newest older file with a warning. A version older than every file is
+refused. To add a version, copy the closest file and adjust its event regexes.
+Each event has a `line` regex and a `phase` name. Events with an engine-reported
+duration also have `took`, a regex capturing that duration, and can have
+`before`, the name for the preceding gap. Unidentified gaps remain `unknown`,
+as in live profiling. Separate passes of a phase can be listed in
+`repeatable_phases`; worker reports within a pass use the largest duration.
+
 ### `servekit bench`
 
 ```bash

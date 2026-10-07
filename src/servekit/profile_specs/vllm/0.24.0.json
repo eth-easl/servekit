@@ -1,0 +1,16 @@
+{
+  "engine": "vllm",
+  "version": "0.24.0",
+  "events": [
+    {"line": "Resolved architecture", "phase": "config_and_arch"},
+    {"line": "Initializing a V1 LLM engine", "phase": "engine_spawn"},
+    {"line": "Starting to load model|Loading model from scratch", "phase": "worker_init"},
+    {"line": "Model loading took", "phase": "weight_loading", "took": "Model loading took .*? and ([\\d.]+) seconds", "before": "pre_load"},
+    {"line": "GPU KV cache size", "phase": "kv_sizing"},
+    {"line": "[Gg]raph capturing finished in", "phase": "cuda_graph_capture", "took": "finished in ([\\d.]+) sec", "before": "profile_and_jit"},
+    {"line": "init engine \\(.*?\\) took", "phase": "final_warmup"},
+    {"line": "Starting vLLM (API )?server", "phase": "app_construction"},
+    {"line": "Dynamo bytecode transform time", "phase": "dynamo_transform", "took": "transform time: ([\\d.]+) s", "before": "compile_setup"},
+    {"line": "torch\\.compile took [\\d.]+ s in total", "phase": "compile_backend"}
+  ]
+}

@@ -45,6 +45,9 @@ class FrameworkSpec:
     # What a worker node prints instead of ready_pattern, which only the head
     # ever prints. None means servekit cannot wrap a worker for this engine.
     worker_ready_pattern: Optional["re.Pattern"] = None
+    # A later pass can report the same phase again. Ranks within one pass
+    # still contribute their maximum, as they do for every other phase.
+    repeatable_phases: List[str] = field(default_factory=list)
 
 
 SGLANG = FrameworkSpec(
@@ -181,6 +184,8 @@ class ProfileReport:
     benchmark: Optional[dict] = None  # filled in later by `servekit bench --into <report>`
     node_rank: Optional[int] = None
     nnodes: Optional[int] = None
+    framework_version: Optional[str] = None
+    pattern_version: Optional[str] = None
 
     @property
     def total_duration_s(self) -> float:
@@ -189,7 +194,7 @@ class ProfileReport:
         return round(self.ready_at - self.started_at, 2)
 
     def to_dict(self) -> dict:
-        return {
+        data = {
             "command": self.command,
             "framework": self.framework,
             "started_at": self.started_at,
@@ -201,6 +206,10 @@ class ProfileReport:
             "node_rank": self.node_rank,
             "nnodes": self.nnodes,
         }
+        if self.framework_version is not None:
+            data["framework_version"] = self.framework_version
+            data["pattern_version"] = self.pattern_version
+        return data
 
 
 def _process_stream(
@@ -324,7 +333,7 @@ def _process_stream(
                     phases[idx].duration_s = round(duration, 2)
                 last_marker_time = now
                 break
-            if name in seen_phases:
+            if name in seen_phases and name not in spec.repeatable_phases:
                 break  # late straggler after another phase already started
             seen_phases.add(name)
             record_gap(now - last_marker_time - duration)
@@ -422,6 +431,8 @@ def render_table(report: ProfileReport) -> str:
     header = f"{'phase':<{name_w}}  {'duration_s':>10}  source"
     sep = "-" * len(header)
     title = f"[SERVEKIT] Cold-start profile (framework={report.framework})"
+    if report.framework_version:
+        title += f" (version={report.framework_version}, patterns={report.pattern_version})"
     if report.node_rank is not None:
         title += f" (node {report.node_rank}/{report.nnodes})"
     lines = [title, sep, header, sep]

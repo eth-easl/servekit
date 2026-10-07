@@ -18,6 +18,7 @@ USAGE = """usage:
   servekit launch --servekit-artifact-path PATH [--only-prepare] [--out PATH]
                   [--slices N] [--overlap] -- <command...>
   servekit profile [--out PATH] [--timeout SECONDS] -- <command...>
+  servekit profile --log FILE [--launch-time ISO] [--out PATH]
   servekit bench --url URL (--into PATH | --out PATH) [--wait-ready SECONDS] [...]
   servekit verify --url URL (--record PATH | --reference PATH) [--wait-ready SECONDS] [...]
 
@@ -63,13 +64,38 @@ def _split_command(rest: List[str]) -> Tuple[List[str], List[str]]:
     return [], rest
 
 
+def _profile_log(args: argparse.Namespace) -> int:
+    from .log_profile import profile_log
+
+    try:
+        report, approximate = profile_log(args.log, launch_time=args.launch_time)
+        report.command = f"servekit profile --log {args.log}"
+        if args.out:
+            save_json(report, args.out)
+    except (ValueError, OSError) as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 2
+    if approximate:
+        print(f"warning: no patterns for vLLM {report.framework_version}; using {report.pattern_version}", file=sys.stderr)
+    print(render_table(report))
+    if args.out:
+        print(f"\nreport written to {args.out}")
+    return 0
+
+
 def _profile(argv: List[str]) -> int:
-    options, command = _split_command(argv)
+    # `--log FILE` profiles a saved log and has no engine command after `--`.
+    options, command = (argv, []) if "--log" in argv and "--" not in argv else _split_command(argv)
 
     parser = argparse.ArgumentParser(prog="servekit profile")
     parser.add_argument("--out", type=Path, default=None)
     parser.add_argument("--timeout", type=float, default=1800.0, help="seconds to wait for the ready signal")
+    parser.add_argument("--log", type=Path, default=None, help="profile a saved vLLM log instead of launching a command")
+    parser.add_argument("--launch-time", default=None, help="ISO UTC container start time; includes time before the first log line")
     args = parser.parse_args(options)
+
+    if args.log:
+        return _profile_log(args)
 
     if not command:
         print("error: no command given after --", file=sys.stderr)

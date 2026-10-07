@@ -1,0 +1,691 @@
+2026-10-05T16:19:06.666723375Z (APIServer pid=1) INFO 10-05 16:19:06 [api_utils.py:347] 
+2026-10-05T16:19:06.666798408Z (APIServer pid=1) INFO 10-05 16:19:06 [api_utils.py:347]        █     █     █▄   ▄█
+2026-10-05T16:19:06.666806980Z (APIServer pid=1) INFO 10-05 16:19:06 [api_utils.py:347]  ▄▄ ▄█ █     █     █ ▀▄▀ █  version 0.28.1rc1.dev580+g385dce36b
+2026-10-05T16:19:06.666813190Z (APIServer pid=1) INFO 10-05 16:19:06 [api_utils.py:347]   █▄█▀ █     █     █     █  model   /model
+2026-10-05T16:19:06.666819820Z (APIServer pid=1) INFO 10-05 16:19:06 [api_utils.py:347]    ▀▀  ▀▀▀▀▀ ▀▀▀▀▀ ▀     ▀
+2026-10-05T16:19:06.666825418Z (APIServer pid=1) INFO 10-05 16:19:06 [api_utils.py:347] 
+2026-10-05T16:19:06.671561384Z (APIServer pid=1) INFO 10-05 16:19:06 [api_utils.py:286] non-default args: {'model_tag': '/model', 'model': '/model', 'max_model_len': 4096, 'served_model_name': ['glm53-flash'], 'generation_config': 'vllm', 'load_format': 'instanttensor', 'tensor_parallel_size': 8, 'gpu_memory_utilization': 0.9, 'kv_cache_dtype': 'bfloat16', 'max_num_seqs': 16}
+2026-10-05T16:19:33.241317916Z (APIServer pid=1) INFO 10-05 16:19:33 [model.py:691] Resolved architecture: Glm5NextForConditionalGeneration
+2026-10-05T16:19:33.241400771Z (APIServer pid=1) INFO 10-05 16:19:33 [model.py:2031] Using max model len 4096
+2026-10-05T16:19:40.213413364Z (APIServer pid=1) INFO 10-05 16:19:40 [scheduler.py:288] Chunked prefill is enabled with max_num_batched_tokens=8192.
+2026-10-05T16:19:40.213668777Z (APIServer pid=1) INFO 10-05 16:19:40 [config.py:625] Mamba cache mode is set to 'align' for Glm5NextForConditionalGeneration by default when prefix caching is enabled
+2026-10-05T16:19:40.213821957Z (APIServer pid=1) INFO 10-05 16:19:40 [vllm.py:727] Auto-enabling VLLM_USE_BREAKABLE_CUDAGRAPH=1. Set VLLM_USE_BREAKABLE_CUDAGRAPH=0 to opt out.
+2026-10-05T16:19:40.213987886Z (APIServer pid=1) INFO 10-05 16:19:40 [kernel.py:372] Final IR op priority after setting platform defaults: IrOpPriorityConfig(rms_norm=['vllm_c', 'native'], fused_add_rms_norm=['vllm_c', 'native'])
+2026-10-05T16:19:40.258269347Z (APIServer pid=1) INFO 10-05 16:19:40 [compilation.py:329] Enabled custom fusions: norm_quant, act_quant, allreduce_rms
+2026-10-05T16:19:41.735552547Z (APIServer pid=1) [transformers] The following generation flags are not valid and may be ignored: ['top_p']. Set `TRANSFORMERS_VERBOSITY=info` for more details.
+2026-10-05T16:19:53.248955878Z (EngineCore pid=1553) INFO 10-05 16:19:53 [core.py:123] Initializing a V1 LLM engine (v0.28.1rc1.dev580+g385dce36b) with config: model='/model', speculative_config=None, tokenizer='/model', skip_tokenizer_init=False, tokenizer_mode=auto, revision=None, tokenizer_revision=None, trust_remote_code=False, dtype=torch.bfloat16, max_seq_len=4096, download_dir=None, load_format=instanttensor, tensor_parallel_size=8, pipeline_parallel_size=1, data_parallel_size=1, decode_context_parallel_size=1, dcp_comm_backend=ag_rs, disable_custom_all_reduce=False, quantization=fp8, quantization_config=None, enforce_eager=False, enable_return_routed_experts=False, kv_cache_dtype=bfloat16, device_config=cuda, structured_outputs_config=StructuredOutputsConfig(backend='auto', disable_any_whitespace=False, disable_additional_properties=False, reasoning_parser='', reasoning_parser_plugin='', enable_in_reasoning=False), observability_config=ObservabilityConfig(show_hidden_metrics_for_version=None, otlp_traces_endpoint=None, collect_detailed_traces=None, per_request_spec_decode_metrics='none', kv_cache_metrics=False, kv_cache_metrics_sample=0.01, cudagraph_metrics=False, enable_layerwise_nvtx_tracing=False, enable_mfu_metrics=False, enable_mm_processor_stats=False, enable_logging_iteration_details=False, jit_monitor_mode='warn', jit_monitor_verbose=False), seed=0, served_model_name=glm53-flash, enable_prefix_caching=True, enable_chunked_prefill=True, pooler_config=None, compilation_config={'mode': <CompilationMode.NONE: 0>, 'debug_dump_path': None, 'cache_dir': '', 'compile_cache_save_format': 'binary', 'backend': 'inductor', 'custom_ops': ['+quant_fp8', 'all', '+quant_fp8'], 'ir_enable_torch_wrap': False, 'splitting_ops': [], 'compile_mm_encoder': False, 'cudagraph_mm_encoder': False, 'encoder_cudagraph_token_budgets': [], 'encoder_cudagraph_max_vision_items_per_batch': 0, 'encoder_cudagraph_max_frames_per_batch': None, 'compile_sizes': [], 'compile_ranges_endpoints': [64, 8192], 'inductor_compile_config': {'enable_auto_functionalized_v2': False, 'combo_kernels': True, 'benchmark_combo_kernel': True}, 'inductor_passes': {}, 'cudagraph_mode': <CUDAGraphMode.FULL_AND_PIECEWISE: (2, 1)>, 'cudagraph_num_of_warmups': 1, 'cudagraph_capture_sizes': [1, 2, 4, 8, 16, 24, 32], 'cudagraph_copy_inputs': False, 'cudagraph_specialize_lora': True, 'use_inductor_graph_partition': False, 'pass_config': {'fuse_norm_quant': True, 'fuse_act_quant': True, 'fuse_attn_quant': False, 'enable_sp': False, 'fuse_gemm_comms': False, 'fuse_allreduce_rms': True, 'enable_qk_norm_rope_fusion': False, 'fuse_rope_kvcache_cat_mla': False, 'fuse_act_padding': False, 'fuse_qk_norm_rope_kvcache': False}, 'max_cudagraph_capture_size': 32, 'dynamic_shapes_config': {'type': <DynamicShapesType.BACKED: 'backed'>, 'evaluate_guards': False, 'assume_32_bit_indexing': False}, 'local_cache_dir': None, 'fast_moe_cold_start': False, 'static_all_moe_layers': []}, kernel_config=KernelConfig(ir_op_priority=IrOpPriorityConfig(rms_norm=['vllm_c', 'native'], fused_add_rms_norm=['vllm_c', 'native']), enable_flashinfer_autotune=True, enable_cutedsl_warmup=True, enable_jit_warmup=True, enable_bf16x3_router_gemm=False, moe_backend='auto', linear_backend='auto')
+2026-10-05T16:19:53.250346915Z (EngineCore pid=1553) INFO 10-05 16:19:53 [multiproc_executor.py:153] DP group leader: node_rank=0, node_rank_within_dp=0, master_addr=127.0.0.1, mq_connect_ip=172.17.0.2 (local), world_size=8, local_world_size=8
+2026-10-05T16:19:53.665075661Z (APIServer pid=1) INFO 10-05 16:19:53 [base.py:261] Multi-modal warmup completed in 2.730s
+2026-10-05T16:19:56.115307689Z (APIServer pid=1) INFO 10-05 16:19:56 [base.py:261] Readonly multi-modal warmup completed in 2.437s
+2026-10-05T16:20:05.889560961Z (Worker pid=1779) INFO 10-05 16:20:05 [parallel_state.py:1798] world_size=8 rank=0 local_rank=0 distributed_init_method=file:///tmp/vllm_dist_ddcc3a4d84a24c149a49ab6917ac63ea backend=nccl
+2026-10-05T16:20:14.480762562Z (Worker pid=1958) INFO 10-05 16:20:14 [parallel_state.py:1798] world_size=8 rank=1 local_rank=1 distributed_init_method=file:///tmp/vllm_dist_ddcc3a4d84a24c149a49ab6917ac63ea backend=nccl
+2026-10-05T16:20:22.307083704Z (Worker pid=2064) INFO 10-05 16:20:22 [parallel_state.py:1798] world_size=8 rank=2 local_rank=2 distributed_init_method=file:///tmp/vllm_dist_ddcc3a4d84a24c149a49ab6917ac63ea backend=nccl
+2026-10-05T16:20:31.370369648Z (Worker pid=2171) INFO 10-05 16:20:31 [parallel_state.py:1798] world_size=8 rank=3 local_rank=3 distributed_init_method=file:///tmp/vllm_dist_ddcc3a4d84a24c149a49ab6917ac63ea backend=nccl
+2026-10-05T16:20:40.102755865Z (Worker pid=2278) INFO 10-05 16:20:40 [parallel_state.py:1798] world_size=8 rank=4 local_rank=4 distributed_init_method=file:///tmp/vllm_dist_ddcc3a4d84a24c149a49ab6917ac63ea backend=nccl
+2026-10-05T16:20:48.819593322Z (Worker pid=2385) INFO 10-05 16:20:48 [parallel_state.py:1798] world_size=8 rank=5 local_rank=5 distributed_init_method=file:///tmp/vllm_dist_ddcc3a4d84a24c149a49ab6917ac63ea backend=nccl
+2026-10-05T16:20:56.700643891Z (Worker pid=2492) INFO 10-05 16:20:56 [parallel_state.py:1798] world_size=8 rank=6 local_rank=6 distributed_init_method=file:///tmp/vllm_dist_ddcc3a4d84a24c149a49ab6917ac63ea backend=nccl
+2026-10-05T16:21:05.632016149Z (Worker pid=2599) INFO 10-05 16:21:05 [parallel_state.py:1798] world_size=8 rank=7 local_rank=7 distributed_init_method=file:///tmp/vllm_dist_ddcc3a4d84a24c149a49ab6917ac63ea backend=nccl
+2026-10-05T16:21:05.707733197Z (Worker pid=1779) INFO 10-05 16:21:05 [pynccl.py:120] vLLM is using nccl==2.30.7
+2026-10-05T16:21:09.259850833Z (Worker pid=1779) INFO 10-05 16:21:09 [cuda_communicator.py:296] Using ['FLASHINFER', 'CUSTOM', 'SYMM_MEM', 'PYNCCL'] all-reduce backends (in dispatch order) for group 'tp:0' out of potential backends: ['FLASHINFER_PCIE_IPC', 'FLASHINFER', 'NCCL_SYMM_MEM', 'QUICK_REDUCE', 'AITER_CUSTOM', 'CUSTOM', 'SYMM_MEM', 'PYNCCL'].
+2026-10-05T16:21:10.538308562Z (Worker pid=1779) INFO 10-05 16:21:10 [cuda_communicator.py:296] Using ['PYNCCL'] all-reduce backends (in dispatch order) for group 'ep:0' out of potential backends: ['FLASHINFER_PCIE_IPC', 'FLASHINFER', 'NCCL_SYMM_MEM', 'QUICK_REDUCE', 'AITER_CUSTOM', 'CUSTOM', 'SYMM_MEM', 'PYNCCL'].
+2026-10-05T16:21:10.538369283Z (Worker pid=1779) INFO 10-05 16:21:10 [parallel_state.py:2142] rank 0 in world size 8 is assigned as DP rank 0, PP rank 0, PCP rank 0, TP rank 0, EP rank 0, EPLB rank N/A
+2026-10-05T16:21:10.538380259Z (Worker pid=1779) INFO 10-05 16:21:10 [gpu_worker.py:438] Using V2 Model Runner
+2026-10-05T16:21:11.566309071Z (Worker_TP6 pid=2492) INFO 10-05 16:21:11 [kernel.py:372] Final IR op priority after setting platform defaults: IrOpPriorityConfig(rms_norm=['vllm_c', 'native'], fused_add_rms_norm=['vllm_c', 'native'])
+2026-10-05T16:21:11.566790643Z (Worker_TP2 pid=2064) INFO 10-05 16:21:11 [kernel.py:372] Final IR op priority after setting platform defaults: IrOpPriorityConfig(rms_norm=['vllm_c', 'native'], fused_add_rms_norm=['vllm_c', 'native'])
+2026-10-05T16:21:11.679707766Z (Worker_TP0 pid=1779) INFO 10-05 16:21:11 [model_runner.py:390] Loading model from scratch...
+2026-10-05T16:21:11.759684955Z (Worker_TP7 pid=2599) INFO 10-05 16:21:11 [kernel.py:372] Final IR op priority after setting platform defaults: IrOpPriorityConfig(rms_norm=['vllm_c', 'native'], fused_add_rms_norm=['vllm_c', 'native'])
+2026-10-05T16:21:11.772414024Z (Worker_TP4 pid=2278) INFO 10-05 16:21:11 [kernel.py:372] Final IR op priority after setting platform defaults: IrOpPriorityConfig(rms_norm=['vllm_c', 'native'], fused_add_rms_norm=['vllm_c', 'native'])
+2026-10-05T16:21:11.776538042Z (Worker_TP0 pid=1779) INFO 10-05 16:21:11 [cuda.py:587] Using backend AttentionBackendEnum.FLASH_ATTN for vit attention
+2026-10-05T16:21:11.776555198Z (Worker_TP0 pid=1779) INFO 10-05 16:21:11 [mm_encoder_attention.py:372] Using AttentionBackendEnum.FLASH_ATTN for MMEncoderAttention.
+2026-10-05T16:21:11.802163511Z (Worker_TP3 pid=2171) INFO 10-05 16:21:11 [kernel.py:372] Final IR op priority after setting platform defaults: IrOpPriorityConfig(rms_norm=['vllm_c', 'native'], fused_add_rms_norm=['vllm_c', 'native'])
+2026-10-05T16:21:11.805694549Z (Worker_TP5 pid=2385) INFO 10-05 16:21:11 [kernel.py:372] Final IR op priority after setting platform defaults: IrOpPriorityConfig(rms_norm=['vllm_c', 'native'], fused_add_rms_norm=['vllm_c', 'native'])
+2026-10-05T16:21:11.816536787Z (Worker_TP0 pid=1779) INFO 10-05 16:21:11 [kernel.py:372] Final IR op priority after setting platform defaults: IrOpPriorityConfig(rms_norm=['vllm_c', 'native'], fused_add_rms_norm=['vllm_c', 'native'])
+2026-10-05T16:21:11.820937810Z (Worker_TP1 pid=1958) INFO 10-05 16:21:11 [kernel.py:372] Final IR op priority after setting platform defaults: IrOpPriorityConfig(rms_norm=['vllm_c', 'native'], fused_add_rms_norm=['vllm_c', 'native'])
+2026-10-05T16:21:11.833925847Z (Worker_TP0 pid=1779) INFO 10-05 16:21:11 [compilation.py:329] Enabled custom fusions: norm_quant, act_quant, allreduce_rms
+2026-10-05T16:21:11.848163109Z (Worker_TP0 pid=1779) INFO 10-05 16:21:11 [__init__.py:704] Selected FlashInferFp8DeepGEMMDynamicBlockScaledKernel for Fp8LinearMethod
+2026-10-05T16:21:11.848536259Z (Worker_TP0 pid=1779) INFO 10-05 16:21:11 [deep_gemm.py:191] deep_gemm not found in site-packages, trying vendored vllm.third_party.deep_gemm
+2026-10-05T16:21:11.853267268Z (Worker_TP0 pid=1779) INFO 10-05 16:21:11 [deep_gemm.py:218] DeepGEMM PDL enabled on vllm.third_party.deep_gemm.
+2026-10-05T16:21:11.853278044Z (Worker_TP0 pid=1779) INFO 10-05 16:21:11 [deep_gemm.py:136] DeepGEMM E8M0 enabled on current platform.
+2026-10-05T16:21:11.885941883Z (Worker_TP0 pid=1779) INFO 10-05 16:21:11 [cuda.py:528] Using FLASHINFER_MLA_SPARSE_SM90 attention backend out of potential backends: ['FLASHINFER_MLA_SPARSE_SM90', 'FLASH_ATTN_MLA_SPARSE'].
+2026-10-05T16:21:11.888672440Z (Worker_TP0 pid=1779) WARNING 10-05 16:21:11 [mla_attention.py:601] No MLA prefill backend supports this model; sparse MLA will use the top-k MQA path only (no dense-MHA prefill).
+2026-10-05T16:21:11.893373814Z (Worker_TP0 pid=1779) INFO 10-05 16:21:11 [fp8.py:438] Using TRITON Fp8 MoE backend out of potential backends: ['TRITON', 'AITER', 'FLASHINFER_TRTLLM', 'FLASHINFER_CUTLASS', 'DEEPGEMM', 'MARLIN', 'HUMMING', 'BATCHED_DEEPGEMM', 'BATCHED_TRITON', 'XPU', 'CPU', 'HPC'].
+2026-10-05T16:21:14.671706360Z (Worker_TP0 pid=1779) 
+Loading safetensors using InstantTensor loader:   0% Completed | 0.00/306G [00:00<?, ?B/s]
+2026-10-05T16:21:15.709886653Z (Worker_TP0 pid=1779) 
+Loading safetensors using InstantTensor loader:   0% Completed | 2.00k/306G [00:01<46220:41:23, 1.97kB/s]
+2026-10-05T16:21:17.428722713Z (Worker_TP0 pid=1779) 
+Loading safetensors using InstantTensor loader:   1% Completed | 4.50G/306G [00:02<02:43, 1.97GB/s]
+2026-10-05T16:21:19.053702159Z (Worker_TP0 pid=1779)       
+Loading safetensors using InstantTensor loader:   3% Completed | 8.99G/306G [00:04<02:09, 2.46GB/s]
+2026-10-05T16:21:20.609637911Z (Worker_TP0 pid=1779) 
+Loading safetensors using InstantTensor loader:   4% Completed | 13.2G/306G [00:05<01:58, 2.65GB/s]
+2026-10-05T16:21:22.007942150Z (Worker_TP0 pid=1779) 
+Loading safetensors using InstantTensor loader:   6% Completed | 17.9G/306G [00:07<01:44, 2.97GB/s]
+2026-10-05T16:21:23.475865877Z (Worker_TP0 pid=1779) 
+Loading safetensors using InstantTensor loader:   7% Completed | 22.3G/306G [00:08<01:39, 3.06GB/s]
+2026-10-05T16:21:24.622151473Z (Worker_TP0 pid=1779) 
+Loading safetensors using InstantTensor loader:   9% Completed | 27.1G/306G [00:09<01:27, 3.43GB/s]
+2026-10-05T16:21:25.821536109Z (Worker_TP0 pid=1779) 
+Loading safetensors using InstantTensor loader:  10% Completed | 31.6G/306G [00:11<01:21, 3.62GB/s]
+2026-10-05T16:21:27.064239162Z (Worker_TP0 pid=1779) 
+Loading safetensors using InstantTensor loader:  12% Completed | 36.1G/306G [00:12<01:18, 3.70GB/s]
+2026-10-05T16:21:28.400923515Z (Worker_TP0 pid=1779) 
+Loading safetensors using InstantTensor loader:  13% Completed | 40.1G/306G [00:13<01:20, 3.55GB/s]
+2026-10-05T16:21:29.667098485Z (Worker_TP0 pid=1779) 
+Loading safetensors using InstantTensor loader:  15% Completed | 45.2G/306G [00:14<01:14, 3.77GB/s]
+2026-10-05T16:21:30.843068370Z (Worker_TP0 pid=1779) 
+Loading safetensors using InstantTensor loader:  16% Completed | 49.7G/306G [00:16<01:10, 3.88GB/s]
+2026-10-05T16:21:32.265756655Z (Worker_TP0 pid=1779) 
+Loading safetensors using InstantTensor loader:  18% Completed | 54.5G/306G [00:17<01:11, 3.78GB/s]
+2026-10-05T16:21:33.338086867Z (Worker_TP0 pid=1779) 
+Loading safetensors using InstantTensor loader:  19% Completed | 59.0G/306G [00:18<01:06, 3.97GB/s]
+2026-10-05T16:21:34.499555063Z (Worker_TP0 pid=1779) 
+Loading safetensors using InstantTensor loader:  21% Completed | 63.5G/306G [00:19<01:04, 4.04GB/s]
+2026-10-05T16:21:35.623701220Z (Worker_TP0 pid=1779) 
+Loading safetensors using InstantTensor loader:  22% Completed | 68.0G/306G [00:20<01:02, 4.10GB/s]
+2026-10-05T16:21:36.836664731Z (Worker_TP0 pid=1779) 
+Loading safetensors using InstantTensor loader:  24% Completed | 72.5G/306G [00:22<01:01, 4.06GB/s]
+2026-10-05T16:21:38.016549049Z (Worker_TP0 pid=1779) 
+Loading safetensors using InstantTensor loader:  25% Completed | 77.2G/306G [00:23<00:59, 4.14GB/s]
+2026-10-05T16:21:39.075980067Z (Worker_TP0 pid=1779) 
+Loading safetensors using InstantTensor loader:  27% Completed | 81.8G/306G [00:24<00:56, 4.27GB/s]
+2026-10-05T16:21:40.116811227Z (Worker_TP0 pid=1779) 
+Loading safetensors using InstantTensor loader:  28% Completed | 86.1G/306G [00:25<00:54, 4.32GB/s]
+2026-10-05T16:21:41.248365059Z (Worker_TP0 pid=1779) 
+Loading safetensors using InstantTensor loader:  30% Completed | 90.6G/306G [00:26<00:53, 4.32GB/s]
+2026-10-05T16:21:42.349367661Z (Worker_TP0 pid=1779) 
+Loading safetensors using InstantTensor loader:  31% Completed | 95.2G/306G [00:27<00:51, 4.36GB/s]
+2026-10-05T16:21:43.349139876Z (Worker_TP0 pid=1779) 
+Loading safetensors using InstantTensor loader:  33% Completed | 99.9G/306G [00:28<00:48, 4.54GB/s]
+2026-10-05T16:21:44.392450246Z (Worker_TP0 pid=1779) 
+Loading safetensors using InstantTensor loader:  34% Completed | 104G/306G [00:29<00:47, 4.51GB/s]
+2026-10-05T16:21:45.482359034Z (Worker_TP0 pid=1779)  
+Loading safetensors using InstantTensor loader:  36% Completed | 109G/306G [00:30<00:45, 4.66GB/s]
+2026-10-05T16:21:46.531870548Z (Worker_TP0 pid=1779) 
+Loading safetensors using InstantTensor loader:  37% Completed | 114G/306G [00:31<00:44, 4.66GB/s]
+2026-10-05T16:21:47.551725736Z (Worker_TP0 pid=1779) 
+Loading safetensors using InstantTensor loader:  39% Completed | 118G/306G [00:32<00:43, 4.63GB/s]
+2026-10-05T16:21:49.504500752Z (Worker_TP0 pid=1779) 
+Loading safetensors using InstantTensor loader:  40% Completed | 122G/306G [00:34<00:54, 3.63GB/s]
+2026-10-05T16:21:50.533753449Z (Worker_TP0 pid=1779) 
+Loading safetensors using InstantTensor loader:  41% Completed | 126G/306G [00:35<00:52, 3.69GB/s]
+2026-10-05T16:21:51.564578126Z (Worker_TP0 pid=1779) 
+Loading safetensors using InstantTensor loader:  42% Completed | 130G/306G [00:36<00:50, 3.72GB/s]
+2026-10-05T16:21:52.615792195Z (Worker_TP0 pid=1779) 
+Loading safetensors using InstantTensor loader:  44% Completed | 134G/306G [00:37<00:46, 3.97GB/s]
+2026-10-05T16:21:53.636634293Z (Worker_TP0 pid=1779) 
+Loading safetensors using InstantTensor loader:  46% Completed | 139G/306G [00:38<00:41, 4.34GB/s]
+2026-10-05T16:21:54.636673889Z (Worker_TP0 pid=1779) 
+Loading safetensors using InstantTensor loader:  47% Completed | 145G/306G [00:39<00:36, 4.75GB/s]
+2026-10-05T16:21:55.721683896Z (Worker_TP0 pid=1779) 
+Loading safetensors using InstantTensor loader:  49% Completed | 149G/306G [00:41<00:35, 4.68GB/s]
+2026-10-05T16:21:56.841497603Z (Worker_TP0 pid=1779) 
+Loading safetensors using InstantTensor loader:  50% Completed | 154G/306G [00:42<00:35, 4.54GB/s]
+2026-10-05T16:21:57.946910653Z (Worker_TP0 pid=1779) 
+Loading safetensors using InstantTensor loader:  52% Completed | 158G/306G [00:43<00:35, 4.43GB/s]
+2026-10-05T16:21:59.017604931Z (Worker_TP0 pid=1779) 
+Loading safetensors using InstantTensor loader:  53% Completed | 163G/306G [00:44<00:34, 4.47GB/s]
+2026-10-05T16:22:00.061608140Z (Worker_TP0 pid=1779) 
+Loading safetensors using InstantTensor loader:  55% Completed | 167G/306G [00:45<00:32, 4.53GB/s]
+2026-10-05T16:22:01.148033481Z (Worker_TP0 pid=1779) 
+Loading safetensors using InstantTensor loader:  56% Completed | 172G/306G [00:46<00:31, 4.52GB/s]
+2026-10-05T16:22:02.225545398Z (Worker_TP0 pid=1779) 
+Loading safetensors using InstantTensor loader:  58% Completed | 176G/306G [00:47<00:30, 4.57GB/s]
+2026-10-05T16:22:03.229506137Z (Worker_TP0 pid=1779) 
+Loading safetensors using InstantTensor loader:  59% Completed | 181G/306G [00:48<00:29, 4.57GB/s]
+2026-10-05T16:22:04.309659477Z (Worker_TP0 pid=1779) 
+Loading safetensors using InstantTensor loader:  60% Completed | 185G/306G [00:49<00:28, 4.47GB/s]
+2026-10-05T16:22:05.415029532Z (Worker_TP0 pid=1779) 
+Loading safetensors using InstantTensor loader:  62% Completed | 189G/306G [00:50<00:28, 4.40GB/s]
+2026-10-05T16:22:06.484685902Z (Worker_TP0 pid=1779) 
+Loading safetensors using InstantTensor loader:  64% Completed | 195G/306G [00:51<00:25, 4.66GB/s]
+2026-10-05T16:22:07.601989043Z (Worker_TP0 pid=1779) 
+Loading safetensors using InstantTensor loader:  65% Completed | 199G/306G [00:52<00:24, 4.65GB/s]
+2026-10-05T16:22:08.601970702Z (Worker_TP0 pid=1779) 
+Loading safetensors using InstantTensor loader:  67% Completed | 205G/306G [00:53<00:21, 4.96GB/s]
+2026-10-05T16:22:09.601983357Z (Worker_TP0 pid=1779) 
+Loading safetensors using InstantTensor loader:  69% Completed | 210G/306G [00:54<00:20, 5.08GB/s]
+2026-10-05T16:22:10.602071746Z (Worker_TP0 pid=1779) 
+Loading safetensors using InstantTensor loader:  70% Completed | 215G/306G [00:55<00:18, 5.16GB/s]
+2026-10-05T16:22:11.975077517Z (Worker_TP0 pid=1779) 
+Loading safetensors using InstantTensor loader:  72% Completed | 220G/306G [00:57<00:19, 4.67GB/s]
+2026-10-05T16:22:13.064658763Z (Worker_TP0 pid=1779) 
+Loading safetensors using InstantTensor loader:  73% Completed | 224G/306G [00:58<00:18, 4.71GB/s]
+2026-10-05T16:22:14.107579558Z (Worker_TP0 pid=1779) 
+Loading safetensors using InstantTensor loader:  75% Completed | 229G/306G [00:59<00:17, 4.69GB/s]
+2026-10-05T16:22:15.104205002Z (Worker_TP0 pid=1779) 
+Loading safetensors using InstantTensor loader:  77% Completed | 235G/306G [01:00<00:14, 5.10GB/s]
+2026-10-05T16:22:16.104256856Z (Worker_TP0 pid=1779) 
+Loading safetensors using InstantTensor loader:  78% Completed | 240G/306G [01:01<00:13, 5.18GB/s]
+2026-10-05T16:22:17.418103914Z (Worker_TP0 pid=1779) 
+Loading safetensors using InstantTensor loader:  80% Completed | 245G/306G [01:02<00:13, 4.76GB/s]
+2026-10-05T16:22:19.137592213Z (Worker_TP0 pid=1779) 
+Loading safetensors using InstantTensor loader:  81% Completed | 249G/306G [01:04<00:15, 3.99GB/s]
+2026-10-05T16:22:20.517854421Z (Worker_TP0 pid=1779) 
+Loading safetensors using InstantTensor loader:  83% Completed | 254G/306G [01:05<00:14, 3.88GB/s]
+2026-10-05T16:22:21.988569967Z (Worker_TP0 pid=1779) 
+Loading safetensors using InstantTensor loader:  84% Completed | 258G/306G [01:07<00:13, 3.70GB/s]
+2026-10-05T16:22:23.632095129Z (Worker_TP0 pid=1779) 
+Loading safetensors using InstantTensor loader:  86% Completed | 263G/306G [01:08<00:13, 3.46GB/s]
+2026-10-05T16:22:25.155678970Z (Worker_TP0 pid=1779) 
+Loading safetensors using InstantTensor loader:  87% Completed | 267G/306G [01:10<00:12, 3.38GB/s]
+2026-10-05T16:22:26.943445254Z (Worker_TP0 pid=1779) 
+Loading safetensors using InstantTensor loader:  89% Completed | 272G/306G [01:12<00:11, 3.21GB/s]
+2026-10-05T16:22:28.569245321Z (Worker_TP0 pid=1779) 
+Loading safetensors using InstantTensor loader:  91% Completed | 277G/306G [01:13<00:09, 3.14GB/s]
+2026-10-05T16:22:29.827608290Z (Worker_TP0 pid=1779) 
+Loading safetensors using InstantTensor loader:  92% Completed | 281G/306G [01:15<00:07, 3.32GB/s]
+2026-10-05T16:22:31.128208712Z (Worker_TP0 pid=1779) 
+Loading safetensors using InstantTensor loader:  93% Completed | 286G/306G [01:16<00:06, 3.44GB/s]
+2026-10-05T16:22:32.590150674Z (Worker_TP0 pid=1779) 
+Loading safetensors using InstantTensor loader:  95% Completed | 290G/306G [01:17<00:05, 3.32GB/s]
+2026-10-05T16:22:33.854397972Z (Worker_TP0 pid=1779) 
+Loading safetensors using InstantTensor loader:  96% Completed | 294G/306G [01:19<00:03, 3.40GB/s]
+2026-10-05T16:22:35.195374785Z (Worker_TP0 pid=1779) 
+Loading safetensors using InstantTensor loader:  98% Completed | 299G/306G [01:20<00:01, 3.58GB/s]
+2026-10-05T16:22:36.195276134Z (Worker_TP0 pid=1779) 
+Loading safetensors using InstantTensor loader: 100% Completed | 305G/306G [01:21<00:00, 4.18GB/s]
+2026-10-05T16:22:36.220353871Z (Worker_TP0 pid=1779) 
+Loading safetensors using InstantTensor loader: 100% Completed | 306G/306G [01:21<00:00, 4.03GB/s]
+2026-10-05T16:22:36.220377617Z (Worker_TP0 pid=1779) 
+2026-10-05T16:22:36.401808699Z (Worker_TP0 pid=1779) INFO 10-05 16:22:36 [default_loader.py:430] Loading weights took 84.02 seconds
+2026-10-05T16:22:43.480520996Z (Worker_TP0 pid=1779) INFO 10-05 16:22:43 [fp8.py:740] Using MoEPrepareAndFinalizeNoDPEPModular
+2026-10-05T16:22:44.404058817Z (Worker_TP6 pid=2492) INFO 10-05 16:22:44 [model_runner.py:422] Model loading took 38.24 GiB memory and 93.457660 seconds
+2026-10-05T16:22:44.462002397Z (Worker_TP6 pid=2492) INFO 10-05 16:22:44 [interface.py:635] Setting kv cache block size to 64 for DEEPSEEK_V32_INDEXER backend.
+2026-10-05T16:22:44.462473694Z (Worker_TP6 pid=2492) INFO 10-05 16:22:44 [interface.py:933] Setting attention block size to 640 tokens to ensure that attention page size is >= mamba page size.
+2026-10-05T16:22:44.462727124Z (Worker_TP6 pid=2492) INFO 10-05 16:22:44 [interface.py:957] Padding mamba page size by 20.75% to ensure that mamba page size and attention page size are exactly equal.
+2026-10-05T16:22:44.463513274Z (Worker_TP5 pid=2385) INFO 10-05 16:22:44 [model_runner.py:422] Model loading took 38.24 GiB memory and 93.351516 seconds
+2026-10-05T16:22:44.487168346Z (Worker_TP5 pid=2385) INFO 10-05 16:22:44 [interface.py:635] Setting kv cache block size to 64 for DEEPSEEK_V32_INDEXER backend.
+2026-10-05T16:22:44.487691441Z (Worker_TP5 pid=2385) INFO 10-05 16:22:44 [interface.py:933] Setting attention block size to 640 tokens to ensure that attention page size is >= mamba page size.
+2026-10-05T16:22:44.487919934Z (Worker_TP5 pid=2385) INFO 10-05 16:22:44 [interface.py:957] Padding mamba page size by 20.75% to ensure that mamba page size and attention page size are exactly equal.
+2026-10-05T16:22:44.787462863Z (Worker_TP7 pid=2599) INFO 10-05 16:22:44 [model_runner.py:422] Model loading took 38.24 GiB memory and 93.696394 seconds
+2026-10-05T16:22:44.812659719Z (Worker_TP7 pid=2599) INFO 10-05 16:22:44 [interface.py:635] Setting kv cache block size to 64 for DEEPSEEK_V32_INDEXER backend.
+2026-10-05T16:22:44.813284226Z (Worker_TP7 pid=2599) INFO 10-05 16:22:44 [interface.py:933] Setting attention block size to 640 tokens to ensure that attention page size is >= mamba page size.
+2026-10-05T16:22:44.813535533Z (Worker_TP7 pid=2599) INFO 10-05 16:22:44 [interface.py:957] Padding mamba page size by 20.75% to ensure that mamba page size and attention page size are exactly equal.
+2026-10-05T16:22:44.849827836Z (Worker_TP2 pid=2064) INFO 10-05 16:22:44 [model_runner.py:422] Model loading took 38.24 GiB memory and 93.902455 seconds
+2026-10-05T16:22:44.850553585Z (Worker_TP4 pid=2278) INFO 10-05 16:22:44 [model_runner.py:422] Model loading took 38.24 GiB memory and 93.753924 seconds
+2026-10-05T16:22:44.854185315Z (Worker_TP3 pid=2171) INFO 10-05 16:22:44 [model_runner.py:422] Model loading took 38.24 GiB memory and 93.746766 seconds
+2026-10-05T16:22:44.856438405Z (Worker_TP1 pid=1958) INFO 10-05 16:22:44 [model_runner.py:422] Model loading took 38.24 GiB memory and 93.743221 seconds
+2026-10-05T16:22:44.875034066Z (Worker_TP2 pid=2064) INFO 10-05 16:22:44 [interface.py:635] Setting kv cache block size to 64 for DEEPSEEK_V32_INDEXER backend.
+2026-10-05T16:22:44.875765344Z (Worker_TP2 pid=2064) INFO 10-05 16:22:44 [interface.py:933] Setting attention block size to 640 tokens to ensure that attention page size is >= mamba page size.
+2026-10-05T16:22:44.876001468Z (Worker_TP2 pid=2064) INFO 10-05 16:22:44 [interface.py:957] Padding mamba page size by 20.75% to ensure that mamba page size and attention page size are exactly equal.
+2026-10-05T16:22:44.876628388Z (Worker_TP4 pid=2278) INFO 10-05 16:22:44 [interface.py:635] Setting kv cache block size to 64 for DEEPSEEK_V32_INDEXER backend.
+2026-10-05T16:22:44.877334868Z (Worker_TP4 pid=2278) INFO 10-05 16:22:44 [interface.py:933] Setting attention block size to 640 tokens to ensure that attention page size is >= mamba page size.
+2026-10-05T16:22:44.877618895Z (Worker_TP4 pid=2278) INFO 10-05 16:22:44 [interface.py:957] Padding mamba page size by 20.75% to ensure that mamba page size and attention page size are exactly equal.
+2026-10-05T16:22:44.879198294Z (Worker_TP3 pid=2171) INFO 10-05 16:22:44 [interface.py:635] Setting kv cache block size to 64 for DEEPSEEK_V32_INDEXER backend.
+2026-10-05T16:22:44.879915541Z (Worker_TP3 pid=2171) INFO 10-05 16:22:44 [interface.py:933] Setting attention block size to 640 tokens to ensure that attention page size is >= mamba page size.
+2026-10-05T16:22:44.880150753Z (Worker_TP3 pid=2171) INFO 10-05 16:22:44 [interface.py:957] Padding mamba page size by 20.75% to ensure that mamba page size and attention page size are exactly equal.
+2026-10-05T16:22:44.882137825Z (Worker_TP1 pid=1958) INFO 10-05 16:22:44 [interface.py:635] Setting kv cache block size to 64 for DEEPSEEK_V32_INDEXER backend.
+2026-10-05T16:22:44.882450644Z (Worker_TP0 pid=1779) INFO 10-05 16:22:44 [model_runner.py:422] Model loading took 38.24 GiB memory and 93.764014 seconds
+2026-10-05T16:22:44.882850644Z (Worker_TP1 pid=1958) INFO 10-05 16:22:44 [interface.py:933] Setting attention block size to 640 tokens to ensure that attention page size is >= mamba page size.
+2026-10-05T16:22:44.883111526Z (Worker_TP1 pid=1958) INFO 10-05 16:22:44 [interface.py:957] Padding mamba page size by 20.75% to ensure that mamba page size and attention page size are exactly equal.
+2026-10-05T16:22:44.907181451Z (Worker_TP0 pid=1779) INFO 10-05 16:22:44 [topk_topp_sampler.py:62] Using FlashInfer for top-p & top-k sampling.
+2026-10-05T16:22:44.908025047Z (Worker_TP0 pid=1779) INFO 10-05 16:22:44 [interface.py:635] Setting kv cache block size to 64 for DEEPSEEK_V32_INDEXER backend.
+2026-10-05T16:22:44.908765367Z (Worker_TP0 pid=1779) INFO 10-05 16:22:44 [interface.py:933] Setting attention block size to 640 tokens to ensure that attention page size is >= mamba page size.
+2026-10-05T16:22:44.908778838Z (Worker_TP0 pid=1779) INFO 10-05 16:22:44 [interface.py:957] Padding mamba page size by 20.75% to ensure that mamba page size and attention page size are exactly equal.
+2026-10-05T16:22:44.913165630Z (EngineCore pid=1553) INFO 10-05 16:22:44 [torch_utils.py:280] Reducing Torch threads from 22 to 1 for serving. Set OMP_NUM_THREADS in the external environment to override.
+2026-10-05T16:22:44.926425325Z (EngineCore pid=1553) INFO 10-05 16:22:44 [utils.py:306] Using LBHNC KV cache layout.
+2026-10-05T16:22:47.483592911Z (Worker_TP0 pid=1779) INFO 10-05 16:22:47 [encoder_runner.py:131] Encoder cache will be initialized with a budget of 32242 tokens, and profiled with 1 video items of the maximum feature size.
+2026-10-05T16:23:06.390832216Z (Worker_TP5 pid=2385) /usr/local/lib/python3.12/dist-packages/triton/language/core.py:2284: UserWarning: tl.make_block_ptr is deprecated. Use TensorDescriptor or tl.make_tensor_descriptor instead.
+2026-10-05T16:23:06.390928651Z (Worker_TP5 pid=2385)   warn("tl.make_block_ptr is deprecated. Use TensorDescriptor or tl.make_tensor_descriptor instead.")
+2026-10-05T16:23:06.392697955Z (Worker_TP7 pid=2599) /usr/local/lib/python3.12/dist-packages/triton/language/core.py:2284: UserWarning: tl.make_block_ptr is deprecated. Use TensorDescriptor or tl.make_tensor_descriptor instead.
+2026-10-05T16:23:06.392729112Z (Worker_TP7 pid=2599)   warn("tl.make_block_ptr is deprecated. Use TensorDescriptor or tl.make_tensor_descriptor instead.")
+2026-10-05T16:23:06.397978909Z (Worker_TP4 pid=2278) /usr/local/lib/python3.12/dist-packages/triton/language/core.py:2284: UserWarning: tl.make_block_ptr is deprecated. Use TensorDescriptor or tl.make_tensor_descriptor instead.
+2026-10-05T16:23:06.397996045Z (Worker_TP4 pid=2278)   warn("tl.make_block_ptr is deprecated. Use TensorDescriptor or tl.make_tensor_descriptor instead.")
+2026-10-05T16:23:06.399392250Z (Worker_TP6 pid=2492) /usr/local/lib/python3.12/dist-packages/triton/language/core.py:2284: UserWarning: tl.make_block_ptr is deprecated. Use TensorDescriptor or tl.make_tensor_descriptor instead.
+2026-10-05T16:23:06.399407933Z (Worker_TP6 pid=2492)   warn("tl.make_block_ptr is deprecated. Use TensorDescriptor or tl.make_tensor_descriptor instead.")
+2026-10-05T16:23:06.413354909Z (Worker_TP1 pid=1958) /usr/local/lib/python3.12/dist-packages/triton/language/core.py:2284: UserWarning: tl.make_block_ptr is deprecated. Use TensorDescriptor or tl.make_tensor_descriptor instead.
+2026-10-05T16:23:06.413375791Z (Worker_TP1 pid=1958)   warn("tl.make_block_ptr is deprecated. Use TensorDescriptor or tl.make_tensor_descriptor instead.")
+2026-10-05T16:23:06.419548583Z (Worker_TP0 pid=1779) /usr/local/lib/python3.12/dist-packages/triton/language/core.py:2284: UserWarning: tl.make_block_ptr is deprecated. Use TensorDescriptor or tl.make_tensor_descriptor instead.
+2026-10-05T16:23:06.419569063Z (Worker_TP0 pid=1779)   warn("tl.make_block_ptr is deprecated. Use TensorDescriptor or tl.make_tensor_descriptor instead.")
+2026-10-05T16:23:06.423452730Z (Worker_TP2 pid=2064) /usr/local/lib/python3.12/dist-packages/triton/language/core.py:2284: UserWarning: tl.make_block_ptr is deprecated. Use TensorDescriptor or tl.make_tensor_descriptor instead.
+2026-10-05T16:23:06.423465109Z (Worker_TP2 pid=2064)   warn("tl.make_block_ptr is deprecated. Use TensorDescriptor or tl.make_tensor_descriptor instead.")
+2026-10-05T16:23:06.456921187Z (Worker_TP3 pid=2171) /usr/local/lib/python3.12/dist-packages/triton/language/core.py:2284: UserWarning: tl.make_block_ptr is deprecated. Use TensorDescriptor or tl.make_tensor_descriptor instead.
+2026-10-05T16:23:06.456941808Z (Worker_TP3 pid=2171)   warn("tl.make_block_ptr is deprecated. Use TensorDescriptor or tl.make_tensor_descriptor instead.")
+2026-10-05T16:23:06.904916787Z [16:23:06] : Warning: T.vectorized loop over `i_hci` with extent 4 is lowered as a serial loop because TileLang could not find a valid vectorization plan. Scalar accumulator updates inside the loop are a common cause; move reductions to T.unroll or T.serial if this is intended.
+2026-10-05T16:23:06.907567604Z [16:23:06] : Warning: T.vectorized loop over `i_hci` with extent 4 is lowered as a serial loop because TileLang could not find a valid vectorization plan. Scalar accumulator updates inside the loop are a common cause; move reductions to T.unroll or T.serial if this is intended.
+2026-10-05T16:23:06.909889869Z [16:23:06] : Warning: T.vectorized loop over `i_hci` with extent 4 is lowered as a serial loop because TileLang could not find a valid vectorization plan. Scalar accumulator updates inside the loop are a common cause; move reductions to T.unroll or T.serial if this is intended.
+2026-10-05T16:23:06.910239223Z [16:23:06] : Warning: T.vectorized loop over `i_hci` with extent 4 is lowered as a serial loop because TileLang could not find a valid vectorization plan. Scalar accumulator updates inside the loop are a common cause; move reductions to T.unroll or T.serial if this is intended.
+2026-10-05T16:23:06.912770751Z [16:23:06] : Warning: T.vectorized loop over `i_hci` with extent 4 is lowered as a serial loop because TileLang could not find a valid vectorization plan. Scalar accumulator updates inside the loop are a common cause; move reductions to T.unroll or T.serial if this is intended.
+2026-10-05T16:23:06.919825046Z [16:23:06] : Warning: T.vectorized loop over `i_hci` with extent 4 is lowered as a serial loop because TileLang could not find a valid vectorization plan. Scalar accumulator updates inside the loop are a common cause; move reductions to T.unroll or T.serial if this is intended.
+2026-10-05T16:23:06.926849055Z [16:23:06] : Warning: T.vectorized loop over `i_hci` with extent 4 is lowered as a serial loop because TileLang could not find a valid vectorization plan. Scalar accumulator updates inside the loop are a common cause; move reductions to T.unroll or T.serial if this is intended.
+2026-10-05T16:23:06.945387860Z [16:23:06] : Warning: T.vectorized loop over `i_hci` with extent 4 is lowered as a serial loop because TileLang could not find a valid vectorization plan. Scalar accumulator updates inside the loop are a common cause; move reductions to T.unroll or T.serial if this is intended.
+2026-10-05T16:23:22.021585367Z (Worker_TP0 pid=1779) 2026-10-05 16:22:56  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_pre_big_fuse_with_norm_tilelang` with `out_idx=None`
+2026-10-05T16:23:22.021641060Z (Worker_TP0 pid=1779) 2026-10-05 16:23:05  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_pre_big_fuse_with_norm_tilelang`
+2026-10-05T16:23:22.021651426Z (Worker_TP0 pid=1779) 2026-10-05 16:23:06  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_post_tilelang` with `out_idx=None`
+2026-10-05T16:23:22.021659999Z (Worker_TP0 pid=1779) 2026-10-05 16:23:08  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_post_tilelang`
+2026-10-05T16:23:22.021668592Z (Worker_TP0 pid=1779) WARNING 10-05 16:23:22 [fused_moe.py:1167] Using default MoE config. Performance might be sub-optimal! Config file not found at /usr/local/lib/python3.12/dist-packages/vllm/model_executor/layers/fused_moe/configs/E=288,N=256,device_name=NVIDIA_H100_80GB_HBM3,dtype=fp8_w8a8,block_shape=[128,128].json
+2026-10-05T16:23:24.952270786Z (Worker_TP0 pid=1779) INFO 10-05 16:23:24 [indexer.py:743] DSA indexer decode path: use_flattening=False supports_varlen=False (next_n=1, use_fp4_cache=False)
+2026-10-05T16:23:24.984433283Z (Worker_TP0 pid=1779) INFO 10-05 16:23:24 [breakable_cudagraph.py:288] Breakable CUDA graph enabled
+2026-10-05T16:23:25.653384118Z (Worker_TP1 pid=1958) 2026-10-05 16:22:56  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_pre_big_fuse_with_norm_tilelang` with `out_idx=None`
+2026-10-05T16:23:25.653431539Z (Worker_TP1 pid=1958) 2026-10-05 16:23:05  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_pre_big_fuse_with_norm_tilelang`
+2026-10-05T16:23:25.653438830Z (Worker_TP1 pid=1958) 2026-10-05 16:23:06  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_post_tilelang` with `out_idx=None`
+2026-10-05T16:23:25.653445400Z (Worker_TP1 pid=1958) 2026-10-05 16:23:08  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_post_tilelang`
+2026-10-05T16:23:38.937601267Z (Worker_TP3 pid=2171) 2026-10-05 16:22:56  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_pre_big_fuse_with_norm_tilelang` with `out_idx=None`
+2026-10-05T16:23:38.937667516Z (Worker_TP3 pid=2171) 2026-10-05 16:23:05  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_pre_big_fuse_with_norm_tilelang`
+2026-10-05T16:23:38.937677712Z (Worker_TP3 pid=2171) 2026-10-05 16:23:06  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_post_tilelang` with `out_idx=None`
+2026-10-05T16:23:38.937686495Z (Worker_TP3 pid=2171) 2026-10-05 16:23:08  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_post_tilelang`
+2026-10-05T16:23:38.973312699Z (Worker_TP5 pid=2385) 2026-10-05 16:22:56  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_pre_big_fuse_with_norm_tilelang` with `out_idx=None`
+2026-10-05T16:23:38.973356835Z (Worker_TP5 pid=2385) 2026-10-05 16:23:05  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_pre_big_fuse_with_norm_tilelang`
+2026-10-05T16:23:38.973366650Z (Worker_TP5 pid=2385) 2026-10-05 16:23:06  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_post_tilelang` with `out_idx=None`
+2026-10-05T16:23:38.973375223Z (Worker_TP5 pid=2385) 2026-10-05 16:23:08  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_post_tilelang`
+2026-10-05T16:23:39.083332975Z (Worker_TP4 pid=2278) 2026-10-05 16:22:56  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_pre_big_fuse_with_norm_tilelang` with `out_idx=None`
+2026-10-05T16:23:39.083370602Z (Worker_TP4 pid=2278) 2026-10-05 16:23:05  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_pre_big_fuse_with_norm_tilelang`
+2026-10-05T16:23:39.083380056Z (Worker_TP4 pid=2278) 2026-10-05 16:23:06  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_post_tilelang` with `out_idx=None`
+2026-10-05T16:23:39.083388539Z (Worker_TP4 pid=2278) 2026-10-05 16:23:08  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_post_tilelang`
+2026-10-05T16:23:39.141733180Z (Worker_TP6 pid=2492) 2026-10-05 16:22:56  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_pre_big_fuse_with_norm_tilelang` with `out_idx=None`
+2026-10-05T16:23:39.141809494Z (Worker_TP6 pid=2492) 2026-10-05 16:23:05  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_pre_big_fuse_with_norm_tilelang`
+2026-10-05T16:23:39.141815764Z (Worker_TP6 pid=2492) 2026-10-05 16:23:06  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_post_tilelang` with `out_idx=None`
+2026-10-05T16:23:39.141821923Z (Worker_TP6 pid=2492) 2026-10-05 16:23:08  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_post_tilelang`
+2026-10-05T16:23:39.191931308Z (Worker_TP2 pid=2064) 2026-10-05 16:22:56  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_pre_big_fuse_with_norm_tilelang` with `out_idx=None`
+2026-10-05T16:23:39.191959350Z (Worker_TP2 pid=2064) 2026-10-05 16:23:05  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_pre_big_fuse_with_norm_tilelang`
+2026-10-05T16:23:39.191965139Z (Worker_TP2 pid=2064) 2026-10-05 16:23:06  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_post_tilelang` with `out_idx=None`
+2026-10-05T16:23:39.191970597Z (Worker_TP2 pid=2064) 2026-10-05 16:23:08  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_post_tilelang`
+2026-10-05T16:23:39.247655908Z (Worker_TP7 pid=2599) 2026-10-05 16:22:56  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_pre_big_fuse_with_norm_tilelang` with `out_idx=None`
+2026-10-05T16:23:39.247679233Z (Worker_TP7 pid=2599) 2026-10-05 16:23:05  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_pre_big_fuse_with_norm_tilelang`
+2026-10-05T16:23:39.247684711Z (Worker_TP7 pid=2599) 2026-10-05 16:23:06  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_post_tilelang` with `out_idx=None`
+2026-10-05T16:23:39.247690029Z (Worker_TP7 pid=2599) 2026-10-05 16:23:08  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_post_tilelang`
+2026-10-05T16:23:45.983849464Z (EngineCore pid=1553) INFO 10-05 16:23:45 [shm_broadcast.py:801] No available shared memory broadcast block found in 60 seconds. This typically happens when some processes are hanging or doing some time-consuming work (e.g. compilation, weight/kv cache quantization).
+2026-10-05T16:23:50.814685671Z (Worker_TP0 pid=1779) 
+Capturing CUDA graphs (PIECEWISE):   0%|          | 0/7 [00:00<?, ?it/s]
+                                                                        
+
+Capturing CUDA graphs (PIECEWISE):   0%|          | 0/7 [00:15<?, ?it/s]
+                                                                        
+
+Capturing CUDA graphs (PIECEWISE):   0%|          | 0/7 [00:23<?, ?it/s](Worker_TP3 pid=2171) /usr/local/lib/python3.12/dist-packages/triton/language/core.py:2284: UserWarning: tl.make_block_ptr is deprecated. Use TensorDescriptor or tl.make_tensor_descriptor instead.
+2026-10-05T16:23:50.814745120Z (Worker_TP3 pid=2171)   warn("tl.make_block_ptr is deprecated. Use TensorDescriptor or tl.make_tensor_descriptor instead.")
+2026-10-05T16:23:50.952550586Z (Worker_TP1 pid=1958) /usr/local/lib/python3.12/dist-packages/triton/language/core.py:2284: UserWarning: tl.make_block_ptr is deprecated. Use TensorDescriptor or tl.make_tensor_descriptor instead.
+2026-10-05T16:23:50.952629284Z (Worker_TP1 pid=1958)   warn("tl.make_block_ptr is deprecated. Use TensorDescriptor or tl.make_tensor_descriptor instead.")
+2026-10-05T16:23:51.001851057Z (Worker_TP4 pid=2278) /usr/local/lib/python3.12/dist-packages/triton/language/core.py:2284: UserWarning: tl.make_block_ptr is deprecated. Use TensorDescriptor or tl.make_tensor_descriptor instead.
+2026-10-05T16:23:51.001904547Z (Worker_TP4 pid=2278)   warn("tl.make_block_ptr is deprecated. Use TensorDescriptor or tl.make_tensor_descriptor instead.")
+2026-10-05T16:23:51.015158133Z /usr/local/lib/python3.12/dist-packages/triton/language/core.py:2284: UserWarning: tl.make_block_ptr is deprecated. Use TensorDescriptor or tl.make_tensor_descriptor instead.
+2026-10-05T16:23:51.015194067Z (Worker_TP0 pid=1779)   warn("tl.make_block_ptr is deprecated. Use TensorDescriptor or tl.make_tensor_descriptor instead.")
+2026-10-05T16:23:51.026991088Z (Worker_TP2 pid=2064) /usr/local/lib/python3.12/dist-packages/triton/language/core.py:2284: UserWarning: tl.make_block_ptr is deprecated. Use TensorDescriptor or tl.make_tensor_descriptor instead.
+2026-10-05T16:23:51.027020211Z (Worker_TP2 pid=2064)   warn("tl.make_block_ptr is deprecated. Use TensorDescriptor or tl.make_tensor_descriptor instead.")
+2026-10-05T16:23:51.089386397Z (Worker_TP7 pid=2599) /usr/local/lib/python3.12/dist-packages/triton/language/core.py:2284: UserWarning: tl.make_block_ptr is deprecated. Use TensorDescriptor or tl.make_tensor_descriptor instead.
+2026-10-05T16:23:51.089416882Z (Worker_TP7 pid=2599)   warn("tl.make_block_ptr is deprecated. Use TensorDescriptor or tl.make_tensor_descriptor instead.")
+2026-10-05T16:23:51.098007512Z (Worker_TP5 pid=2385) /usr/local/lib/python3.12/dist-packages/triton/language/core.py:2284: UserWarning: tl.make_block_ptr is deprecated. Use TensorDescriptor or tl.make_tensor_descriptor instead.
+2026-10-05T16:23:51.098023646Z (Worker_TP5 pid=2385)   warn("tl.make_block_ptr is deprecated. Use TensorDescriptor or tl.make_tensor_descriptor instead.")
+2026-10-05T16:23:51.301200957Z (Worker_TP6 pid=2492) /usr/local/lib/python3.12/dist-packages/triton/language/core.py:2284: UserWarning: tl.make_block_ptr is deprecated. Use TensorDescriptor or tl.make_tensor_descriptor instead.
+2026-10-05T16:23:51.301275118Z (Worker_TP6 pid=2492)   warn("tl.make_block_ptr is deprecated. Use TensorDescriptor or tl.make_tensor_descriptor instead.")
+2026-10-05T16:24:46.035993485Z (EngineCore pid=1553) INFO 10-05 16:24:46 [shm_broadcast.py:801] No available shared memory broadcast block found in 60 seconds. This typically happens when some processes are hanging or doing some time-consuming work (e.g. compilation, weight/kv cache quantization).
+2026-10-05T16:24:51.301922903Z (Worker_TP0 pid=1779) 2026-10-05 16:23:41  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_pre_big_fuse_with_norm_tilelang` with `out_idx=None`
+2026-10-05T16:24:51.301973108Z (Worker_TP0 pid=1779) 2026-10-05 16:23:49  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_pre_big_fuse_with_norm_tilelang`
+2026-10-05T16:24:51.301983544Z (Worker_TP0 pid=1779) INFO 10-05 16:24:51 [flashinfer_all_reduce.py:216] Initialized FlashInfer Allreduce norm fusion workspace with backend=mnnvl
+2026-10-05T16:25:41.930700599Z (Worker_TP0 pid=1779) 
+Capturing CUDA graphs (PIECEWISE):  14%|█▍        | 1/7 [01:36<09:36, 96.02s/it]
+Capturing CUDA graphs (PIECEWISE):  29%|██▊       | 2/7 [01:44<03:43, 44.62s/it]
+                                                                                
+
+Capturing CUDA graphs (PIECEWISE):  29%|██▊       | 2/7 [01:45<03:43, 44.62s/it]
+                                                                                
+
+Capturing CUDA graphs (PIECEWISE):  29%|██▊       | 2/7 [01:46<03:43, 44.62s/it]
+                                                                                
+
+Capturing CUDA graphs (PIECEWISE):  29%|██▊       | 2/7 [01:47<03:43, 44.62s/it]
+                                                                                
+
+Capturing CUDA graphs (PIECEWISE):  29%|██▊       | 2/7 [01:57<03:43, 44.62s/it]
+Capturing CUDA graphs (PIECEWISE):  43%|████▎     | 3/7 [02:01<02:06, 31.72s/it]
+Capturing CUDA graphs (PIECEWISE):  57%|█████▋    | 4/7 [02:02<00:58, 19.60s/it]
+                                                                                
+
+Capturing CUDA graphs (PIECEWISE):  57%|█████▋    | 4/7 [02:02<00:58, 19.60s/it]
+                                                                                
+
+Capturing CUDA graphs (PIECEWISE):  57%|█████▋    | 4/7 [02:03<00:58, 19.60s/it]
+                                                                                
+
+Capturing CUDA graphs (PIECEWISE):  57%|█████▋    | 4/7 [02:04<00:58, 19.60s/it]
+                                                                                
+
+Capturing CUDA graphs (PIECEWISE):  57%|█████▋    | 4/7 [02:13<00:58, 19.60s/it]
+Capturing CUDA graphs (PIECEWISE):  71%|███████▏  | 5/7 [02:15<00:35, 17.51s/it]
+Capturing CUDA graphs (PIECEWISE):  86%|████████▌ | 6/7 [02:16<00:11, 11.71s/it](Worker_TP1 pid=1958) /usr/local/lib/python3.12/dist-packages/triton/language/core.py:2284: UserWarning: tl.make_block_ptr is deprecated. Use TensorDescriptor or tl.make_tensor_descriptor instead.
+2026-10-05T16:25:41.930811726Z (Worker_TP1 pid=1958)   warn("tl.make_block_ptr is deprecated. Use TensorDescriptor or tl.make_tensor_descriptor instead.")
+2026-10-05T16:25:41.933791457Z (Worker_TP5 pid=2385) /usr/local/lib/python3.12/dist-packages/triton/language/core.py:2284: UserWarning: tl.make_block_ptr is deprecated. Use TensorDescriptor or tl.make_tensor_descriptor instead.
+2026-10-05T16:25:41.933836474Z (Worker_TP5 pid=2385)   warn("tl.make_block_ptr is deprecated. Use TensorDescriptor or tl.make_tensor_descriptor instead.")
+2026-10-05T16:25:41.933843805Z (Worker_TP4 pid=2278) /usr/local/lib/python3.12/dist-packages/triton/language/core.py:2284: UserWarning: tl.make_block_ptr is deprecated. Use TensorDescriptor or tl.make_tensor_descriptor instead.
+2026-10-05T16:25:41.933850035Z (Worker_TP4 pid=2278)   warn("tl.make_block_ptr is deprecated. Use TensorDescriptor or tl.make_tensor_descriptor instead.")
+2026-10-05T16:25:41.935487912Z (Worker_TP6 pid=2492) /usr/local/lib/python3.12/dist-packages/triton/language/core.py:2284: UserWarning: tl.make_block_ptr is deprecated. Use TensorDescriptor or tl.make_tensor_descriptor instead.
+2026-10-05T16:25:41.935504227Z (Worker_TP6 pid=2492)   warn("tl.make_block_ptr is deprecated. Use TensorDescriptor or tl.make_tensor_descriptor instead.")
+2026-10-05T16:25:41.936458218Z (Worker_TP3 pid=2171) /usr/local/lib/python3.12/dist-packages/triton/language/core.py:2284: UserWarning: tl.make_block_ptr is deprecated. Use TensorDescriptor or tl.make_tensor_descriptor instead.
+2026-10-05T16:25:41.936481733Z (Worker_TP3 pid=2171)   warn("tl.make_block_ptr is deprecated. Use TensorDescriptor or tl.make_tensor_descriptor instead.")
+2026-10-05T16:25:41.944379443Z (Worker_TP2 pid=2064) /usr/local/lib/python3.12/dist-packages/triton/language/core.py:2284: UserWarning: tl.make_block_ptr is deprecated. Use TensorDescriptor or tl.make_tensor_descriptor instead.
+2026-10-05T16:25:41.944396118Z (Worker_TP2 pid=2064)   warn("tl.make_block_ptr is deprecated. Use TensorDescriptor or tl.make_tensor_descriptor instead.")
+2026-10-05T16:25:41.947207587Z (Worker_TP7 pid=2599) /usr/local/lib/python3.12/dist-packages/triton/language/core.py:2284: UserWarning: tl.make_block_ptr is deprecated. Use TensorDescriptor or tl.make_tensor_descriptor instead.
+2026-10-05T16:25:41.947235248Z (Worker_TP7 pid=2599)   warn("tl.make_block_ptr is deprecated. Use TensorDescriptor or tl.make_tensor_descriptor instead.")
+2026-10-05T16:25:41.947976771Z /usr/local/lib/python3.12/dist-packages/triton/language/core.py:2284: UserWarning: tl.make_block_ptr is deprecated. Use TensorDescriptor or tl.make_tensor_descriptor instead.
+2026-10-05T16:25:41.947993305Z (Worker_TP0 pid=1779)   warn("tl.make_block_ptr is deprecated. Use TensorDescriptor or tl.make_tensor_descriptor instead.")
+2026-10-05T16:25:43.758737907Z (Worker_TP0 pid=1779) 
+Capturing CUDA graphs (PIECEWISE): 100%|██████████| 7/7 [02:18<00:00,  8.52s/it]
+Capturing CUDA graphs (PIECEWISE): 100%|██████████| 7/7 [02:18<00:00, 19.75s/it]
+2026-10-05T16:25:43.758838357Z (Worker_TP0 pid=1779) 2026-10-05 16:25:10  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_fused_tilelang` with `out_idx=None`
+2026-10-05T16:25:43.758846770Z (Worker_TP0 pid=1779) 2026-10-05 16:25:12  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_fused_tilelang`
+2026-10-05T16:25:43.758852969Z (Worker_TP0 pid=1779) 2026-10-05 16:25:12  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_pre_big_fuse_with_norm_tilelang` with `out_idx=None`
+2026-10-05T16:25:43.758858938Z (Worker_TP0 pid=1779) 2026-10-05 16:25:22  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_pre_big_fuse_with_norm_tilelang`
+2026-10-05T16:25:43.758864176Z (Worker_TP0 pid=1779) 2026-10-05 16:25:27  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_fused_tilelang` with `out_idx=None`
+2026-10-05T16:25:43.758869604Z (Worker_TP0 pid=1779) 2026-10-05 16:25:28  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_fused_tilelang`
+2026-10-05T16:25:43.758875283Z (Worker_TP0 pid=1779) 2026-10-05 16:25:29  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_pre_big_fuse_with_norm_tilelang` with `out_idx=None`
+2026-10-05T16:25:43.758880801Z (Worker_TP0 pid=1779) 2026-10-05 16:25:39  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_pre_big_fuse_with_norm_tilelang`
+2026-10-05T16:25:46.093703197Z (EngineCore pid=1553) INFO 10-05 16:25:46 [shm_broadcast.py:801] No available shared memory broadcast block found in 60 seconds. This typically happens when some processes are hanging or doing some time-consuming work (e.g. compilation, weight/kv cache quantization).
+2026-10-05T16:25:46.522738339Z (Worker_TP0 pid=1779) 
+Capturing CUDA graphs (FULL):   0%|          | 0/2 [00:00<?, ?it/s]
+Capturing CUDA graphs (FULL):  50%|█████     | 1/2 [00:02<00:02,  2.50s/it]
+Capturing CUDA graphs (FULL): 100%|██████████| 2/2 [00:02<00:00,  1.18s/it]
+Capturing CUDA graphs (FULL): 100%|██████████| 2/2 [00:02<00:00,  1.38s/it]
+2026-10-05T16:25:47.067733769Z (Worker_TP5 pid=2385) 2026-10-05 16:23:41  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_pre_big_fuse_with_norm_tilelang` with `out_idx=None`
+2026-10-05T16:25:47.067781771Z (Worker_TP5 pid=2385) 2026-10-05 16:23:49  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_pre_big_fuse_with_norm_tilelang`
+2026-10-05T16:25:47.067792166Z (Worker_TP5 pid=2385) 2026-10-05 16:25:10  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_fused_tilelang` with `out_idx=None`
+2026-10-05T16:25:47.067801010Z (Worker_TP5 pid=2385) 2026-10-05 16:25:12  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_fused_tilelang`
+2026-10-05T16:25:47.067809232Z (Worker_TP5 pid=2385) 2026-10-05 16:25:12  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_pre_big_fuse_with_norm_tilelang` with `out_idx=None`
+2026-10-05T16:25:47.067818125Z (Worker_TP5 pid=2385) 2026-10-05 16:25:22  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_pre_big_fuse_with_norm_tilelang`
+2026-10-05T16:25:47.067827640Z (Worker_TP5 pid=2385) 2026-10-05 16:25:27  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_fused_tilelang` with `out_idx=None`
+2026-10-05T16:25:47.067835792Z (Worker_TP5 pid=2385) 2026-10-05 16:25:28  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_fused_tilelang`
+2026-10-05T16:25:47.067843904Z (Worker_TP5 pid=2385) 2026-10-05 16:25:29  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_pre_big_fuse_with_norm_tilelang` with `out_idx=None`
+2026-10-05T16:25:47.067852106Z (Worker_TP5 pid=2385) 2026-10-05 16:25:39  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_pre_big_fuse_with_norm_tilelang`
+2026-10-05T16:25:47.067860329Z (Worker_TP5 pid=2385) INFO 10-05 16:25:47 [model_runner.py:1001] Graph capturing finished in 142 secs, took 0.72 GiB
+2026-10-05T16:25:47.077932131Z (Worker_TP4 pid=2278) 2026-10-05 16:23:41  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_pre_big_fuse_with_norm_tilelang` with `out_idx=None`
+2026-10-05T16:25:47.077972441Z (Worker_TP4 pid=2278) 2026-10-05 16:23:49  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_pre_big_fuse_with_norm_tilelang`
+2026-10-05T16:25:47.077994694Z (Worker_TP4 pid=2278) 2026-10-05 16:25:10  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_fused_tilelang` with `out_idx=None`
+2026-10-05T16:25:47.078003388Z (Worker_TP4 pid=2278) 2026-10-05 16:25:12  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_fused_tilelang`
+2026-10-05T16:25:47.078032121Z (Worker_TP4 pid=2278) 2026-10-05 16:25:12  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_pre_big_fuse_with_norm_tilelang` with `out_idx=None`
+2026-10-05T16:25:47.078038480Z (Worker_TP4 pid=2278) 2026-10-05 16:25:22  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_pre_big_fuse_with_norm_tilelang`
+2026-10-05T16:25:47.078043938Z (Worker_TP4 pid=2278) 2026-10-05 16:25:27  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_fused_tilelang` with `out_idx=None`
+2026-10-05T16:25:47.078049336Z (Worker_TP4 pid=2278) 2026-10-05 16:25:29  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_fused_tilelang`
+2026-10-05T16:25:47.078054424Z (Worker_TP4 pid=2278) 2026-10-05 16:25:29  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_pre_big_fuse_with_norm_tilelang` with `out_idx=None`
+2026-10-05T16:25:47.078059672Z (Worker_TP4 pid=2278) 2026-10-05 16:25:39  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_pre_big_fuse_with_norm_tilelang`
+2026-10-05T16:25:47.078064870Z (Worker_TP4 pid=2278) INFO 10-05 16:25:47 [model_runner.py:1001] Graph capturing finished in 142 secs, took 0.72 GiB
+2026-10-05T16:25:47.084871202Z (Worker_TP2 pid=2064) 2026-10-05 16:23:41  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_pre_big_fuse_with_norm_tilelang` with `out_idx=None`
+2026-10-05T16:25:47.084887897Z (Worker_TP2 pid=2064) 2026-10-05 16:23:49  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_pre_big_fuse_with_norm_tilelang`
+2026-10-05T16:25:47.084893866Z (Worker_TP2 pid=2064) 2026-10-05 16:25:10  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_fused_tilelang` with `out_idx=None`
+2026-10-05T16:25:47.084899154Z (Worker_TP2 pid=2064) 2026-10-05 16:25:12  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_fused_tilelang`
+2026-10-05T16:25:47.084904893Z (Worker_TP2 pid=2064) 2026-10-05 16:25:12  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_pre_big_fuse_with_norm_tilelang` with `out_idx=None`
+2026-10-05T16:25:47.084910261Z (Worker_TP2 pid=2064) 2026-10-05 16:25:22  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_pre_big_fuse_with_norm_tilelang`
+2026-10-05T16:25:47.084915529Z (Worker_TP2 pid=2064) 2026-10-05 16:25:27  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_fused_tilelang` with `out_idx=None`
+2026-10-05T16:25:47.084920756Z (Worker_TP2 pid=2064) 2026-10-05 16:25:29  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_fused_tilelang`
+2026-10-05T16:25:47.084925884Z (Worker_TP2 pid=2064) 2026-10-05 16:25:29  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_pre_big_fuse_with_norm_tilelang` with `out_idx=None`
+2026-10-05T16:25:47.084931012Z (Worker_TP2 pid=2064) 2026-10-05 16:25:39  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_pre_big_fuse_with_norm_tilelang`
+2026-10-05T16:25:47.084936140Z (Worker_TP2 pid=2064) INFO 10-05 16:25:47 [model_runner.py:1001] Graph capturing finished in 142 secs, took 0.72 GiB
+2026-10-05T16:25:47.256819987Z (Worker_TP7 pid=2599) 2026-10-05 16:23:41  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_pre_big_fuse_with_norm_tilelang` with `out_idx=None`
+2026-10-05T16:25:47.256851404Z (Worker_TP7 pid=2599) 2026-10-05 16:23:49  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_pre_big_fuse_with_norm_tilelang`
+2026-10-05T16:25:47.256857163Z (Worker_TP7 pid=2599) 2026-10-05 16:25:10  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_fused_tilelang` with `out_idx=None`
+2026-10-05T16:25:47.256862350Z (Worker_TP7 pid=2599) 2026-10-05 16:25:12  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_fused_tilelang`
+2026-10-05T16:25:47.256867468Z (Worker_TP7 pid=2599) 2026-10-05 16:25:12  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_pre_big_fuse_with_norm_tilelang` with `out_idx=None`
+2026-10-05T16:25:47.256872896Z (Worker_TP7 pid=2599) 2026-10-05 16:25:22  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_pre_big_fuse_with_norm_tilelang`
+2026-10-05T16:25:47.256878094Z (Worker_TP7 pid=2599) 2026-10-05 16:25:27  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_fused_tilelang` with `out_idx=None`
+2026-10-05T16:25:47.256883232Z (Worker_TP7 pid=2599) 2026-10-05 16:25:29  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_fused_tilelang`
+2026-10-05T16:25:47.256888219Z (Worker_TP7 pid=2599) 2026-10-05 16:25:29  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_pre_big_fuse_with_norm_tilelang` with `out_idx=None`
+2026-10-05T16:25:47.256893908Z (Worker_TP7 pid=2599) 2026-10-05 16:25:39  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_pre_big_fuse_with_norm_tilelang`
+2026-10-05T16:25:47.256899166Z (Worker_TP7 pid=2599) INFO 10-05 16:25:47 [model_runner.py:1001] Graph capturing finished in 142 secs, took 0.72 GiB
+2026-10-05T16:25:47.264918558Z (Worker_TP3 pid=2171) 2026-10-05 16:23:41  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_pre_big_fuse_with_norm_tilelang` with `out_idx=None`
+2026-10-05T16:25:47.264948854Z (Worker_TP3 pid=2171) 2026-10-05 16:23:49  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_pre_big_fuse_with_norm_tilelang`
+2026-10-05T16:25:47.264954672Z (Worker_TP3 pid=2171) 2026-10-05 16:25:10  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_fused_tilelang` with `out_idx=None`
+2026-10-05T16:25:47.264959930Z (Worker_TP3 pid=2171) 2026-10-05 16:25:12  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_fused_tilelang`
+2026-10-05T16:25:47.264965018Z (Worker_TP3 pid=2171) 2026-10-05 16:25:12  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_pre_big_fuse_with_norm_tilelang` with `out_idx=None`
+2026-10-05T16:25:47.264970105Z (Worker_TP3 pid=2171) 2026-10-05 16:25:22  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_pre_big_fuse_with_norm_tilelang`
+2026-10-05T16:25:47.265031558Z (Worker_TP3 pid=2171) 2026-10-05 16:25:27  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_fused_tilelang` with `out_idx=None`
+2026-10-05T16:25:47.265037396Z (Worker_TP3 pid=2171) 2026-10-05 16:25:29  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_fused_tilelang`
+2026-10-05T16:25:47.265042674Z (Worker_TP3 pid=2171) 2026-10-05 16:25:29  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_pre_big_fuse_with_norm_tilelang` with `out_idx=None`
+2026-10-05T16:25:47.265047862Z (Worker_TP3 pid=2171) 2026-10-05 16:25:39  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_pre_big_fuse_with_norm_tilelang`
+2026-10-05T16:25:47.265053090Z (Worker_TP3 pid=2171) INFO 10-05 16:25:47 [model_runner.py:1001] Graph capturing finished in 142 secs, took 0.72 GiB
+2026-10-05T16:25:47.283808351Z (Worker_TP0 pid=1779) INFO 10-05 16:25:47 [model_runner.py:1001] Graph capturing finished in 142 secs, took 0.72 GiB
+2026-10-05T16:25:47.292533031Z (Worker_TP6 pid=2492) 2026-10-05 16:23:41  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_pre_big_fuse_with_norm_tilelang` with `out_idx=None`
+2026-10-05T16:25:47.292548034Z (Worker_TP6 pid=2492) 2026-10-05 16:23:49  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_pre_big_fuse_with_norm_tilelang`
+2026-10-05T16:25:47.292554604Z (Worker_TP6 pid=2492) 2026-10-05 16:25:10  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_fused_tilelang` with `out_idx=None`
+2026-10-05T16:25:47.292560272Z (Worker_TP6 pid=2492) 2026-10-05 16:25:12  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_fused_tilelang`
+2026-10-05T16:25:47.292565410Z (Worker_TP6 pid=2492) 2026-10-05 16:25:12  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_pre_big_fuse_with_norm_tilelang` with `out_idx=None`
+2026-10-05T16:25:47.292570608Z (Worker_TP6 pid=2492) 2026-10-05 16:25:22  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_pre_big_fuse_with_norm_tilelang`
+2026-10-05T16:25:47.292575926Z (Worker_TP6 pid=2492) 2026-10-05 16:25:27  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_fused_tilelang` with `out_idx=None`
+2026-10-05T16:25:47.292581304Z (Worker_TP6 pid=2492) 2026-10-05 16:25:29  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_fused_tilelang`
+2026-10-05T16:25:47.292586452Z (Worker_TP6 pid=2492) 2026-10-05 16:25:29  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_pre_big_fuse_with_norm_tilelang` with `out_idx=None`
+2026-10-05T16:25:47.292591769Z (Worker_TP6 pid=2492) 2026-10-05 16:25:39  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_pre_big_fuse_with_norm_tilelang`
+2026-10-05T16:25:47.292597017Z (Worker_TP6 pid=2492) INFO 10-05 16:25:47 [model_runner.py:1001] Graph capturing finished in 142 secs, took 0.72 GiB
+2026-10-05T16:25:47.303942651Z (Worker_TP1 pid=1958) 2026-10-05 16:23:41  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_pre_big_fuse_with_norm_tilelang` with `out_idx=None`
+2026-10-05T16:25:47.303966386Z (Worker_TP1 pid=1958) 2026-10-05 16:23:49  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_pre_big_fuse_with_norm_tilelang`
+2026-10-05T16:25:47.303972105Z (Worker_TP1 pid=1958) 2026-10-05 16:25:10  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_fused_tilelang` with `out_idx=None`
+2026-10-05T16:25:47.303977212Z (Worker_TP1 pid=1958) 2026-10-05 16:25:12  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_fused_tilelang`
+2026-10-05T16:25:47.303998504Z (Worker_TP1 pid=1958) 2026-10-05 16:25:12  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_pre_big_fuse_with_norm_tilelang` with `out_idx=None`
+2026-10-05T16:25:47.304004043Z (Worker_TP1 pid=1958) 2026-10-05 16:25:22  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_pre_big_fuse_with_norm_tilelang`
+2026-10-05T16:25:47.304009291Z (Worker_TP1 pid=1958) 2026-10-05 16:25:27  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_fused_tilelang` with `out_idx=None`
+2026-10-05T16:25:47.304015109Z (Worker_TP1 pid=1958) 2026-10-05 16:25:28  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_fused_tilelang`
+2026-10-05T16:25:47.304020157Z (Worker_TP1 pid=1958) 2026-10-05 16:25:29  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_pre_big_fuse_with_norm_tilelang` with `out_idx=None`
+2026-10-05T16:25:47.304025375Z (Worker_TP1 pid=1958) 2026-10-05 16:25:39  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_pre_big_fuse_with_norm_tilelang`
+2026-10-05T16:25:47.304030572Z (Worker_TP1 pid=1958) INFO 10-05 16:25:47 [model_runner.py:1001] Graph capturing finished in 142 secs, took 0.72 GiB
+2026-10-05T16:25:47.623501362Z (Worker_TP5 pid=2385) INFO 10-05 16:25:47 [gpu_worker.py:652] CUDA graph memory profiling is enabled (default since v0.21.0). The current --gpu-memory-utilization=0.9000 is equivalent to --gpu-memory-utilization=0.8907 without CUDA graph memory profiling. To maintain the same effective KV cache size as before, increase --gpu-memory-utilization to 0.9093. To disable, set VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS=0.
+2026-10-05T16:25:47.646606679Z (Worker_TP4 pid=2278) INFO 10-05 16:25:47 [gpu_worker.py:652] CUDA graph memory profiling is enabled (default since v0.21.0). The current --gpu-memory-utilization=0.9000 is equivalent to --gpu-memory-utilization=0.8907 without CUDA graph memory profiling. To maintain the same effective KV cache size as before, increase --gpu-memory-utilization to 0.9093. To disable, set VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS=0.
+2026-10-05T16:25:47.661762700Z (Worker_TP2 pid=2064) INFO 10-05 16:25:47 [gpu_worker.py:652] CUDA graph memory profiling is enabled (default since v0.21.0). The current --gpu-memory-utilization=0.9000 is equivalent to --gpu-memory-utilization=0.8907 without CUDA graph memory profiling. To maintain the same effective KV cache size as before, increase --gpu-memory-utilization to 0.9093. To disable, set VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS=0.
+2026-10-05T16:25:48.015579833Z (Worker_TP7 pid=2599) INFO 10-05 16:25:48 [gpu_worker.py:652] CUDA graph memory profiling is enabled (default since v0.21.0). The current --gpu-memory-utilization=0.9000 is equivalent to --gpu-memory-utilization=0.8907 without CUDA graph memory profiling. To maintain the same effective KV cache size as before, increase --gpu-memory-utilization to 0.9093. To disable, set VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS=0.
+2026-10-05T16:25:48.031956855Z (Worker_TP3 pid=2171) INFO 10-05 16:25:48 [gpu_worker.py:652] CUDA graph memory profiling is enabled (default since v0.21.0). The current --gpu-memory-utilization=0.9000 is equivalent to --gpu-memory-utilization=0.8907 without CUDA graph memory profiling. To maintain the same effective KV cache size as before, increase --gpu-memory-utilization to 0.9093. To disable, set VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS=0.
+2026-10-05T16:25:48.066856399Z (Worker_TP0 pid=1779) INFO 10-05 16:25:48 [gpu_worker.py:637] Available KV cache memory: 29.22 GiB
+2026-10-05T16:25:48.066893264Z (Worker_TP0 pid=1779) INFO 10-05 16:25:48 [gpu_worker.py:652] CUDA graph memory profiling is enabled (default since v0.21.0). The current --gpu-memory-utilization=0.9000 is equivalent to --gpu-memory-utilization=0.8907 without CUDA graph memory profiling. To maintain the same effective KV cache size as before, increase --gpu-memory-utilization to 0.9093. To disable, set VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS=0.
+2026-10-05T16:25:48.077145677Z (Worker_TP6 pid=2492) INFO 10-05 16:25:48 [gpu_worker.py:652] CUDA graph memory profiling is enabled (default since v0.21.0). The current --gpu-memory-utilization=0.9000 is equivalent to --gpu-memory-utilization=0.8907 without CUDA graph memory profiling. To maintain the same effective KV cache size as before, increase --gpu-memory-utilization to 0.9093. To disable, set VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS=0.
+2026-10-05T16:25:48.094923251Z (Worker_TP1 pid=1958) INFO 10-05 16:25:48 [gpu_worker.py:652] CUDA graph memory profiling is enabled (default since v0.21.0). The current --gpu-memory-utilization=0.9000 is equivalent to --gpu-memory-utilization=0.8907 without CUDA graph memory profiling. To maintain the same effective KV cache size as before, increase --gpu-memory-utilization to 0.9093. To disable, set VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS=0.
+2026-10-05T16:25:48.148440940Z (EngineCore pid=1553) INFO 10-05 16:25:48 [kv_cache_utils.py:2315] GPU KV cache size: 1,079,296 tokens, Maximum concurrency for 4,096 tokens per request: 263.50x
+2026-10-05T16:25:48.281968146Z (Worker_TP6 pid=2492) INFO 10-05 16:25:48 [kernel_warmup.py:135] JIT kernel warmup starting.
+2026-10-05T16:25:48.282010870Z (Worker_TP6 pid=2492) INFO 10-05 16:25:48 [kernel_warmup.py:145] JIT kernel warmup finished in 0.00s.
+2026-10-05T16:25:48.282017100Z (Worker_TP3 pid=2171) INFO 10-05 16:25:48 [kernel_warmup.py:135] JIT kernel warmup starting.
+2026-10-05T16:25:48.282087535Z (Worker_TP3 pid=2171) INFO 10-05 16:25:48 [kernel_warmup.py:145] JIT kernel warmup finished in 0.00s.
+2026-10-05T16:25:48.282316148Z (Worker_TP2 pid=2064) INFO 10-05 16:25:48 [kernel_warmup.py:135] JIT kernel warmup starting.
+2026-10-05T16:25:48.282327876Z (Worker_TP2 pid=2064) INFO 10-05 16:25:48 [kernel_warmup.py:145] JIT kernel warmup finished in 0.00s.
+2026-10-05T16:25:48.283284191Z (Worker_TP5 pid=2385) INFO 10-05 16:25:48 [kernel_warmup.py:135] JIT kernel warmup starting.
+2026-10-05T16:25:48.283296710Z (Worker_TP5 pid=2385) INFO 10-05 16:25:48 [kernel_warmup.py:145] JIT kernel warmup finished in 0.00s.
+2026-10-05T16:25:48.283624541Z (Worker_TP0 pid=1779) INFO 10-05 16:25:48 [kernel_warmup.py:135] JIT kernel warmup starting.
+2026-10-05T16:25:48.283652644Z (Worker_TP0 pid=1779) INFO 10-05 16:25:48 [kernel_warmup.py:145] JIT kernel warmup finished in 0.00s.
+2026-10-05T16:25:48.284396530Z (Worker_TP7 pid=2599) INFO 10-05 16:25:48 [kernel_warmup.py:135] JIT kernel warmup starting.
+2026-10-05T16:25:48.284412884Z (Worker_TP7 pid=2599) INFO 10-05 16:25:48 [kernel_warmup.py:145] JIT kernel warmup finished in 0.00s.
+2026-10-05T16:25:48.284586815Z (Worker_TP4 pid=2278) INFO 10-05 16:25:48 [kernel_warmup.py:135] JIT kernel warmup starting.
+2026-10-05T16:25:48.284592564Z (Worker_TP4 pid=2278) INFO 10-05 16:25:48 [kernel_warmup.py:145] JIT kernel warmup finished in 0.00s.
+2026-10-05T16:25:48.284896159Z (Worker_TP1 pid=1958) INFO 10-05 16:25:48 [kernel_warmup.py:135] JIT kernel warmup starting.
+2026-10-05T16:25:48.284902449Z (Worker_TP1 pid=1958) INFO 10-05 16:25:48 [kernel_warmup.py:145] JIT kernel warmup finished in 0.00s.
+2026-10-05T16:25:48.410888060Z (Worker_TP1 pid=1958) INFO 10-05 16:25:48 [mamba_triton_warmup.py:42] Warmed Mamba batch_memcpy_kernel.
+2026-10-05T16:25:48.427282578Z (Worker_TP2 pid=2064) INFO 10-05 16:25:48 [mamba_triton_warmup.py:42] Warmed Mamba batch_memcpy_kernel.
+2026-10-05T16:25:48.427491932Z (Worker_TP4 pid=2278) INFO 10-05 16:25:48 [mamba_triton_warmup.py:42] Warmed Mamba batch_memcpy_kernel.
+2026-10-05T16:25:48.429972284Z (Worker_TP5 pid=2385) INFO 10-05 16:25:48 [mamba_triton_warmup.py:42] Warmed Mamba batch_memcpy_kernel.
+2026-10-05T16:25:48.432117643Z (Worker_TP3 pid=2171) INFO 10-05 16:25:48 [mamba_triton_warmup.py:42] Warmed Mamba batch_memcpy_kernel.
+2026-10-05T16:25:48.432128439Z (Worker_TP6 pid=2492) INFO 10-05 16:25:48 [mamba_triton_warmup.py:42] Warmed Mamba batch_memcpy_kernel.
+2026-10-05T16:25:48.432401829Z (Worker_TP0 pid=1779) INFO 10-05 16:25:48 [mamba_triton_warmup.py:42] Warmed Mamba batch_memcpy_kernel.
+2026-10-05T16:25:48.432896401Z (Worker_TP7 pid=2599) INFO 10-05 16:25:48 [mamba_triton_warmup.py:42] Warmed Mamba batch_memcpy_kernel.
+2026-10-05T16:25:48.701556814Z (Worker_TP0 pid=1779) INFO 10-05 16:25:48 [kernel_warmup.py:97] Warming up ll_bf16 router GEMM kernels for shapes: ((4096, 288),).
+2026-10-05T16:26:49.261476760Z (EngineCore pid=1553) INFO 10-05 16:26:49 [shm_broadcast.py:801] No available shared memory broadcast block found in 60 seconds. This typically happens when some processes are hanging or doing some time-consuming work (e.g. compilation, weight/kv cache quantization).
+2026-10-05T16:27:49.325282599Z (EngineCore pid=1553) INFO 10-05 16:27:49 [shm_broadcast.py:801] No available shared memory broadcast block found in 60 seconds. This typically happens when some processes are hanging or doing some time-consuming work (e.g. compilation, weight/kv cache quantization).
+2026-10-05T16:28:49.387391972Z (EngineCore pid=1553) INFO 10-05 16:28:49 [shm_broadcast.py:801] No available shared memory broadcast block found in 60 seconds. This typically happens when some processes are hanging or doing some time-consuming work (e.g. compilation, weight/kv cache quantization).
+2026-10-05T16:28:59.986266328Z (Worker_TP0 pid=1779) 
+DeepGEMM warmup:   0%|          | 0/967 [00:00<?, ?it/s]
+DeepGEMM warmup:   0%|          | 1/967 [00:02<45:50,  2.85s/it]
+DeepGEMM warmup:   1%|          | 8/967 [00:04<08:23,  1.90it/s]
+DeepGEMM warmup:   1%|▏         | 13/967 [00:06<07:32,  2.11it/s]
+DeepGEMM warmup:   2%|▏         | 15/967 [00:09<09:40,  1.64it/s]
+DeepGEMM warmup:   2%|▏         | 18/967 [00:12<11:42,  1.35it/s]
+DeepGEMM warmup:   2%|▏         | 21/967 [00:14<11:48,  1.34it/s]
+DeepGEMM warmup:   3%|▎         | 25/967 [00:16<10:54,  1.44it/s]
+DeepGEMM warmup:   3%|▎         | 27/967 [00:20<13:42,  1.14it/s]
+DeepGEMM warmup:   4%|▎         | 34/967 [00:22<09:16,  1.68it/s]
+DeepGEMM warmup:   4%|▍         | 37/967 [00:24<09:57,  1.56it/s]
+DeepGEMM warmup:   4%|▍         | 40/967 [00:27<10:37,  1.46it/s]
+DeepGEMM warmup:   5%|▍         | 44/967 [00:31<12:22,  1.24it/s]
+DeepGEMM warmup:   6%|▌         | 55/967 [00:33<07:07,  2.13it/s]
+DeepGEMM warmup:   6%|▌         | 60/967 [00:36<07:37,  1.98it/s]
+DeepGEMM warmup:   7%|▋         | 66/967 [00:38<07:00,  2.14it/s]
+DeepGEMM warmup:   7%|▋         | 70/967 [00:41<07:26,  2.01it/s]
+DeepGEMM warmup:   8%|▊         | 74/967 [00:46<10:13,  1.46it/s]
+DeepGEMM warmup:   8%|▊         | 77/967 [00:50<12:23,  1.20it/s]
+DeepGEMM warmup:   9%|▉         | 90/967 [00:53<07:09,  2.04it/s]
+DeepGEMM warmup:  24%|██▍       | 234/967 [00:56<00:49, 14.90it/s]
+DeepGEMM warmup:  25%|██▍       | 241/967 [00:58<00:58, 12.40it/s]
+DeepGEMM warmup:  25%|██▌       | 246/967 [01:00<01:11, 10.04it/s]
+DeepGEMM warmup:  26%|██▌       | 250/967 [01:03<01:40,  7.16it/s]
+DeepGEMM warmup:  26%|██▋       | 254/967 [01:05<02:04,  5.74it/s]
+DeepGEMM warmup:  27%|██▋       | 259/967 [01:08<02:27,  4.80it/s]
+DeepGEMM warmup:  27%|██▋       | 264/967 [01:11<03:09,  3.71it/s]
+DeepGEMM warmup:  28%|██▊       | 268/967 [01:13<03:40,  3.17it/s]
+DeepGEMM warmup:  28%|██▊       | 273/967 [01:15<03:59,  2.90it/s]
+DeepGEMM warmup:  29%|██▉       | 279/967 [01:20<05:15,  2.18it/s]
+DeepGEMM warmup:  29%|██▉       | 285/967 [01:23<05:23,  2.11it/s]
+DeepGEMM warmup:  30%|███       | 291/967 [01:25<05:02,  2.23it/s]
+DeepGEMM warmup:  31%|███       | 300/967 [01:28<04:21,  2.55it/s]
+DeepGEMM warmup:  32%|███▏      | 307/967 [01:30<04:09,  2.64it/s]
+DeepGEMM warmup:  32%|███▏      | 312/967 [01:35<05:31,  1.97it/s]
+DeepGEMM warmup:  33%|███▎      | 318/967 [01:39<05:53,  1.83it/s]
+DeepGEMM warmup:  34%|███▍      | 329/967 [01:42<04:26,  2.39it/s]
+DeepGEMM warmup:  54%|█████▍    | 520/967 [01:44<00:20, 21.71it/s]
+DeepGEMM warmup:  54%|█████▍    | 527/967 [01:46<00:25, 17.31it/s]
+DeepGEMM warmup:  55%|█████▌    | 534/967 [01:48<00:31, 13.85it/s]
+DeepGEMM warmup:  56%|█████▌    | 539/967 [01:50<00:39, 10.81it/s]
+DeepGEMM warmup:  56%|█████▋    | 544/967 [01:52<00:50,  8.43it/s]
+DeepGEMM warmup:  57%|█████▋    | 549/967 [01:54<01:03,  6.61it/s]
+DeepGEMM warmup:  57%|█████▋    | 552/967 [01:58<01:31,  4.52it/s]
+DeepGEMM warmup:  58%|█████▊    | 558/967 [02:00<01:40,  4.05it/s]
+DeepGEMM warmup:  58%|█████▊    | 560/967 [02:02<02:10,  3.13it/s]
+DeepGEMM warmup:  58%|█████▊    | 563/967 [02:04<02:36,  2.59it/s]
+DeepGEMM warmup:  59%|█████▉    | 572/967 [02:07<02:10,  3.02it/s]
+DeepGEMM warmup:  59%|█████▉    | 575/967 [02:09<02:34,  2.54it/s]
+DeepGEMM warmup:  60%|█████▉    | 576/967 [02:12<03:47,  1.72it/s]
+DeepGEMM warmup:  61%|██████    | 586/967 [02:14<02:34,  2.46it/s]
+DeepGEMM warmup:  62%|██████▏   | 595/967 [02:16<02:10,  2.86it/s]
+DeepGEMM warmup:  63%|██████▎   | 612/967 [02:19<01:24,  4.20it/s]
+DeepGEMM warmup:  64%|██████▍   | 620/967 [02:23<01:48,  3.21it/s]
+DeepGEMM warmup:  66%|██████▌   | 638/967 [02:25<01:15,  4.35it/s]
+DeepGEMM warmup:  69%|██████▊   | 664/967 [02:28<00:49,  6.14it/s]
+DeepGEMM warmup:  71%|███████   | 682/967 [02:30<00:45,  6.28it/s]
+DeepGEMM warmup:  71%|███████▏  | 689/967 [02:32<00:49,  5.58it/s]
+DeepGEMM warmup:  72%|███████▏  | 694/967 [02:34<00:57,  4.77it/s]
+DeepGEMM warmup:  72%|███████▏  | 698/967 [02:37<01:08,  3.91it/s]
+DeepGEMM warmup:  73%|███████▎  | 702/967 [02:39<01:18,  3.37it/s]
+DeepGEMM warmup:  73%|███████▎  | 707/967 [02:41<01:24,  3.08it/s]
+DeepGEMM warmup:  74%|███████▎  | 712/967 [02:43<01:30,  2.81it/s]
+DeepGEMM warmup:  74%|███████▍  | 716/967 [02:45<01:38,  2.54it/s]
+DeepGEMM warmup:  75%|███████▍  | 721/967 [02:47<01:38,  2.50it/s]
+DeepGEMM warmup:  75%|███████▌  | 727/967 [02:49<01:32,  2.60it/s]
+DeepGEMM warmup:  75%|███████▌  | 729/967 [02:52<02:00,  1.97it/s]
+DeepGEMM warmup:  76%|███████▌  | 733/967 [02:54<02:02,  1.91it/s]
+DeepGEMM warmup:  76%|███████▋  | 739/967 [02:57<01:46,  2.14it/s]
+DeepGEMM warmup:  77%|███████▋  | 748/967 [02:59<01:20,  2.72it/s]
+DeepGEMM warmup:  78%|███████▊  | 755/967 [03:01<01:13,  2.89it/s]
+DeepGEMM warmup:  79%|███████▊  | 760/967 [03:03<01:16,  2.70it/s]
+DeepGEMM warmup:  79%|███████▉  | 766/967 [03:06<01:17,  2.60it/s]
+DeepGEMM warmup:  80%|████████  | 777/967 [03:08<00:57,  3.28it/s]
+DeepGEMM warmup:  86%|████████▋ | 835/967 [03:10<00:13,  9.61it/s]
+DeepGEMM warmup: 100%|██████████| 967/967 [03:10<00:00,  5.07it/s]
+2026-10-05T16:29:00.003782180Z (Worker_TP0 pid=1779) INFO 10-05 16:29:00 [kernel_warmup.py:364] Using FlashInfer autotune cache file: /root/.cache/vllm/flashinfer_autotune_cache/0.6.18/90a/ec0a1d442c43959a93e8c949b8db47a954e4435af719827f51c2a40cf55f78e6/autotune_configs.json
+2026-10-05T16:29:00.006117353Z (Worker_TP2 pid=2064) 2026-10-05 16:29:00,005 - INFO - autotuner.py:972 - flashinfer.jit: [Autotuner]: Autotuning process starts ...
+2026-10-05T16:29:00.006149992Z (Worker_TP6 pid=2492) 2026-10-05 16:29:00,005 - INFO - autotuner.py:972 - flashinfer.jit: [Autotuner]: Autotuning process starts ...
+2026-10-05T16:29:00.006546317Z (Worker_TP4 pid=2278) 2026-10-05 16:29:00,006 - INFO - autotuner.py:972 - flashinfer.jit: [Autotuner]: Autotuning process starts ...
+2026-10-05T16:29:00.010595913Z (Worker_TP6 pid=2492) INFO 10-05 16:29:00 [kernel_warmup.py:316] Running FlashInfer autotune with 8192 tokens and token buckets (1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 768, 1024, 1280, 1536, 1792, 2048, 2560, 3072, 3584, 4096, 8192).
+2026-10-05T16:29:00.010604175Z (Worker_TP2 pid=2064) INFO 10-05 16:29:00 [kernel_warmup.py:316] Running FlashInfer autotune with 8192 tokens and token buckets (1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 768, 1024, 1280, 1536, 1792, 2048, 2560, 3072, 3584, 4096, 8192).
+2026-10-05T16:29:00.011143835Z (Worker_TP4 pid=2278) INFO 10-05 16:29:00 [kernel_warmup.py:316] Running FlashInfer autotune with 8192 tokens and token buckets (1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 768, 1024, 1280, 1536, 1792, 2048, 2560, 3072, 3584, 4096, 8192).
+2026-10-05T16:29:00.025533215Z (Worker_TP0 pid=1779) 2026-10-05 16:29:00,025 - INFO - autotuner.py:972 - flashinfer.jit: [Autotuner]: Autotuning process starts ...
+2026-10-05T16:29:00.025975639Z (Worker_TP1 pid=1958) 2026-10-05 16:29:00,025 - INFO - autotuner.py:972 - flashinfer.jit: [Autotuner]: Autotuning process starts ...
+2026-10-05T16:29:00.025978153Z (Worker_TP5 pid=2385) 2026-10-05 16:29:00,025 - INFO - autotuner.py:972 - flashinfer.jit: [Autotuner]: Autotuning process starts ...
+2026-10-05T16:29:00.028006206Z (Worker_TP3 pid=2171) 2026-10-05 16:29:00,027 - INFO - autotuner.py:972 - flashinfer.jit: [Autotuner]: Autotuning process starts ...
+2026-10-05T16:29:00.028236241Z (Worker_TP7 pid=2599) 2026-10-05 16:29:00,028 - INFO - autotuner.py:972 - flashinfer.jit: [Autotuner]: Autotuning process starts ...
+2026-10-05T16:29:00.029273587Z (Worker_TP0 pid=1779) INFO 10-05 16:29:00 [kernel_warmup.py:316] Running FlashInfer autotune with 8192 tokens and token buckets (1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 768, 1024, 1280, 1536, 1792, 2048, 2560, 3072, 3584, 4096, 8192).
+2026-10-05T16:29:00.029854699Z (Worker_TP3 pid=2171) INFO 10-05 16:29:00 [kernel_warmup.py:316] Running FlashInfer autotune with 8192 tokens and token buckets (1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 768, 1024, 1280, 1536, 1792, 2048, 2560, 3072, 3584, 4096, 8192).
+2026-10-05T16:29:00.030530984Z (Worker_TP5 pid=2385) INFO 10-05 16:29:00 [kernel_warmup.py:316] Running FlashInfer autotune with 8192 tokens and token buckets (1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 768, 1024, 1280, 1536, 1792, 2048, 2560, 3072, 3584, 4096, 8192).
+2026-10-05T16:29:00.030671004Z (Worker_TP1 pid=1958) INFO 10-05 16:29:00 [kernel_warmup.py:316] Running FlashInfer autotune with 8192 tokens and token buckets (1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 768, 1024, 1280, 1536, 1792, 2048, 2560, 3072, 3584, 4096, 8192).
+2026-10-05T16:29:00.032187259Z (Worker_TP7 pid=2599) INFO 10-05 16:29:00 [kernel_warmup.py:316] Running FlashInfer autotune with 8192 tokens and token buckets (1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 768, 1024, 1280, 1536, 1792, 2048, 2560, 3072, 3584, 4096, 8192).
+2026-10-05T16:29:00.281565590Z (Worker_TP6 pid=2492) 2026-10-05 16:29:00,281 - INFO - autotuner.py:995 - flashinfer.jit: [Autotuner]: Autotuning process ends
+2026-10-05T16:29:00.281624899Z (Worker_TP2 pid=2064) 2026-10-05 16:29:00,281 - INFO - autotuner.py:995 - flashinfer.jit: [Autotuner]: Autotuning process ends
+2026-10-05T16:29:00.281811189Z (Worker_TP4 pid=2278) 2026-10-05 16:29:00,281 - INFO - autotuner.py:995 - flashinfer.jit: [Autotuner]: Autotuning process ends
+2026-10-05T16:29:00.286315868Z (Worker_TP3 pid=2171) 2026-10-05 16:29:00,285 - INFO - autotuner.py:995 - flashinfer.jit: [Autotuner]: Autotuning process ends
+2026-10-05T16:29:00.286660936Z (Worker_TP0 pid=1779) 2026-10-05 16:29:00,286 - INFO - autotuner.py:995 - flashinfer.jit: [Autotuner]: Autotuning process ends
+2026-10-05T16:29:00.286669488Z (Worker_TP5 pid=2385) 2026-10-05 16:29:00,286 - INFO - autotuner.py:995 - flashinfer.jit: [Autotuner]: Autotuning process ends
+2026-10-05T16:29:00.287381517Z (Worker_TP7 pid=2599) 2026-10-05 16:29:00,287 - INFO - autotuner.py:995 - flashinfer.jit: [Autotuner]: Autotuning process ends
+2026-10-05T16:29:00.290058243Z (Worker_TP1 pid=1958) 2026-10-05 16:29:00,289 - INFO - autotuner.py:995 - flashinfer.jit: [Autotuner]: Autotuning process ends
+2026-10-05T16:29:00.316818034Z (Worker_TP0 pid=1779) 2026-10-05 16:29:00,316 - INFO - autotuner.py:2652 - flashinfer.jit: [Autotuner]: Saved 0 configs to /root/.cache/vllm/flashinfer_autotune_cache/0.6.18/90a/ec0a1d442c43959a93e8c949b8db47a954e4435af719827f51c2a40cf55f78e6/autotune_configs.json (0 new, 0 from previous config)
+2026-10-05T16:29:07.259833419Z (Worker_TP0 pid=1779) 
+Capturing CUDA graphs (PIECEWISE):   0%|          | 0/7 [00:00<?, ?it/s]
+Capturing CUDA graphs (PIECEWISE):  14%|█▍        | 1/7 [00:00<00:01,  3.20it/s]
+Capturing CUDA graphs (PIECEWISE):  29%|██▊       | 2/7 [00:00<00:01,  3.35it/s]
+Capturing CUDA graphs (PIECEWISE):  43%|████▎     | 3/7 [00:00<00:01,  3.78it/s]
+Capturing CUDA graphs (PIECEWISE):  57%|█████▋    | 4/7 [00:01<00:00,  4.04it/s]
+Capturing CUDA graphs (PIECEWISE):  71%|███████▏  | 5/7 [00:01<00:00,  4.20it/s]
+Capturing CUDA graphs (PIECEWISE):  86%|████████▌ | 6/7 [00:01<00:00,  4.30it/s]
+Capturing CUDA graphs (PIECEWISE): 100%|██████████| 7/7 [00:01<00:00,  4.40it/s]
+Capturing CUDA graphs (PIECEWISE): 100%|██████████| 7/7 [00:01<00:00,  4.10it/s]
+2026-10-05T16:29:08.390241893Z (Worker_TP0 pid=1779) 
+Capturing CUDA graphs (FULL):   0%|          | 0/5 [00:00<?, ?it/s]
+Capturing CUDA graphs (FULL):  20%|██        | 1/5 [00:00<00:00,  4.41it/s]
+Capturing CUDA graphs (FULL):  40%|████      | 2/5 [00:00<00:00,  4.46it/s]
+Capturing CUDA graphs (FULL):  60%|██████    | 3/5 [00:00<00:00,  4.43it/s]
+Capturing CUDA graphs (FULL):  80%|████████  | 4/5 [00:00<00:00,  4.39it/s]
+Capturing CUDA graphs (FULL): 100%|██████████| 5/5 [00:01<00:00,  4.43it/s]
+Capturing CUDA graphs (FULL): 100%|██████████| 5/5 [00:01<00:00,  4.42it/s]
+2026-10-05T16:29:08.944946410Z (Worker_TP4 pid=2278) INFO 10-05 16:29:08 [model_runner.py:1001] Graph capturing finished in 4 secs, took 0.11 GiB
+2026-10-05T16:29:08.945005118Z (Worker_TP4 pid=2278) INFO 10-05 16:29:08 [gpu_worker.py:813] CUDA graph pool memory: 0.11 GiB (actual), 0.74 GiB (estimated), difference: 0.63 GiB (575.0%).
+2026-10-05T16:29:08.945015314Z (Worker_TP4 pid=2278) INFO 10-05 16:29:08 [gpu_worker.py:876] Free memory on device (77.01/79.18 GiB) on startup. Desired GPU memory utilization is (0.9, 71.26 GiB). Actual usage is 39.92 GiB for consumed memory (weights + non-torch), 2.12 GiB for peak activation, and 0.11 GiB for CUDAGraph memory. Replace gpu_memory_utilization config with `--kv-cache-memory=31097983386` (28.96 GiB) to fit into requested memory, or `--kv-cache-memory=37268748288` (34.71 GiB) to fully utilize gpu memory. Current kv cache memory in use is 29.22 GiB.
+2026-10-05T16:29:08.945688874Z (Worker_TP4 pid=2278) INFO 10-05 16:29:08 [jit_monitor.py:85] Kernel JIT monitor activated; monitored JIT compilations during inference will use mode=warn.
+2026-10-05T16:29:08.947623016Z (Worker_TP5 pid=2385) INFO 10-05 16:29:08 [model_runner.py:1001] Graph capturing finished in 4 secs, took 0.11 GiB
+2026-10-05T16:29:08.947642906Z (Worker_TP5 pid=2385) INFO 10-05 16:29:08 [gpu_worker.py:813] CUDA graph pool memory: 0.11 GiB (actual), 0.74 GiB (estimated), difference: 0.63 GiB (575.0%).
+2026-10-05T16:29:08.947676356Z (Worker_TP5 pid=2385) INFO 10-05 16:29:08 [gpu_worker.py:876] Free memory on device (77.01/79.18 GiB) on startup. Desired GPU memory utilization is (0.9, 71.26 GiB). Actual usage is 39.92 GiB for consumed memory (weights + non-torch), 2.12 GiB for peak activation, and 0.11 GiB for CUDAGraph memory. Replace gpu_memory_utilization config with `--kv-cache-memory=31097983386` (28.96 GiB) to fit into requested memory, or `--kv-cache-memory=37268748288` (34.71 GiB) to fully utilize gpu memory. Current kv cache memory in use is 29.22 GiB.
+2026-10-05T16:29:08.948096607Z (Worker_TP1 pid=1958) INFO 10-05 16:29:08 [model_runner.py:1001] Graph capturing finished in 4 secs, took 0.11 GiB
+2026-10-05T16:29:08.948121715Z (Worker_TP1 pid=1958) INFO 10-05 16:29:08 [gpu_worker.py:813] CUDA graph pool memory: 0.11 GiB (actual), 0.74 GiB (estimated), difference: 0.63 GiB (575.0%).
+2026-10-05T16:29:08.948203808Z (Worker_TP1 pid=1958) INFO 10-05 16:29:08 [gpu_worker.py:876] Free memory on device (77.01/79.18 GiB) on startup. Desired GPU memory utilization is (0.9, 71.26 GiB). Actual usage is 39.92 GiB for consumed memory (weights + non-torch), 2.12 GiB for peak activation, and 0.11 GiB for CUDAGraph memory. Replace gpu_memory_utilization config with `--kv-cache-memory=31097983386` (28.96 GiB) to fit into requested memory, or `--kv-cache-memory=37268748288` (34.71 GiB) to fully utilize gpu memory. Current kv cache memory in use is 29.22 GiB.
+2026-10-05T16:29:08.948431239Z (Worker_TP5 pid=2385) INFO 10-05 16:29:08 [jit_monitor.py:85] Kernel JIT monitor activated; monitored JIT compilations during inference will use mode=warn.
+2026-10-05T16:29:08.948932311Z (Worker_TP1 pid=1958) INFO 10-05 16:29:08 [jit_monitor.py:85] Kernel JIT monitor activated; monitored JIT compilations during inference will use mode=warn.
+2026-10-05T16:29:08.951911731Z (Worker_TP6 pid=2492) INFO 10-05 16:29:08 [model_runner.py:1001] Graph capturing finished in 4 secs, took 0.11 GiB
+2026-10-05T16:29:08.951922558Z (Worker_TP6 pid=2492) INFO 10-05 16:29:08 [gpu_worker.py:813] CUDA graph pool memory: 0.11 GiB (actual), 0.74 GiB (estimated), difference: 0.63 GiB (575.0%).
+2026-10-05T16:29:08.951942998Z (Worker_TP6 pid=2492) INFO 10-05 16:29:08 [gpu_worker.py:876] Free memory on device (77.01/79.18 GiB) on startup. Desired GPU memory utilization is (0.9, 71.26 GiB). Actual usage is 39.92 GiB for consumed memory (weights + non-torch), 2.12 GiB for peak activation, and 0.11 GiB for CUDAGraph memory. Replace gpu_memory_utilization config with `--kv-cache-memory=31097983386` (28.96 GiB) to fit into requested memory, or `--kv-cache-memory=37268748288` (34.71 GiB) to fully utilize gpu memory. Current kv cache memory in use is 29.22 GiB.
+2026-10-05T16:29:08.952735978Z (Worker_TP6 pid=2492) INFO 10-05 16:29:08 [jit_monitor.py:85] Kernel JIT monitor activated; monitored JIT compilations during inference will use mode=warn.
+2026-10-05T16:29:08.955301718Z (Worker_TP2 pid=2064) INFO 10-05 16:29:08 [model_runner.py:1001] Graph capturing finished in 4 secs, took 0.11 GiB
+2026-10-05T16:29:08.955315448Z (Worker_TP2 pid=2064) INFO 10-05 16:29:08 [gpu_worker.py:813] CUDA graph pool memory: 0.11 GiB (actual), 0.74 GiB (estimated), difference: 0.63 GiB (575.0%).
+2026-10-05T16:29:08.955412073Z (Worker_TP2 pid=2064) INFO 10-05 16:29:08 [gpu_worker.py:876] Free memory on device (77.01/79.18 GiB) on startup. Desired GPU memory utilization is (0.9, 71.26 GiB). Actual usage is 39.92 GiB for consumed memory (weights + non-torch), 2.12 GiB for peak activation, and 0.11 GiB for CUDAGraph memory. Replace gpu_memory_utilization config with `--kv-cache-memory=31097983386` (28.96 GiB) to fit into requested memory, or `--kv-cache-memory=37268748288` (34.71 GiB) to fully utilize gpu memory. Current kv cache memory in use is 29.22 GiB.
+2026-10-05T16:29:08.956117482Z (Worker_TP2 pid=2064) INFO 10-05 16:29:08 [jit_monitor.py:85] Kernel JIT monitor activated; monitored JIT compilations during inference will use mode=warn.
+2026-10-05T16:29:09.135450616Z (Worker_TP0 pid=1779) INFO 10-05 16:29:09 [model_runner.py:1001] Graph capturing finished in 4 secs, took 0.11 GiB
+2026-10-05T16:29:09.135506580Z (Worker_TP0 pid=1779) INFO 10-05 16:29:09 [gpu_worker.py:813] CUDA graph pool memory: 0.11 GiB (actual), 0.74 GiB (estimated), difference: 0.63 GiB (575.0%).
+2026-10-05T16:29:09.135518888Z (Worker_TP0 pid=1779) INFO 10-05 16:29:09 [gpu_worker.py:876] Free memory on device (77.01/79.18 GiB) on startup. Desired GPU memory utilization is (0.9, 71.26 GiB). Actual usage is 39.92 GiB for consumed memory (weights + non-torch), 2.12 GiB for peak activation, and 0.11 GiB for CUDAGraph memory. Replace gpu_memory_utilization config with `--kv-cache-memory=31097983386` (28.96 GiB) to fit into requested memory, or `--kv-cache-memory=37268748288` (34.71 GiB) to fully utilize gpu memory. Current kv cache memory in use is 29.22 GiB.
+2026-10-05T16:29:09.136377787Z (Worker_TP0 pid=1779) INFO 10-05 16:29:09 [jit_monitor.py:85] Kernel JIT monitor activated; monitored JIT compilations during inference will use mode=warn.
+2026-10-05T16:29:09.139129886Z (Worker_TP7 pid=2599) INFO 10-05 16:29:09 [model_runner.py:1001] Graph capturing finished in 4 secs, took 0.11 GiB
+2026-10-05T16:29:09.139174283Z (Worker_TP7 pid=2599) INFO 10-05 16:29:09 [gpu_worker.py:813] CUDA graph pool memory: 0.11 GiB (actual), 0.74 GiB (estimated), difference: 0.63 GiB (575.0%).
+2026-10-05T16:29:09.139272380Z (Worker_TP7 pid=2599) INFO 10-05 16:29:09 [gpu_worker.py:876] Free memory on device (77.01/79.18 GiB) on startup. Desired GPU memory utilization is (0.9, 71.26 GiB). Actual usage is 39.92 GiB for consumed memory (weights + non-torch), 2.12 GiB for peak activation, and 0.11 GiB for CUDAGraph memory. Replace gpu_memory_utilization config with `--kv-cache-memory=31097983386` (28.96 GiB) to fit into requested memory, or `--kv-cache-memory=37268748288` (34.71 GiB) to fully utilize gpu memory. Current kv cache memory in use is 29.22 GiB.
+2026-10-05T16:29:09.140148274Z (Worker_TP7 pid=2599) INFO 10-05 16:29:09 [jit_monitor.py:85] Kernel JIT monitor activated; monitored JIT compilations during inference will use mode=warn.
+2026-10-05T16:29:09.158834892Z (Worker_TP3 pid=2171) INFO 10-05 16:29:09 [model_runner.py:1001] Graph capturing finished in 4 secs, took 0.11 GiB
+2026-10-05T16:29:09.158862824Z (Worker_TP3 pid=2171) INFO 10-05 16:29:09 [gpu_worker.py:813] CUDA graph pool memory: 0.11 GiB (actual), 0.74 GiB (estimated), difference: 0.63 GiB (575.0%).
+2026-10-05T16:29:09.158881392Z (Worker_TP3 pid=2171) INFO 10-05 16:29:09 [gpu_worker.py:876] Free memory on device (77.01/79.18 GiB) on startup. Desired GPU memory utilization is (0.9, 71.26 GiB). Actual usage is 39.92 GiB for consumed memory (weights + non-torch), 2.12 GiB for peak activation, and 0.11 GiB for CUDAGraph memory. Replace gpu_memory_utilization config with `--kv-cache-memory=31097983386` (28.96 GiB) to fit into requested memory, or `--kv-cache-memory=37268748288` (34.71 GiB) to fully utilize gpu memory. Current kv cache memory in use is 29.22 GiB.
+2026-10-05T16:29:09.159777126Z (Worker_TP3 pid=2171) INFO 10-05 16:29:09 [jit_monitor.py:85] Kernel JIT monitor activated; monitored JIT compilations during inference will use mode=warn.
+2026-10-05T16:29:09.869506686Z (Worker_TP0 pid=1779) INFO 10-05 16:29:09 [torch_utils.py:280] Reducing Torch threads from 22 to 1 for serving. Set OMP_NUM_THREADS in the external environment to override.
+2026-10-05T16:29:09.920142971Z (EngineCore pid=1553) INFO 10-05 16:29:09 [core.py:379] init engine (profile, create kv cache, warmup model) took 385.00 s
+2026-10-05T16:29:11.412288952Z (EngineCore pid=1553) INFO 10-05 16:29:11 [kv_cache_utils.py:732] kv cache group sizes [640, 4, 640, 640, 640, 640]
+2026-10-05T16:29:11.412331035Z (EngineCore pid=1553) INFO 10-05 16:29:11 [kv_cache_utils.py:733] kv lcm block sizes 640
+2026-10-05T16:29:13.379548310Z (EngineCore pid=1553) INFO 10-05 16:29:13 [kernel.py:372] Final IR op priority after setting platform defaults: IrOpPriorityConfig(rms_norm=['vllm_c', 'native'], fused_add_rms_norm=['vllm_c', 'native'])
+2026-10-05T16:29:13.401473447Z (EngineCore pid=1553) INFO 10-05 16:29:13 [compilation.py:329] Enabled custom fusions: norm_quant, act_quant, allreduce_rms
+2026-10-05T16:29:13.407194031Z (APIServer pid=1) INFO 10-05 16:29:13 [entry.py:135] Supported tasks: ['generate']
+2026-10-05T16:29:13.686645925Z (APIServer pid=1) INFO 10-05 16:29:13 [factories.py:83] Scale-out endpoints are disabled. Set VLLM_ENABLE_SCALE_OUT_ENDPOINTS=1 to enable them.
+2026-10-05T16:29:15.123811181Z (APIServer pid=1) INFO 10-05 16:29:15 [hf.py:590] Detected the chat template content format to be 'openai'. You can set `--chat-template-content-format` to override this.
+2026-10-05T16:29:15.207468452Z (APIServer pid=1) INFO 10-05 16:29:15 [entry.py:139] Starting vLLM server on http://0.0.0.0:8000
+2026-10-05T16:29:15.207518868Z (APIServer pid=1) INFO 10-05 16:29:15 [launcher.py:61] Available routes are:
+2026-10-05T16:29:15.207528462Z (APIServer pid=1) INFO 10-05 16:29:15 [launcher.py:70] Route: /openapi.json, Methods: HEAD, GET
+2026-10-05T16:29:15.207536484Z (APIServer pid=1) INFO 10-05 16:29:15 [launcher.py:70] Route: /docs, Methods: HEAD, GET
+2026-10-05T16:29:15.207544466Z (APIServer pid=1) INFO 10-05 16:29:15 [launcher.py:70] Route: /docs/oauth2-redirect, Methods: HEAD, GET
+2026-10-05T16:29:15.207552969Z (APIServer pid=1) INFO 10-05 16:29:15 [launcher.py:70] Route: /redoc, Methods: HEAD, GET
+2026-10-05T16:29:15.207561251Z (APIServer pid=1) INFO 10-05 16:29:15 [launcher.py:70] Route: /load, Methods: GET
+2026-10-05T16:29:15.207568843Z (APIServer pid=1) INFO 10-05 16:29:15 [launcher.py:70] Route: /version, Methods: GET
+2026-10-05T16:29:15.207576444Z (APIServer pid=1) INFO 10-05 16:29:15 [launcher.py:70] Route: /health, Methods: GET
+2026-10-05T16:29:15.207584496Z (APIServer pid=1) INFO 10-05 16:29:15 [launcher.py:70] Route: /metrics, Methods: GET
+2026-10-05T16:29:15.207601251Z (APIServer pid=1) INFO 10-05 16:29:15 [launcher.py:70] Route: /tokenize, Methods: POST
+2026-10-05T16:29:15.207609344Z (APIServer pid=1) INFO 10-05 16:29:15 [launcher.py:70] Route: /detokenize, Methods: POST
+2026-10-05T16:29:15.207617005Z (APIServer pid=1) INFO 10-05 16:29:15 [launcher.py:70] Route: /v1/models, Methods: GET
+2026-10-05T16:29:15.207624717Z (APIServer pid=1) INFO 10-05 16:29:15 [launcher.py:70] Route: /ping, Methods: GET
+2026-10-05T16:29:15.207632298Z (APIServer pid=1) INFO 10-05 16:29:15 [launcher.py:70] Route: /ping, Methods: POST
+2026-10-05T16:29:15.207640090Z (APIServer pid=1) INFO 10-05 16:29:15 [launcher.py:70] Route: /invocations, Methods: POST
+2026-10-05T16:29:15.207647851Z (APIServer pid=1) INFO 10-05 16:29:15 [launcher.py:70] Route: /v1/chat/completions, Methods: POST
+2026-10-05T16:29:15.207688152Z (APIServer pid=1) INFO 10-05 16:29:15 [launcher.py:70] Route: /v1/chat/completions/batch, Methods: POST
+2026-10-05T16:29:15.207693850Z (APIServer pid=1) INFO 10-05 16:29:15 [launcher.py:70] Route: /v1/responses, Methods: POST
+2026-10-05T16:29:15.207698868Z (APIServer pid=1) INFO 10-05 16:29:15 [launcher.py:70] Route: /v1/responses/{response_id}, Methods: GET
+2026-10-05T16:29:15.207703915Z (APIServer pid=1) INFO 10-05 16:29:15 [launcher.py:70] Route: /v1/responses/{response_id}/cancel, Methods: POST
+2026-10-05T16:29:15.207708833Z (APIServer pid=1) INFO 10-05 16:29:15 [launcher.py:70] Route: /v1/completions, Methods: POST
+2026-10-05T16:29:15.207713690Z (APIServer pid=1) INFO 10-05 16:29:15 [launcher.py:70] Route: /v1/messages, Methods: POST
+2026-10-05T16:29:15.207718688Z (APIServer pid=1) INFO 10-05 16:29:15 [launcher.py:70] Route: /v1/messages/count_tokens, Methods: POST
+2026-10-05T16:29:15.207724016Z (APIServer pid=1) INFO 10-05 16:29:15 [launcher.py:70] Route: /generative_scoring, Methods: POST
+2026-10-05T16:29:15.207731146Z (APIServer pid=1) INFO 10-05 16:29:15 [launcher.py:70] Route: /scale_elastic_ep, Methods: POST
+2026-10-05T16:29:15.207736194Z (APIServer pid=1) INFO 10-05 16:29:15 [launcher.py:70] Route: /is_scaling_elastic_ep, Methods: POST
+2026-10-05T16:29:15.288686263Z (APIServer pid=1) INFO:     Started server process [1]
+2026-10-05T16:29:15.288740093Z (APIServer pid=1) INFO:     Waiting for application startup.
+2026-10-05T16:29:15.742114664Z (APIServer pid=1) INFO:     Application startup complete.
+2026-10-05T16:29:15.778047258Z (APIServer pid=1) INFO:     172.17.0.1:36442 - "GET /health HTTP/1.1" 200 OK
+2026-10-05T16:29:15.934413553Z (Worker_TP0 pid=1779) WARNING 10-05 16:29:15 [jit_monitor.py:141] Triton kernel JIT compilation during inference: BuildPrefillChunkMetadataKernel.kernel. This causes a latency spike; consider extending warmup to cover this shape/config.
+2026-10-05T16:29:16.154523970Z (Worker_TP0 pid=1779) WARNING 10-05 16:29:16 [jit_monitor.py:141] Triton kernel JIT compilation during inference: l2norm_fwd_kernel2. This causes a latency spike; consider extending warmup to cover this shape/config.
+2026-10-05T16:29:16.227684621Z (Worker_TP0 pid=1779) WARNING 10-05 16:29:16 [jit_monitor.py:141] Triton kernel JIT compilation during inference: _kpool_tail_seed_kernel. This causes a latency spike; consider extending warmup to cover this shape/config.
+2026-10-05T16:29:16.383027150Z (APIServer pid=1) INFO:     172.17.0.1:36446 - "POST /v1/completions HTTP/1.1" 200 OK

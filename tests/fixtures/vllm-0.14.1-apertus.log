@@ -1,0 +1,111 @@
+2026-10-01T12:24:21.802519508Z [0;36m(APIServer pid=1)[0;0m INFO 10-01 05:24:21 [api_server.py:1272] vLLM API server version 0.14.1
+2026-10-01T12:24:21.806068175Z [0;36m(APIServer pid=1)[0;0m INFO 10-01 05:24:21 [utils.py:263] non-default args: {'model_tag': '/model', 'model': '/model', 'max_model_len': 4096, 'served_model_name': ['apertus8b'], 'generation_config': 'vllm', 'load_format': 'fastsafetensors', 'max_num_seqs': 16}
+2026-10-01T12:24:29.614946520Z [0;36m(APIServer pid=1)[0;0m INFO 10-01 05:24:29 [model.py:530] Resolved architecture: ApertusForCausalLM
+2026-10-01T12:24:29.615040900Z [0;36m(APIServer pid=1)[0;0m INFO 10-01 05:24:29 [model.py:1545] Using max model len 4096
+2026-10-01T12:24:30.175747292Z [0;36m(APIServer pid=1)[0;0m INFO 10-01 05:24:30 [scheduler.py:229] Chunked prefill is enabled with max_num_batched_tokens=2048.
+2026-10-01T12:24:30.176280672Z [0;36m(APIServer pid=1)[0;0m INFO 10-01 05:24:30 [vllm.py:630] Asynchronous scheduling is enabled.
+2026-10-01T12:24:30.176305952Z [0;36m(APIServer pid=1)[0;0m INFO 10-01 05:24:30 [vllm.py:637] Disabling NCCL for DP synchronization when using async scheduling.
+2026-10-01T12:24:37.575567536Z [0;36m(EngineCore_DP0 pid=131)[0;0m INFO 10-01 05:24:37 [core.py:97] Initializing a V1 LLM engine (v0.14.1) with config: model='/model', speculative_config=None, tokenizer='/model', skip_tokenizer_init=False, tokenizer_mode=auto, revision=None, tokenizer_revision=None, trust_remote_code=False, dtype=torch.bfloat16, max_seq_len=4096, download_dir=None, load_format=fastsafetensors, tensor_parallel_size=1, pipeline_parallel_size=1, data_parallel_size=1, disable_custom_all_reduce=False, quantization=None, enforce_eager=False, enable_return_routed_experts=False, kv_cache_dtype=auto, device_config=cuda, structured_outputs_config=StructuredOutputsConfig(backend='auto', disable_fallback=False, disable_any_whitespace=False, disable_additional_properties=False, reasoning_parser='', reasoning_parser_plugin='', enable_in_reasoning=False), observability_config=ObservabilityConfig(show_hidden_metrics_for_version=None, otlp_traces_endpoint=None, collect_detailed_traces=None, kv_cache_metrics=False, kv_cache_metrics_sample=0.01, cudagraph_metrics=False, enable_layerwise_nvtx_tracing=False, enable_mfu_metrics=False, enable_mm_processor_stats=False, enable_logging_iteration_details=False), seed=0, served_model_name=apertus8b, enable_prefix_caching=True, enable_chunked_prefill=True, pooler_config=None, compilation_config={'level': None, 'mode': <CompilationMode.VLLM_COMPILE: 3>, 'debug_dump_path': None, 'cache_dir': '', 'compile_cache_save_format': 'binary', 'backend': 'inductor', 'custom_ops': ['none'], 'splitting_ops': ['vllm::unified_attention', 'vllm::unified_attention_with_output', 'vllm::unified_mla_attention', 'vllm::unified_mla_attention_with_output', 'vllm::mamba_mixer2', 'vllm::mamba_mixer', 'vllm::short_conv', 'vllm::linear_attention', 'vllm::plamo2_mamba_mixer', 'vllm::gdn_attention_core', 'vllm::kda_attention', 'vllm::sparse_attn_indexer'], 'compile_mm_encoder': False, 'compile_sizes': [], 'compile_ranges_split_points': [2048], 'inductor_compile_config': {'enable_auto_functionalized_v2': False, 'combo_kernels': True, 'benchmark_combo_kernel': True}, 'inductor_passes': {}, 'cudagraph_mode': <CUDAGraphMode.FULL_AND_PIECEWISE: (2, 1)>, 'cudagraph_num_of_warmups': 1, 'cudagraph_capture_sizes': [1, 2, 4, 8, 16, 24, 32], 'cudagraph_copy_inputs': False, 'cudagraph_specialize_lora': True, 'use_inductor_graph_partition': False, 'pass_config': {'fuse_norm_quant': False, 'fuse_act_quant': False, 'fuse_attn_quant': False, 'eliminate_noops': True, 'enable_sp': False, 'fuse_gemm_comms': False, 'fuse_allreduce_rms': False}, 'max_cudagraph_capture_size': 32, 'dynamic_shapes_config': {'type': <DynamicShapesType.BACKED: 'backed'>, 'evaluate_guards': False, 'assume_32_bit_indexing': True}, 'local_cache_dir': None}
+2026-10-01T12:24:38.108068574Z [0;36m(EngineCore_DP0 pid=131)[0;0m INFO 10-01 05:24:38 [parallel_state.py:1214] world_size=1 rank=0 local_rank=0 distributed_init_method=tcp://172.17.0.2:48587 backend=nccl
+2026-10-01T12:24:38.146589867Z [0;36m(EngineCore_DP0 pid=131)[0;0m INFO 10-01 05:24:38 [parallel_state.py:1425] rank 0 in world size 1 is assigned as DP rank 0, PP rank 0, PCP rank 0, TP rank 0, EP rank N/A
+2026-10-01T12:24:39.495368766Z [0;36m(EngineCore_DP0 pid=131)[0;0m INFO 10-01 05:24:39 [gpu_model_runner.py:3808] Starting to load model /model...
+2026-10-01T12:25:02.709403214Z [0;36m(EngineCore_DP0 pid=131)[0;0m INFO 10-01 05:25:02 [cuda.py:351] Using FLASH_ATTN attention backend out of potential backends: ('FLASH_ATTN', 'FLASHINFER', 'TRITON_ATTN', 'FLEX_ATTENTION')
+2026-10-01T12:25:02.764195068Z [0;36m(EngineCore_DP0 pid=131)[0;0m WARNING 10-01 05:25:02 [activation.py:470] CUDA-fused xIELU not available (No module named 'xielu') – falling back to a Python version.
+2026-10-01T12:25:02.764212538Z [0;36m(EngineCore_DP0 pid=131)[0;0m WARNING 10-01 05:25:02 [activation.py:470] For CUDA xIELU (experimental), `pip install git+https://github.com/nickjbrowning/XIELU`
+2026-10-01T12:25:02.935669899Z [0;36m(EngineCore_DP0 pid=131)[0;0m 
+Loading safetensors using Fastsafetensor loader:   0% Completed | 0/4 [00:00<?, ?it/s]
+2026-10-01T12:25:02.941813991Z [0;36m(EngineCore_DP0 pid=131)[0;0m /usr/local/lib/python3.12/dist-packages/fastsafetensors/copier/gds.py:253: UserWarning: GDS device node /dev/nvidia-fs0 not found; falling back to nogds copier to avoid cuFileDriverOpen() corrupting fd 0.
+2026-10-01T12:25:02.941831451Z [0;36m(EngineCore_DP0 pid=131)[0;0m   warnings.warn(
+2026-10-01T12:25:08.895130866Z [0;36m(EngineCore_DP0 pid=131)[0;0m 
+Loading safetensors using Fastsafetensor loader:  25% Completed | 1/4 [00:05<00:17,  5.96s/it]
+2026-10-01T12:25:14.553079457Z [0;36m(EngineCore_DP0 pid=131)[0;0m 
+Loading safetensors using Fastsafetensor loader:  50% Completed | 2/4 [00:11<00:11,  5.78s/it]
+2026-10-01T12:25:15.924676970Z [0;36m(EngineCore_DP0 pid=131)[0;0m 
+Loading safetensors using Fastsafetensor loader:  75% Completed | 3/4 [00:12<00:03,  3.77s/it]
+2026-10-01T12:25:20.997785950Z [0;36m(EngineCore_DP0 pid=131)[0;0m 
+Loading safetensors using Fastsafetensor loader: 100% Completed | 4/4 [00:18<00:00,  4.28s/it]
+2026-10-01T12:25:20.997810730Z [0;36m(EngineCore_DP0 pid=131)[0;0m 
+Loading safetensors using Fastsafetensor loader: 100% Completed | 4/4 [00:18<00:00,  4.52s/it]
+2026-10-01T12:25:20.997814360Z [0;36m(EngineCore_DP0 pid=131)[0;0m 
+2026-10-01T12:25:20.998368279Z [0;36m(EngineCore_DP0 pid=131)[0;0m INFO 10-01 05:25:20 [default_loader.py:291] Loading weights took 18.06 seconds
+2026-10-01T12:25:21.484272660Z [0;36m(EngineCore_DP0 pid=131)[0;0m INFO 10-01 05:25:21 [gpu_model_runner.py:3905] Model loading took 15.02 GiB memory and 41.280048 seconds
+2026-10-01T12:25:29.607633170Z [0;36m(EngineCore_DP0 pid=131)[0;0m INFO 10-01 05:25:29 [backends.py:644] Using cache directory: /root/.cache/vllm/torch_compile_cache/63d4f5d65b/rank_0_0/backbone for vLLM's torch.compile
+2026-10-01T12:25:29.608050449Z [0;36m(EngineCore_DP0 pid=131)[0;0m INFO 10-01 05:25:29 [backends.py:704] Dynamo bytecode transform time: 7.88 s
+2026-10-01T12:25:43.635062775Z [0;36m(EngineCore_DP0 pid=131)[0;0m INFO 10-01 05:25:43 [backends.py:261] Cache the graph of compile range (1, 2048) for later use
+2026-10-01T12:25:51.060637328Z [0;36m(EngineCore_DP0 pid=131)[0;0m INFO 10-01 05:25:51 [backends.py:278] Compiling a graph for compile range (1, 2048) takes 15.18 s
+2026-10-01T12:25:51.061714527Z [0;36m(EngineCore_DP0 pid=131)[0;0m INFO 10-01 05:25:51 [monitor.py:34] torch.compile takes 23.06 s in total
+2026-10-01T12:25:52.053734839Z [0;36m(EngineCore_DP0 pid=131)[0;0m INFO 10-01 05:25:52 [gpu_worker.py:358] Available KV cache memory: 55.24 GiB
+2026-10-01T12:25:52.424750132Z [0;36m(EngineCore_DP0 pid=131)[0;0m INFO 10-01 05:25:52 [kv_cache_utils.py:1305] GPU KV cache size: 452,496 tokens
+2026-10-01T12:25:52.424796903Z [0;36m(EngineCore_DP0 pid=131)[0;0m INFO 10-01 05:25:52 [kv_cache_utils.py:1310] Maximum concurrency for 4,096 tokens per request: 110.47x
+2026-10-01T12:25:53.115891518Z [0;36m(EngineCore_DP0 pid=131)[0;0m 
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):   0%|          | 0/7 [00:00<?, ?it/s]
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  43%|████▎     | 3/7 [00:00<00:00, 23.42it/s]
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  86%|████████▌ | 6/7 [00:00<00:00, 25.45it/s]
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE): 100%|██████████| 7/7 [00:00<00:00, 23.42it/s]
+2026-10-01T12:25:53.335709844Z [0;36m(EngineCore_DP0 pid=131)[0;0m 
+Capturing CUDA graphs (decode, FULL):   0%|          | 0/5 [00:00<?, ?it/s]
+Capturing CUDA graphs (decode, FULL):  40%|████      | 2/5 [00:00<00:00, 18.59it/s]
+Capturing CUDA graphs (decode, FULL): 100%|██████████| 5/5 [00:00<00:00, 23.51it/s]
+Capturing CUDA graphs (decode, FULL): 100%|██████████| 5/5 [00:00<00:00, 22.77it/s]
+2026-10-01T12:25:53.707339255Z [0;36m(EngineCore_DP0 pid=131)[0;0m INFO 10-01 05:25:53 [gpu_model_runner.py:4856] Graph capturing finished in 1 secs, took 0.10 GiB
+2026-10-01T12:25:53.726108752Z [0;36m(EngineCore_DP0 pid=131)[0;0m INFO 10-01 05:25:53 [core.py:273] init engine (profile, create kv cache, warmup model) took 32.24 seconds
+2026-10-01T12:25:54.776277376Z [0;36m(EngineCore_DP0 pid=131)[0;0m INFO 10-01 05:25:54 [vllm.py:630] Asynchronous scheduling is enabled.
+2026-10-01T12:25:55.067535215Z [0;36m(APIServer pid=1)[0;0m INFO 10-01 05:25:55 [api_server.py:1014] Supported tasks: ['generate']
+2026-10-01T12:25:55.067697424Z [0;36m(APIServer pid=1)[0;0m INFO 10-01 05:25:55 [serving_chat.py:182] Warming up chat template processing...
+2026-10-01T12:25:55.600357862Z [0;36m(APIServer pid=1)[0;0m INFO 10-01 05:25:55 [chat_utils.py:599] Detected the chat template content format to be 'string'. You can set `--chat-template-content-format` to override this.
+2026-10-01T12:25:55.601287972Z [0;36m(APIServer pid=1)[0;0m ERROR 10-01 05:25:55 [serving_chat.py:222] Chat template warmup failed
+2026-10-01T12:25:55.601305901Z [0;36m(APIServer pid=1)[0;0m ERROR 10-01 05:25:55 [serving_chat.py:222] Traceback (most recent call last):
+2026-10-01T12:25:55.601308272Z [0;36m(APIServer pid=1)[0;0m ERROR 10-01 05:25:55 [serving_chat.py:222]   File "/usr/local/lib/python3.12/dist-packages/vllm/entrypoints/openai/serving_chat.py", line 201, in warmup
+2026-10-01T12:25:55.601310452Z [0;36m(APIServer pid=1)[0;0m ERROR 10-01 05:25:55 [serving_chat.py:222]     await self._preprocess_chat(
+2026-10-01T12:25:55.601312332Z [0;36m(APIServer pid=1)[0;0m ERROR 10-01 05:25:55 [serving_chat.py:222]   File "/usr/local/lib/python3.12/dist-packages/vllm/entrypoints/openai/serving_engine.py", line 1227, in _preprocess_chat
+2026-10-01T12:25:55.601314341Z [0;36m(APIServer pid=1)[0;0m ERROR 10-01 05:25:55 [serving_chat.py:222]     request_prompt = apply_hf_chat_template(
+2026-10-01T12:25:55.601316161Z [0;36m(APIServer pid=1)[0;0m ERROR 10-01 05:25:55 [serving_chat.py:222]                      ^^^^^^^^^^^^^^^^^^^^^^^
+2026-10-01T12:25:55.601317952Z [0;36m(APIServer pid=1)[0;0m ERROR 10-01 05:25:55 [serving_chat.py:222]   File "/usr/local/lib/python3.12/dist-packages/vllm/entrypoints/chat_utils.py", line 1826, in apply_hf_chat_template
+2026-10-01T12:25:55.601319972Z [0;36m(APIServer pid=1)[0;0m ERROR 10-01 05:25:55 [serving_chat.py:222]     raise ChatTemplateResolutionError(
+2026-10-01T12:25:55.601322021Z [0;36m(APIServer pid=1)[0;0m ERROR 10-01 05:25:55 [serving_chat.py:222] vllm.entrypoints.chat_utils.ChatTemplateResolutionError: As of transformers v4.44, default chat template is no longer allowed, so you must provide a chat template if the tokenizer does not define one.
+2026-10-01T12:25:55.601330152Z [0;36m(APIServer pid=1)[0;0m /usr/local/lib/python3.12/dist-packages/vllm/entrypoints/openai/serving_chat.py:222: RuntimeWarning: coroutine 'AsyncMultiModalItemTracker.all_mm_data' was never awaited
+2026-10-01T12:25:55.601344691Z [0;36m(APIServer pid=1)[0;0m   logger.exception("Chat template warmup failed")
+2026-10-01T12:25:55.601347280Z [0;36m(APIServer pid=1)[0;0m RuntimeWarning: Enable tracemalloc to get the object allocation traceback
+2026-10-01T12:25:55.601523120Z [0;36m(APIServer pid=1)[0;0m INFO 10-01 05:25:55 [api_server.py:1346] Starting vLLM API server 0 on http://0.0.0.0:8000
+2026-10-01T12:25:55.601592701Z [0;36m(APIServer pid=1)[0;0m INFO 10-01 05:25:55 [launcher.py:38] Available routes are:
+2026-10-01T12:25:55.601600361Z [0;36m(APIServer pid=1)[0;0m INFO 10-01 05:25:55 [launcher.py:46] Route: /openapi.json, Methods: HEAD, GET
+2026-10-01T12:25:55.601605941Z [0;36m(APIServer pid=1)[0;0m INFO 10-01 05:25:55 [launcher.py:46] Route: /docs, Methods: HEAD, GET
+2026-10-01T12:25:55.601637641Z [0;36m(APIServer pid=1)[0;0m INFO 10-01 05:25:55 [launcher.py:46] Route: /docs/oauth2-redirect, Methods: HEAD, GET
+2026-10-01T12:25:55.601665531Z [0;36m(APIServer pid=1)[0;0m INFO 10-01 05:25:55 [launcher.py:46] Route: /redoc, Methods: HEAD, GET
+2026-10-01T12:25:55.601750241Z [0;36m(APIServer pid=1)[0;0m INFO 10-01 05:25:55 [launcher.py:46] Route: /scale_elastic_ep, Methods: POST
+2026-10-01T12:25:55.601767401Z [0;36m(APIServer pid=1)[0;0m INFO 10-01 05:25:55 [launcher.py:46] Route: /is_scaling_elastic_ep, Methods: POST
+2026-10-01T12:25:55.601868080Z [0;36m(APIServer pid=1)[0;0m INFO 10-01 05:25:55 [launcher.py:46] Route: /tokenize, Methods: POST
+2026-10-01T12:25:55.601873000Z [0;36m(APIServer pid=1)[0;0m INFO 10-01 05:25:55 [launcher.py:46] Route: /detokenize, Methods: POST
+2026-10-01T12:25:55.601875000Z [0;36m(APIServer pid=1)[0;0m INFO 10-01 05:25:55 [launcher.py:46] Route: /inference/v1/generate, Methods: POST
+2026-10-01T12:25:55.601881550Z [0;36m(APIServer pid=1)[0;0m INFO 10-01 05:25:55 [launcher.py:46] Route: /pause, Methods: POST
+2026-10-01T12:25:55.601883390Z [0;36m(APIServer pid=1)[0;0m INFO 10-01 05:25:55 [launcher.py:46] Route: /resume, Methods: POST
+2026-10-01T12:25:55.601885230Z [0;36m(APIServer pid=1)[0;0m INFO 10-01 05:25:55 [launcher.py:46] Route: /is_paused, Methods: GET
+2026-10-01T12:25:55.601917310Z [0;36m(APIServer pid=1)[0;0m INFO 10-01 05:25:55 [launcher.py:46] Route: /metrics, Methods: GET
+2026-10-01T12:25:55.601920200Z [0;36m(APIServer pid=1)[0;0m INFO 10-01 05:25:55 [launcher.py:46] Route: /health, Methods: GET
+2026-10-01T12:25:55.601961290Z [0;36m(APIServer pid=1)[0;0m INFO 10-01 05:25:55 [launcher.py:46] Route: /load, Methods: GET
+2026-10-01T12:25:55.601983520Z [0;36m(APIServer pid=1)[0;0m INFO 10-01 05:25:55 [launcher.py:46] Route: /v1/models, Methods: GET
+2026-10-01T12:25:55.602015540Z [0;36m(APIServer pid=1)[0;0m INFO 10-01 05:25:55 [launcher.py:46] Route: /version, Methods: GET
+2026-10-01T12:25:55.602019980Z [0;36m(APIServer pid=1)[0;0m INFO 10-01 05:25:55 [launcher.py:46] Route: /v1/responses, Methods: POST
+2026-10-01T12:25:55.602045810Z [0;36m(APIServer pid=1)[0;0m INFO 10-01 05:25:55 [launcher.py:46] Route: /v1/responses/{response_id}, Methods: GET
+2026-10-01T12:25:55.602078010Z [0;36m(APIServer pid=1)[0;0m INFO 10-01 05:25:55 [launcher.py:46] Route: /v1/responses/{response_id}/cancel, Methods: POST
+2026-10-01T12:25:55.602110060Z [0;36m(APIServer pid=1)[0;0m INFO 10-01 05:25:55 [launcher.py:46] Route: /v1/messages, Methods: POST
+2026-10-01T12:25:55.602114140Z [0;36m(APIServer pid=1)[0;0m INFO 10-01 05:25:55 [launcher.py:46] Route: /v1/chat/completions, Methods: POST
+2026-10-01T12:25:55.602120050Z [0;36m(APIServer pid=1)[0;0m INFO 10-01 05:25:55 [launcher.py:46] Route: /v1/completions, Methods: POST
+2026-10-01T12:25:55.602144110Z [0;36m(APIServer pid=1)[0;0m INFO 10-01 05:25:55 [launcher.py:46] Route: /v1/audio/transcriptions, Methods: POST
+2026-10-01T12:25:55.602164710Z [0;36m(APIServer pid=1)[0;0m INFO 10-01 05:25:55 [launcher.py:46] Route: /v1/audio/translations, Methods: POST
+2026-10-01T12:25:55.602215260Z [0;36m(APIServer pid=1)[0;0m INFO 10-01 05:25:55 [launcher.py:46] Route: /ping, Methods: GET
+2026-10-01T12:25:55.602218350Z [0;36m(APIServer pid=1)[0;0m INFO 10-01 05:25:55 [launcher.py:46] Route: /ping, Methods: POST
+2026-10-01T12:25:55.602258660Z [0;36m(APIServer pid=1)[0;0m INFO 10-01 05:25:55 [launcher.py:46] Route: /invocations, Methods: POST
+2026-10-01T12:25:55.602294351Z [0;36m(APIServer pid=1)[0;0m INFO 10-01 05:25:55 [launcher.py:46] Route: /classify, Methods: POST
+2026-10-01T12:25:55.602298671Z [0;36m(APIServer pid=1)[0;0m INFO 10-01 05:25:55 [launcher.py:46] Route: /v1/embeddings, Methods: POST
+2026-10-01T12:25:55.602317491Z [0;36m(APIServer pid=1)[0;0m INFO 10-01 05:25:55 [launcher.py:46] Route: /score, Methods: POST
+2026-10-01T12:25:55.602339490Z [0;36m(APIServer pid=1)[0;0m INFO 10-01 05:25:55 [launcher.py:46] Route: /v1/score, Methods: POST
+2026-10-01T12:25:55.602354690Z [0;36m(APIServer pid=1)[0;0m INFO 10-01 05:25:55 [launcher.py:46] Route: /rerank, Methods: POST
+2026-10-01T12:25:55.602402939Z [0;36m(APIServer pid=1)[0;0m INFO 10-01 05:25:55 [launcher.py:46] Route: /v1/rerank, Methods: POST
+2026-10-01T12:25:55.602405010Z [0;36m(APIServer pid=1)[0;0m INFO 10-01 05:25:55 [launcher.py:46] Route: /v2/rerank, Methods: POST
+2026-10-01T12:25:55.602433099Z [0;36m(APIServer pid=1)[0;0m INFO 10-01 05:25:55 [launcher.py:46] Route: /pooling, Methods: POST
+2026-10-01T12:25:55.683655082Z [0;36m(APIServer pid=1)[0;0m INFO:     Started server process [1]
+2026-10-01T12:25:55.683667512Z [0;36m(APIServer pid=1)[0;0m INFO:     Waiting for application startup.
+2026-10-01T12:25:55.942359990Z [0;36m(APIServer pid=1)[0;0m INFO:     Application startup complete.
+2026-10-01T12:25:56.067154710Z [0;36m(APIServer pid=1)[0;0m INFO:     172.17.0.1:51916 - "GET /health HTTP/1.1" 200 OK
+2026-10-01T12:25:56.301742987Z [0;36m(APIServer pid=1)[0;0m INFO:     172.17.0.1:51932 - "POST /v1/completions HTTP/1.1" 200 OK

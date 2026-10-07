@@ -1,0 +1,17 @@
+{
+  "engine": "vllm",
+  "version": "0.28.1rc1.dev580+g385dce36b",
+  "repeatable_phases": ["cuda_graph_capture"],
+  "events": [
+    {"line": "Resolved architecture", "phase": "config_and_arch"},
+    {"line": "Initializing a V1 LLM engine", "phase": "engine_spawn"},
+    {"line": "Starting to load model|Loading model from scratch", "phase": "worker_init"},
+    {"line": "Loading weights took", "phase": "weight_loading", "took": "Loading weights took ([\\d.]+) sec", "before": "pre_load"},
+    {"line": "Model loading took", "phase": "post_load"},
+    {"line": "GPU KV cache size", "phase": "kv_sizing"},
+    {"line": "[Gg]raph capturing finished in", "phase": "cuda_graph_capture", "took": "finished in ([\\d.]+) sec", "before": "profile_and_jit"},
+    {"line": "init engine \\(.*?\\) took", "phase": "final_warmup"},
+    {"line": "Starting vLLM (API )?server", "phase": "app_construction"},
+    {"line": "DeepGEMM warmup:\\s+100%", "phase": "deepgemm_warmup"}
+  ]
+}
